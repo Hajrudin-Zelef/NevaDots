@@ -3,6 +3,9 @@ import { X } from 'lucide-react';
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
 import { ConnectionsSection } from './ConnectionsSection';
 import {
+  PALETTES,
+  palettePreference,
+  setPalettePreference,
   setThemePreference,
   themePreference,
   type ThemePreference,
@@ -62,6 +65,7 @@ export function WorkspaceDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [theme, setTheme] = useState(themePreference);
+  const [palette, setPalette] = useState(palettePreference);
   const container = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous =
@@ -373,27 +377,50 @@ export function WorkspaceDialog({
             <fieldset className="appearance-fields">
               <legend>Appearance</legend>
               <div className="segmented" role="radiogroup">
-                {(['system', 'light', 'dark'] as ThemePreference[]).map(
-                  (option) => (
-                    <label key={option}>
-                      <input
-                        type="radio"
-                        name="theme"
-                        value={option}
-                        checked={theme === option}
-                        onChange={() => {
-                          setTheme(option);
-                          setThemePreference(option);
-                        }}
-                      />
-                      <span>{option[0].toUpperCase() + option.slice(1)}</span>
-                    </label>
-                  ),
-                )}
+                {(
+                  ['system', 'light', 'dark', 'hard_dark'] as ThemePreference[]
+                ).map((option) => (
+                  <label key={option}>
+                    <input
+                      type="radio"
+                      name="theme"
+                      value={option}
+                      checked={theme === option}
+                      onChange={() => {
+                        setTheme(option);
+                        setThemePreference(option);
+                      }}
+                    />
+                    <span>
+                      {option
+                        .split('_')
+                        .map((part) => part[0].toUpperCase() + part.slice(1))
+                        .join(' ')}
+                    </span>
+                  </label>
+                ))}
               </div>
               <p className="muted">
                 Saved in this browser. System follows your device.
               </p>
+              <div className="palette-swatches" role="radiogroup" aria-label="Accent colour">
+                {PALETTES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`palette-swatch ${palette === item.id ? 'active' : ''}`}
+                    style={{ background: item.color }}
+                    title={item.label}
+                    aria-label={item.label}
+                    aria-pressed={palette === item.id}
+                    onClick={() => {
+                      setPalette(item.id);
+                      setPalettePreference(item.id);
+                    }}
+                  />
+                ))}
+              </div>
+              <p className="muted">Accent colour.</p>
             </fieldset>
           )}
           {dialog.type === 'settings' && (

@@ -1,0 +1,223 @@
+/* NevaDots — design tokens, portés depuis l'UI de cetas-lite.
+   Ce fichier est importé APRÈS style.css/editor.css : il fait autorité sur les
+   variables de thème.
+
+   Le thème SOMBRE n'est PAS écrit ici : il est généré au build par le plugin
+   PostCSS `src/build/dark-theme.ts` (flip OKLab), qui dérive une variante
+   sombre de chaque couleur claire. `hard_dark` réutilise ce thème sombre
+   (data-theme='dark') et ajoute une surcharge plus profonde via data-dark='hard'.
+
+   Les primitives `--nd-*` sont définies ici (clair) ; les variables historiques
+   de NevaDots (--ink/--muted/--line/--blue/--lavender/--accent…) sont mappées
+   dessus, donc tout style.css existant suit le thème et les palettes. */
+
+/* --- Primitives — thème clair (défaut) --- */
+:root {
+  color-scheme: light;
+
+  /* Palette d'accent (pilotée par data-palette, défaut = bleu cetas) */
+  --nd-accent: #3b87ce;
+  --nd-accent-dark: #2a6da3;
+
+  /* Surfaces & texte */
+  --nd-bg: #ffffff;
+  --nd-bg-sidebar: #fafafa;
+  --nd-bg-msg-user: #f0f0f0;
+  --nd-bg-msg-assistant: #f9f9f9;
+  --nd-text: #1a1a1a;
+  --nd-text-secondary: #888888;
+  --nd-border: #eaeaea;
+  --nd-bg-input: #ffffff;
+  --nd-bg-hover: #f0f0f0;
+  --nd-bg-active: #e8e8e8;
+  --nd-btn-bg: #1a1a1a;
+  --nd-btn-text: #ffffff;
+  --nd-border-light: #f0f0f0;
+  --nd-border-input: #dddddd;
+  --nd-bg-thinking: #fdfdfd;
+
+  /* Divers */
+  --nd-scrollbar-thumb: rgba(0, 0, 0, 0.13);
+  --nd-scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+  --nd-tooltip-bg: #1f1f1f;
+  --nd-tooltip-text: #f0f0f0;
+  --nd-link: #2563eb;
+  --nd-link-hover: #1d4ed8;
+  --nd-disabled-bg: #ececec;
+  --nd-disabled-ink: #9a9a9a;
+  --nd-danger: #dc2626;
+  --nd-danger-dark: #b91c1c;
+}
+
+/* --- Palettes d'accent (data-palette) — reprises de cetas-lite --- */
+:root[data-palette='bleu'] {
+  --nd-accent: #3b87ce;
+  --nd-accent-dark: #2a6da3;
+}
+:root[data-palette='violet'] {
+  --nd-accent: #8b5cf6;
+  --nd-accent-dark: #6d28d9;
+}
+:root[data-palette='vert'] {
+  --nd-accent: #22c55e;
+  --nd-accent-dark: #15803d;
+}
+:root[data-palette='vert_pur'] {
+  --nd-accent: #00e676;
+  --nd-accent-dark: #00b35c;
+}
+:root[data-palette='bleu_ocean'] {
+  --nd-accent: #0ea5e9;
+  --nd-accent-dark: #0369a1;
+}
+:root[data-palette='jaune_or'] {
+  --nd-accent: #d4a017;
+  --nd-accent-dark: #a97c0f;
+}
+:root[data-palette='rouge'] {
+  --nd-accent: #ef4444;
+  --nd-accent-dark: #b91c1c;
+}
+/* Palette « ocean » de NevaDots (accent historique du thème cetas-lite). */
+:root[data-palette='ocean'] {
+  --nd-accent: #2196f3;
+  --nd-accent-dark: #1976d2;
+}
+
+/* --- Mappings : variables NevaDots -> primitives.
+   Déclarés sur :root ET .template-app (style.css redéclare certains tokens
+   sur .template-app ; à spécificité égale, ce fichier chargé en dernier gagne). */
+:root,
+.template-app {
+  --bg: var(--nd-bg);
+  --bg-sidebar: var(--nd-bg-sidebar);
+  --bg-msg-user: var(--nd-bg-msg-user);
+  --bg-msg-assistant: var(--nd-bg-msg-assistant);
+  --text: var(--nd-text);
+  --text-secondary: var(--nd-text-secondary);
+  --border: var(--nd-border);
+  --bg-input: var(--nd-bg-input);
+  --bg-hover: var(--nd-bg-hover);
+  --bg-active: var(--nd-bg-active);
+  --btn-bg: var(--nd-btn-bg);
+  --btn-text: var(--nd-btn-text);
+  --border-light: var(--nd-border-light);
+  --border-input: var(--nd-border-input);
+  --bg-thinking: var(--nd-bg-thinking);
+  --scrollbar-thumb: var(--nd-scrollbar-thumb);
+  --scrollbar-thumb-hover: var(--nd-scrollbar-thumb-hover);
+  --tooltip-bg: var(--nd-tooltip-bg);
+  --tooltip-text: var(--nd-tooltip-text);
+  --link: var(--nd-link);
+  --link-hover: var(--nd-link-hover);
+  --disabled-bg: var(--nd-disabled-bg);
+  --disabled-ink: var(--nd-disabled-ink);
+  --danger: var(--nd-danger);
+  --danger-dark: var(--nd-danger-dark);
+
+  --accent: var(--nd-accent);
+  --accent-dark: var(--nd-accent-dark);
+  --accent-hover: var(--nd-accent-dark);
+  --accent-light: color-mix(in srgb, var(--nd-accent) 10%, transparent);
+
+  /* Alias historiques NevaDots (conservés pour ne rien casser). */
+  --ink: var(--nd-text);
+  --muted: var(--nd-text-secondary);
+  --line: var(--nd-border);
+  --blue: var(--nd-accent);
+  --blue-dark: var(--nd-accent-dark);
+  --lavender: color-mix(in srgb, var(--nd-accent) 12%, var(--nd-bg));
+}
+
+/* --- Thème sombre : valeurs cetas-lite (pin), l'accent reste auto-ajusté
+   par le plugin dark-theme. Le sélecteur commence par :root[data-theme='dark'],
+   donc le plugin l'ignore (pas de jumeau généré). --- */
+:root[data-theme='dark'] {
+  --nd-bg: #1a1a1a;
+  --nd-bg-sidebar: #212121;
+  --nd-bg-msg-user: #2a2a2a;
+  --nd-bg-msg-assistant: #323232;
+  --nd-text: #e0e0e0;
+  --nd-text-secondary: #999999;
+  --nd-border: #2e2e2e;
+  --nd-bg-input: #2a2a2a;
+  --nd-bg-hover: #2e2e2e;
+  --nd-bg-active: #3a3a3a;
+  --nd-btn-bg: #e0e0e0;
+  --nd-btn-text: #1a1a1a;
+  --nd-border-light: #2e2e2e;
+  --nd-border-input: #444444;
+  --nd-bg-thinking: #1e1e1e;
+  --nd-tooltip-bg: #2a2a2a;
+  --nd-tooltip-text: #e8e8e8;
+  --nd-link: #60a5fa;
+  --nd-link-hover: #93bbfd;
+  --nd-disabled-bg: #2a2a2a;
+  --nd-disabled-ink: #6a6a6a;
+}
+
+/* --- Thème « hard dark » : sombre (data-theme='dark') + surcharge profonde.
+   Le sélecteur commence par :root[data-theme='dark'], donc le plugin
+   dark-theme l'ignore (il ne lui fabrique pas de jumeau). */
+:root[data-theme='dark'][data-dark='hard'] {
+  --nd-bg: #0d0d0d;
+  --nd-bg-sidebar: #141414;
+  --nd-bg-msg-user: #1a1a1a;
+  --nd-bg-msg-assistant: #161616;
+  --nd-text: #e6e6e6;
+  --nd-text-secondary: #8a8a8a;
+  --nd-border: #242424;
+  --nd-bg-input: #161616;
+  --nd-bg-hover: #1e1e1e;
+  --nd-bg-active: #262626;
+  --nd-border-light: #1e1e1e;
+  --nd-border-input: #333333;
+  --nd-bg-thinking: #121212;
+  --nd-tooltip-bg: #1e1e1e;
+  --nd-tooltip-text: #e8e8e8;
+  --nd-link: #7cc0ff;
+  --nd-link-hover: #a5d4ff;
+  --nd-disabled-bg: #1e1e1e;
+  --nd-disabled-ink: #5f5f5f;
+}
+
+/* --- Base : la racine suit le thème --- */
+body {
+  background: var(--nd-bg);
+  color: var(--nd-text);
+}
+/* hard_dark : on réaffirme la base (le plugin a aplati le fond sombre en dur). */
+:root[data-theme='dark'][data-dark='hard'] body {
+  background: var(--nd-bg);
+  color: var(--nd-text);
+}
+
+/* --- Sélecteur de palette (Apparence) --- */
+.palette-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.palette-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.palette-swatch:hover {
+  transform: scale(1.1);
+}
+.palette-swatch.active {
+  border-color: var(--nd-text);
+}
+.palette-swatch:focus-visible {
+  outline: 2px solid var(--nd-accent);
+  outline-offset: 2px;
+}
