@@ -426,7 +426,6 @@ export function Chat({
           identity={dot.id}
           name={dot.name}
           small
-          render3d
           state={mascotState}
         />
         <div>

@@ -4622,13 +4622,36 @@ h3 {
   }
 }
 
-/* --- NevaDots: 3D mascot (three.js) --- */
-.mascot-canvas-host {
-  position: absolute;
-  inset: 0;
-  display: block;
+/* --- NevaDots: extra mascot state animations --- */
+.mascot.searching .dot-body {
+  animation: bob 1.1s ease-in-out infinite;
 }
-.mascot-3d > svg,
-.mascot-3d > .blob-group {
-  display: none;
+.mascot.analyzing .dot-body {
+  animation: breathe 3s ease-in-out infinite;
+}
+.mascot.complete .dot-body {
+  animation: type-bounce 0.7s ease-in-out 2;
+}
+.mascot.error .dot-body {
+  animation: mascot-alert 0.5s ease-in-out 3;
+}
+@keyframes mascot-alert {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(6deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot.searching .dot-body,
+  .mascot.analyzing .dot-body,
+  .mascot.complete .dot-body,
+  .mascot.error .dot-body {
+    animation: none !important;
+  }
 }
