@@ -110,6 +110,19 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.get('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
+// Cache policy: hashed assets are immutable; the SPA shell must never be
+// cached, otherwise a stale index.html keeps referencing old asset hashes and
+// the browser serves the previous UI after a deploy.
+app.use('/*', async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  c.header(
+    'Cache-Control',
+    path.startsWith('/assets/')
+      ? 'public, max-age=31536000, immutable'
+      : 'no-store',
+  );
+  await next();
+});
 app.use('/*', serveStatic({ root: './dist/client' }));
 app.get('*', serveStatic({ path: './dist/client/index.html' }));
 const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
