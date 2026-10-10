@@ -279,6 +279,22 @@ export class WorkspaceStore {
       throw new Error('Conversation does not belong to this Dot and owner.');
     return thread;
   }
+  deleteThread(id: string): boolean {
+    const exists = this.conversations().some((thread) => thread.id === id);
+    if (!exists) return false;
+    this.db
+      .prepare('DELETE FROM thread_bindings WHERE id=? AND ownerId=?')
+      .run(id, this.ownerId);
+    this.db.prepare('DELETE FROM task_threads WHERE threadId=?').run(id);
+    this.db.prepare('DELETE FROM calls WHERE threadId=?').run(id);
+    this.db.prepare('DELETE FROM captures WHERE threadId=?').run(id);
+    return true;
+  }
+  deleteAllThreads(): number {
+    const ids = this.conversations().map((thread) => thread.id);
+    for (const id of ids) this.deleteThread(id);
+    return ids.length;
+  }
   bindTask(taskId: string, threadId: string) {
     this.requireThread(threadId);
     this.db

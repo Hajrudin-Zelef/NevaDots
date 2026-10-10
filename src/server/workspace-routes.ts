@@ -273,6 +273,14 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   app.get('/conversations/:id/capture', (c) =>
     c.json(platform.workspace.capture(c.req.param('id'))),
   );
+  app.delete('/conversations/:id', async (c) => {
+    await platform.deleteConversation(c.req.param('id'));
+    return c.json({ ok: true });
+  });
+  app.delete('/conversations', async (c) => {
+    const deleted = await platform.deleteAllConversations();
+    return c.json({ deleted });
+  });
   app.post('/voice/calls', async (c) => {
     const data = z
       .object({ threadId: z.string(), sdp: z.string().max(100000) })

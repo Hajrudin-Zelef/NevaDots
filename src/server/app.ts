@@ -83,9 +83,11 @@ export function createApp({
           401,
         );
     }
+    const contentType = c.req.header('content-type');
     if (
       !['GET', 'HEAD'].includes(c.req.method) &&
-      !c.req.header('content-type')?.includes('application/json')
+      contentType &&
+      !contentType.includes('application/json')
     )
       return c.json({ error: 'Use application/json.' }, 415);
     await next();

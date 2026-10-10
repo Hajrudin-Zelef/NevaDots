@@ -208,12 +208,20 @@ h3 {
   background: #b6a17b !important;
 }
 .nav-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 9px;
   font-weight: 600;
   color: #a3a3ab;
   letter-spacing: 1.2px;
   padding: 0 14px;
   margin-bottom: 13px;
+}
+.nav-label-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 .nav-item {
   display: flex;
@@ -251,6 +259,24 @@ h3 {
   padding: 2px 5px;
   border-radius: 3px;
   color: #6879b5;
+}
+.thread-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.thread-row .nav-item {
+  flex: 1;
+  min-width: 0;
+}
+.thread-row .thread-delete {
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+.thread-row:hover .thread-delete,
+.thread-row .thread-delete:focus-visible {
+  opacity: 1;
 }
 .sidebar-bottom {
   margin-top: auto;

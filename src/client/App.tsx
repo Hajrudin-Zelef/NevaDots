@@ -247,6 +247,36 @@ export function App() {
       setBusy(false);
     }
   };
+  const deleteConversation = async (id: string) => {
+    if (!window.confirm('Delete this conversation? This cannot be undone.'))
+      return;
+    try {
+      await api(`/conversations/${id}`, 'DELETE');
+      if (selectedThread === id) {
+        setSelectedThread(undefined);
+        setPendingPrompt(undefined);
+      }
+      await refresh();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : 'Could not delete the conversation.',
+      );
+    }
+  };
+  const deleteAllConversations = async () => {
+    if (!window.confirm('Delete ALL conversations? This cannot be undone.'))
+      return;
+    try {
+      await api('/conversations', 'DELETE');
+      setSelectedThread(undefined);
+      setPendingPrompt(undefined);
+      await refresh();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : 'Could not delete the conversations.',
+      );
+    }
+  };
   if (needsAuth)
     return (
       <main className="unlock">
@@ -466,6 +496,8 @@ export function App() {
               setMobile(false);
             }}
             onNew={() => void newConversation()}
+            onDelete={(id) => void deleteConversation(id)}
+            onDeleteAll={() => void deleteAllConversations()}
           />
         ) : (
           <div className="sidebar-empty">
