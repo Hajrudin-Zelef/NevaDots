@@ -5,8 +5,11 @@ import './style.css';
 import './editor.css';
 import './tokens.css';
 import './refonte.css';
+import './refonte-ocean.css';
+import { initRipple } from './ripple';
 import { watchSystemTheme } from './theme';
 watchSystemTheme();
+initRipple();
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
