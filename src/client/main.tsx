@@ -4,6 +4,7 @@ import { App } from './App';
 import './style.css';
 import './editor.css';
 import './tokens.css';
+import './refonte.css';
 import { watchSystemTheme } from './theme';
 watchSystemTheme();
 createRoot(document.getElementById('root')!).render(

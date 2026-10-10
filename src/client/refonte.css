@@ -1,0 +1,227 @@
+/* NevaDots — refonte UI (inspirée de cetas-lite).
+   Surcharge ADDITIVE : ce fichier est importé en dernier et ne fait que
+   redéfinir des couleurs/espacements via les tokens (--nd-*). Aucune règle
+   existante n'est supprimée — sur le modèle de l'ocean.css de cetas-lite.
+
+   Phase 1 — shell + sidebar + rail + topbar. */
+
+/* --- Rail d'icônes --- */
+.icon-rail {
+  background: var(--nd-bg-sidebar);
+  border-right: 1px solid var(--nd-border);
+}
+.icon-rail button {
+  color: var(--nd-text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.icon-rail button:hover {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
+}
+.icon-rail .rail-brand {
+  color: var(--nd-text);
+}
+.rail-brand span {
+  color: var(--nd-accent);
+}
+
+/* --- Sidebar --- */
+.sidebar,
+.template-app.app .sidebar {
+  background: var(--nd-bg-sidebar);
+  border-right: 1px solid var(--nd-border);
+}
+.wordmark {
+  color: var(--nd-text);
+}
+.wordmark-dot {
+  color: var(--nd-accent);
+}
+
+.nav-label {
+  color: var(--nd-text-secondary);
+}
+
+.nav-item {
+  color: var(--nd-text-secondary);
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.nav-item:hover {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
+}
+.nav-item.active {
+  background: var(--accent-light);
+  color: var(--nd-accent);
+}
+.nav-item.active svg {
+  color: var(--nd-accent);
+}
+.nav-item.active small {
+  background: color-mix(in srgb, var(--nd-accent) 16%, transparent);
+  color: var(--nd-accent);
+}
+
+/* Nouvelle conversation : bouton teinté accent (façon cetas-lite). */
+.new-chat.nav-item {
+  background: color-mix(in srgb, var(--nd-accent) 8%, var(--nd-bg-sidebar));
+  color: var(--nd-accent);
+}
+.new-chat.nav-item:hover {
+  background: color-mix(in srgb, var(--nd-accent) 14%, var(--nd-bg-sidebar));
+  color: var(--nd-accent);
+}
+
+/* Dots */
+.dot-nav {
+  color: var(--nd-text-secondary);
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.dot-nav:hover {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
+}
+.dot-nav.active {
+  background: var(--accent-light);
+  color: var(--nd-accent);
+}
+.dot-nav-mark {
+  background: color-mix(in srgb, var(--nd-accent) 55%, transparent);
+}
+
+/* Spaces & conversations */
+.space-title {
+  color: var(--nd-text-secondary);
+}
+.space-nav-row > .nav-item,
+.spaces-nav .nav-item,
+.thread-list .nav-item {
+  color: var(--nd-text-secondary);
+}
+.space-nav-row > .nav-item:hover,
+.spaces-nav .nav-item:hover,
+.thread-list .nav-item:hover {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
+}
+.sidebar-empty,
+.sidebar-error {
+  color: var(--nd-text-secondary);
+}
+.sidebar-bottom .nav-item {
+  color: var(--nd-text-secondary);
+}
+.version {
+  color: var(--nd-text-secondary);
+}
+.online-dot {
+  border-color: var(--nd-bg-sidebar);
+}
+
+/* --- Topbar --- */
+.topbar {
+  background: var(--nd-bg);
+  border-bottom: 1px solid var(--nd-border);
+}
+.breadcrumbs {
+  color: var(--nd-text-secondary);
+}
+.breadcrumbs strong {
+  color: var(--nd-text);
+}
+.mode-badge {
+  color: var(--nd-accent);
+  background: color-mix(in srgb, var(--nd-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--nd-accent) 22%, transparent);
+}
+.mode-badge.live {
+  color: #4f9d5f;
+  background: color-mix(in srgb, #4f9d5f 12%, transparent);
+  border-color: color-mix(in srgb, #4f9d5f 28%, transparent);
+}
+.pause-button {
+  color: var(--nd-text-secondary);
+}
+.pause-button:hover {
+  color: var(--nd-text);
+}
+
+/* --- Composer (façon cetas-lite : boîte arrondie + halo accent) --- */
+.chat-composer {
+  border-top: 1px solid var(--nd-border);
+}
+.chat-compose-row {
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--nd-bg-input);
+  border: 1px solid var(--nd-border-input);
+  border-radius: 14px;
+  padding: 6px 8px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.chat-compose-row:focus-within {
+  border-color: var(--nd-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nd-accent) 14%, transparent);
+}
+.chat-compose-row textarea {
+  color: var(--nd-text);
+}
+.chat-compose-row textarea::placeholder {
+  color: var(--nd-text-secondary);
+}
+.chat-compose-row .icon-button {
+  color: var(--nd-text-secondary);
+}
+.chat-compose-row .icon-button:hover {
+  color: var(--nd-text);
+  background: var(--nd-bg-hover);
+}
+.chat-compose-row .model-select {
+  background: transparent;
+  border-color: var(--nd-border-input);
+  color: var(--nd-text-secondary);
+}
+.chat-compose-note {
+  color: var(--nd-text-secondary);
+}
+.send-button {
+  background: var(--nd-accent);
+  border-radius: 10px;
+}
+.send-button:disabled {
+  background: color-mix(in srgb, var(--nd-accent) 35%, var(--nd-bg));
+  opacity: 0.7;
+}
+.send-button:hover:not(:disabled) {
+  background: var(--nd-accent-dark);
+}
+
+/* --- Messages --- */
+.user-message > div {
+  background: var(--nd-bg-msg-user);
+  border: 1px solid var(--nd-border);
+}
+.message-avatar {
+  background: color-mix(in srgb, var(--nd-accent) 14%, var(--nd-bg));
+  color: var(--nd-accent);
+}
+.dot-message strong span {
+  color: var(--nd-text-secondary);
+}
+.chat-error {
+  background: var(--danger-light);
+  color: var(--nd-danger);
+}
+.voice-strip {
+  color: var(--nd-accent);
+  background: color-mix(in srgb, var(--nd-accent) 8%, transparent);
+}
+.source-input {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text-secondary);
+}
+
