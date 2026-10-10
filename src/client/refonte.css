@@ -277,4 +277,228 @@
   color: var(--nd-text-secondary);
 }
 
+/* ============================================================
+   Phase 2 — bibliothèque de composants + vues secondaires
+   ============================================================ */
+
+/* --- Contrôles de formulaire (globaux) --- */
+input,
+textarea,
+select {
+  color: var(--nd-text);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--nd-text-secondary);
+}
+.icon-button {
+  color: var(--nd-text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.icon-button:hover {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
+}
+.text-button {
+  color: var(--nd-accent);
+}
+
+/* --- Spaces / Documents (editor.css) : variables + surfaces --- */
+:root,
+.template-app {
+  --document-ink: var(--nd-text);
+  --document-muted: var(--nd-text-secondary);
+  --document-line: var(--nd-border);
+}
+.spaces-surface,
+.document-session {
+  background: var(--nd-bg);
+  color: var(--nd-text);
+}
+.document-icon {
+  color: var(--nd-text-secondary);
+}
+.document-icon:hover:not(:disabled) {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
+}
+.document-topbar {
+  border-bottom: 1px solid var(--nd-border);
+}
+.document-back {
+  color: var(--nd-text-secondary);
+}
+.document-save-status {
+  color: var(--nd-text-secondary);
+}
+.document-save-status.error,
+.document-save-status.conflict {
+  color: var(--nd-danger);
+}
+.document-title {
+  color: var(--nd-text);
+}
+.document-title::placeholder {
+  color: var(--nd-text-secondary);
+}
+.document-title:focus-visible {
+  box-shadow: 0 1px var(--nd-accent);
+}
+.document-prose {
+  color: var(--nd-text);
+  caret-color: var(--nd-accent);
+}
+.format-toolbar {
+  border-bottom: 1px solid var(--nd-border);
+}
+.format-toolbar button {
+  color: var(--nd-text-secondary);
+}
+.format-toolbar button:hover:not(:disabled),
+.format-toolbar button[aria-pressed='true'] {
+  background: var(--accent-light);
+  color: var(--nd-accent);
+}
+.toolbar-divider {
+  background: var(--nd-border);
+}
+
+/* --- Bibliothèque de pages --- */
+.library-eyebrow {
+  color: var(--nd-accent);
+}
+.library-heading p {
+  color: var(--nd-text-secondary);
+}
+.document-primary {
+  background: var(--nd-accent);
+  border: 1px solid var(--nd-accent);
+  color: #fff;
+}
+.document-primary:hover:not(:disabled) {
+  background: var(--nd-accent-dark);
+  color: #fff;
+}
+.library-search {
+  background: var(--nd-bg-input);
+  border: 1px solid var(--nd-border-input);
+  color: var(--nd-text-secondary);
+}
+.library-search input {
+  color: var(--nd-text);
+}
+.library-search:focus-within {
+  outline: 2px solid var(--nd-accent);
+  outline-offset: 2px;
+}
+.library-sort select {
+  color: var(--nd-text-secondary);
+}
+.library-view-toggle {
+  border: 1px solid var(--nd-border-input);
+}
+.library-view-toggle button {
+  color: var(--nd-text-secondary);
+}
+.library-view-toggle button[aria-pressed='true'] {
+  background: var(--accent-light);
+  color: var(--nd-accent);
+}
+.library-section-label span {
+  color: var(--nd-text-secondary);
+}
+.library-page-card {
+  background: var(--nd-bg-input);
+  border: 1px solid var(--nd-border);
+  box-shadow: none;
+}
+.library-page-card:hover:not(:disabled) {
+  background: var(--nd-bg-input);
+  border-color: color-mix(in srgb, var(--nd-accent) 45%, var(--nd-border));
+  box-shadow: 0 5px 15px color-mix(in srgb, #000 8%, transparent);
+}
+.library-page-icon {
+  color: var(--nd-text-secondary);
+  background: var(--nd-bg-hover);
+  border: 1px solid var(--nd-border);
+}
+.library-page-card h3 {
+  color: var(--nd-text);
+}
+.library-page-card p {
+  color: var(--nd-text-secondary);
+}
+.library-page-meta {
+  color: var(--nd-text-secondary);
+}
+.library-card-arrow {
+  color: var(--nd-text-secondary);
+}
+.library-empty {
+  color: var(--nd-text-secondary);
+}
+.library-empty h2 {
+  color: var(--nd-text);
+}
+
+/* --- Panneau de résultat (droite) --- */
+.result-pane {
+  border-left: 1px solid var(--nd-border);
+  background: var(--nd-bg-sidebar);
+}
+.pane-header {
+  border-bottom: 1px solid var(--nd-border);
+  background: var(--nd-bg-sidebar);
+}
+.pane-tabs button {
+  color: var(--nd-text-secondary);
+}
+.pane-tabs .selected {
+  background: var(--accent-light);
+  color: var(--nd-accent);
+}
+.sample-note {
+  background: var(--accent-light);
+  border: 1px solid color-mix(in srgb, var(--nd-accent) 22%, transparent);
+  color: var(--nd-text-secondary);
+}
+.brief {
+  color: var(--nd-text-secondary);
+}
+.source-card {
+  border-color: var(--nd-border);
+  background: var(--nd-bg-input);
+}
+
+/* --- Panneau Computer --- */
+.computer-section {
+  border-top: 1px solid var(--nd-border);
+}
+.computer-setup {
+  background: var(--nd-bg-hover);
+}
+.computer-setup a {
+  color: var(--nd-accent);
+}
+.computer-error {
+  color: var(--nd-danger);
+  background: var(--danger-light);
+}
+.computer-current-url {
+  background: var(--nd-bg-hover);
+}
+.computer-screen-empty {
+  border: 1px dashed var(--nd-border-input);
+}
+.computer-section pre {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
+}
+
+/* --- Connexions --- */
+.connection {
+  border-top: 1px solid var(--nd-border);
+}
+
+
 
