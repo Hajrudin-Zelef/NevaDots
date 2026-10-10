@@ -225,3 +225,56 @@
   color: var(--nd-text-secondary);
 }
 
+/* --- Modales (façon cetas-lite) --- */
+.modal-backdrop {
+  background: color-mix(in srgb, #000 22%, transparent);
+}
+.modal {
+  background: var(--nd-bg-input);
+  border: 1px solid var(--nd-border);
+  border-radius: 18px;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.06),
+    0 16px 48px rgba(0, 0, 0, 0.12);
+}
+.modal-close {
+  color: var(--nd-text-secondary);
+}
+.field-label {
+  color: var(--nd-text-secondary);
+}
+.settings-row {
+  border-bottom: 1px solid var(--nd-border);
+}
+.settings-row p {
+  color: var(--nd-text-secondary);
+}
+.toggle {
+  background: var(--nd-bg-active);
+}
+.toggle.on {
+  background: var(--nd-accent);
+}
+.toggle.on:hover:not(:disabled) {
+  background: var(--nd-accent-dark);
+}
+.config-note,
+.modal p.muted {
+  color: var(--nd-text-secondary);
+}
+
+/* --- Panneau Raisonnement --- */
+.reasoning-panel {
+  color: var(--nd-text);
+}
+.reasoning-live {
+  color: var(--nd-accent);
+}
+.reasoning-stats {
+  background: var(--nd-bg-hover);
+}
+.reasoning-stats dt {
+  color: var(--nd-text-secondary);
+}
+
+
