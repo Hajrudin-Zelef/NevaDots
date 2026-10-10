@@ -57,7 +57,58 @@ function describeFailure(error: unknown, fallback: string) {
   };
 }
 
+interface SystemMetrics {
+  cpu: number | null;
+  mem: number | null;
+  disk: number | null;
+  netIn: number | null;
+  netOut: number | null;
+  uptime: number;
+  model: string | null;
+}
+
+function useMetrics() {
+  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const value = await api<SystemMetrics>('/metrics');
+        if (active) setMetrics(value);
+      } catch {
+        /* metrics are best-effort */
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+  return metrics;
+}
+
+function pct(value: number | null | undefined) {
+  return value == null ? 0 : Math.max(0, Math.min(100, value));
+}
+function fmtPct(value: number | null | undefined) {
+  return value == null ? '—' : `${Math.round(value)}%`;
+}
+function fmtRate(value: number | null | undefined) {
+  if (value == null) return '—';
+  const units = ['o/s', 'Ko/s', 'Mo/s', 'Go/s'];
+  let v = value;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
 export function App() {
+  const metrics = useMetrics();
   const [state, setState] = useState<State>();
   const [workspace, setWorkspace] = useState<WorkspaceState>();
   const [selectedDot, setSelectedDot] = useState('');
@@ -429,6 +480,52 @@ export function App() {
           />
           NevaDots<span className="wordmark-dot">•</span>
         </button>
+        <span className="sidebar-credit">Espace de travail auto-hébergé</span>
+        <div className="sb-metrics" aria-label="Métriques système">
+          <div className="sb-metrics-title">Métriques</div>
+          <div className="sb-metric sb-metric-net">
+            <span className="sb-metric-label">Modèle</span>
+            <span className="sb-metric-val" title={metrics?.model ?? ''}>
+              {metrics?.model ?? '—'}
+            </span>
+          </div>
+          <div className="sb-metric">
+            <span className="sb-metric-label">CPU</span>
+            <div className="sb-metric-bar">
+              <div
+                className="sb-metric-fill"
+                style={{ width: `${pct(metrics?.cpu)}%` }}
+              />
+            </div>
+            <span className="sb-metric-val">{fmtPct(metrics?.cpu)}</span>
+          </div>
+          <div className="sb-metric">
+            <span className="sb-metric-label">RAM</span>
+            <div className="sb-metric-bar">
+              <div
+                className="sb-metric-fill"
+                style={{ width: `${pct(metrics?.mem)}%` }}
+              />
+            </div>
+            <span className="sb-metric-val">{fmtPct(metrics?.mem)}</span>
+          </div>
+          <div className="sb-metric">
+            <span className="sb-metric-label">Disque</span>
+            <div className="sb-metric-bar">
+              <div
+                className="sb-metric-fill"
+                style={{ width: `${pct(metrics?.disk)}%` }}
+              />
+            </div>
+            <span className="sb-metric-val">{fmtPct(metrics?.disk)}</span>
+          </div>
+          <div className="sb-metric sb-metric-net">
+            <span className="sb-metric-label">Réseau</span>
+            <span className="sb-metric-val" title="↓ réception / ↑ envoi">
+              ↓ {fmtRate(metrics?.netIn)} · ↑ {fmtRate(metrics?.netOut)}
+            </span>
+          </div>
+        </div>
         <button
           className="new-chat nav-item"
           disabled={!configured}

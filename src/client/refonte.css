@@ -502,3 +502,66 @@ textarea::placeholder {
 
 
 
+
+/* --- Sidebar : sous-titre + bloc Métriques (façon cetas-lite) --- */
+.sidebar-credit {
+  display: block;
+  font-size: 10px;
+  color: var(--nd-text-secondary);
+  padding: 0 12px 4px;
+  margin-top: -6px;
+}
+.sb-metrics {
+  margin: 8px 6px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--nd-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--nd-bg) 60%, transparent);
+}
+.sb-metrics-title {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--nd-text-secondary);
+  margin-bottom: 8px;
+}
+.sb-metric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  padding: 3px 0;
+}
+.sb-metric-label {
+  flex: 0 0 46px;
+  color: var(--nd-text-secondary);
+}
+.sb-metric-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--nd-bg-active);
+  overflow: hidden;
+}
+.sb-metric-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--nd-accent);
+  transition: width 0.4s ease;
+}
+.sb-metric-val {
+  flex: 0 0 auto;
+  min-width: 34px;
+  text-align: right;
+  color: var(--nd-text);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-metric-net .sb-metric-val {
+  min-width: 0;
+  max-width: 130px;
+  font-size: 9px;
+}

@@ -10,6 +10,7 @@ import { configured, type Config } from './research.js';
 import type { Platform } from './platform.js';
 import { VoiceService } from './voice.js';
 import { workspaceRoutes } from './workspace-routes.js';
+import { systemMetrics } from './metrics.js';
 const interval = z.number().int().min(60).max(31_536_000).nullable();
 export interface AppOptions {
   store: Store;
@@ -109,6 +110,7 @@ export function createApp({
       configured: configured(config),
     }),
   );
+  app.get('/api/metrics', async (c) => c.json(await systemMetrics()));
   app.post('/api/tasks', async (c) => {
     const parsed = z
       .object({
