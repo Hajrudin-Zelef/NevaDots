@@ -250,31 +250,46 @@ export function App() {
   const deleteConversation = async (id: string) => {
     if (!window.confirm('Delete this conversation? This cannot be undone.'))
       return;
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            conversations: current.conversations.filter(
+              (conversation) => conversation.id !== id,
+            ),
+          }
+        : current,
+    );
+    if (selectedThread === id) {
+      setSelectedThread(undefined);
+      setPendingPrompt(undefined);
+    }
     try {
       await api(`/conversations/${id}`, 'DELETE');
-      if (selectedThread === id) {
-        setSelectedThread(undefined);
-        setPendingPrompt(undefined);
-      }
       await refresh();
     } catch (e) {
       setError(
         e instanceof Error ? e.message : 'Could not delete the conversation.',
       );
+      await refresh();
     }
   };
   const deleteAllConversations = async () => {
     if (!window.confirm('Delete ALL conversations? This cannot be undone.'))
       return;
+    setWorkspace((current) =>
+      current ? { ...current, conversations: [] } : current,
+    );
+    setSelectedThread(undefined);
+    setPendingPrompt(undefined);
     try {
       await api('/conversations', 'DELETE');
-      setSelectedThread(undefined);
-      setPendingPrompt(undefined);
       await refresh();
     } catch (e) {
       setError(
         e instanceof Error ? e.message : 'Could not delete the conversations.',
       );
+      await refresh();
     }
   };
   if (needsAuth)

@@ -227,42 +227,39 @@ export class Platform {
     }
     return this.workspace.bindThread(id, dotId, title);
   }
-  /** Remove a conversation locally; the hosted Intelligence thread goes best-effort. */
+  /** Remove a conversation locally right away; the hosted delete runs in the background. */
   async deleteConversation(threadId: string): Promise<void> {
     this.requireReady();
     const conversation = this.workspace.requireThread(threadId);
-    try {
-      await withTimeout(
-        this.intelligence!.deleteThread({
-          threadId,
-          userId: this.workspace.ownerId,
-          agentId: conversation.dotId,
-        }),
-        6000,
-      );
-    } catch {
-      // Intelligence may be unreachable; the local binding is removed regardless.
-    }
     this.workspace.deleteThread(threadId);
+    void withTimeout(
+      this.intelligence!.deleteThread({
+        threadId,
+        userId: this.workspace.ownerId,
+        agentId: conversation.dotId,
+      }),
+      6000,
+    ).catch(() => {
+      // Intelligence may be unreachable; the local binding is already removed.
+    });
   }
   async deleteAllConversations(): Promise<number> {
     this.requireReady();
     const conversations = this.workspace.conversations();
-    for (const conversation of conversations) {
-      try {
-        await withTimeout(
+    for (const conversation of conversations)
+      this.workspace.deleteThread(conversation.id);
+    void Promise.allSettled(
+      conversations.map((conversation) =>
+        withTimeout(
           this.intelligence!.deleteThread({
             threadId: conversation.id,
             userId: this.workspace.ownerId,
             agentId: conversation.dotId,
           }),
           6000,
-        );
-      } catch {
-        // Best-effort remote delete.
-      }
-      this.workspace.deleteThread(conversation.id);
-    }
+        ),
+      ),
+    );
     return conversations.length;
   }
   async history(threadId: string): Promise<string> {
