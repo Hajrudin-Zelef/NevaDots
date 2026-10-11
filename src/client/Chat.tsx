@@ -342,11 +342,11 @@ export function Chat({
         ? 'basse'
         : reasoningEffort === 'high'
           ? 'haute'
-          : 'par défaut';
+          : 'désactivée';
   const [reasoningBusy, setReasoningBusy] = useState(false);
   const cycleReasoning = async () => {
     if (reasoningBusy) return;
-    const order = ['', 'none', 'low', 'high'];
+    const order = ['', 'low', 'high'];
     const next = order[(order.indexOf(reasoningEffort) + 1) % order.length];
     setReasoningBusy(true);
     setModelError('');

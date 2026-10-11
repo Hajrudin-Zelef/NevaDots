@@ -611,9 +611,10 @@ export class DotAgent extends AbstractAgent {
               runId: ctx.input.runId,
               modelOptions: {
                 max_completion_tokens: 2200,
-                ...(dot.reasoningEffort
-                  ? { reasoning_effort: dot.reasoningEffort }
-                  : {}),
+                // Thinking off by default for speed; the composer toggle can
+                // raise it to 'low'/'high' per Dot. LiteLLM drops the field for
+                // models that do not support it.
+                reasoning_effort: dot.reasoningEffort ?? 'none',
               },
               agentLoopStrategy: maxIterations(
                 dot.skillDeliveryEnabled && conversation.learningContainerId
