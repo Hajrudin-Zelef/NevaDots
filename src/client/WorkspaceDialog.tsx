@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
 import { api } from './api';
+import { AVATARS } from './Mascot';
 import { ConnectionsSection } from './ConnectionsSection';
 import {
   PALETTES,
@@ -71,11 +72,16 @@ export function WorkspaceDialog({
     dialog.type === 'dot' ? (dialog.dot?.spaceId ?? dialog.spaceId) : '',
   );
   const [interval, setInterval] = useState('86400');
+  const [scheduleMode, setScheduleMode] = useState<'repeat' | 'once'>('repeat');
+  const [runAtLocal, setRunAtLocal] = useState('');
   const [learningContainer, setLearningContainer] = useState(
     dialog.type === 'dot' ? (dialog.dot?.learningContainerId ?? '') : '',
   );
   const [skillDelivery, setSkillDelivery] = useState(
     dialog.type === 'dot' ? (dialog.dot?.skillDeliveryEnabled ?? false) : false,
+  );
+  const [avatar, setAvatar] = useState<string | null>(
+    dialog.type === 'dot' ? (dialog.dot?.avatar ?? null) : null,
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -194,6 +200,7 @@ export function WorkspaceDialog({
                 memoryAllowed: memory,
                 learningContainerId: learningContainer.trim() || null,
                 skillDeliveryEnabled: skillDelivery,
+                avatar,
               };
             }
             if (dialog.type === 'settings') {
@@ -215,11 +222,20 @@ export function WorkspaceDialog({
             }
             if (dialog.type === 'schedule') {
               path = '/tasks';
-              body = {
-                prompt: text,
-                threadId: dialog.threadId,
-                intervalSeconds: Number(interval),
-              };
+              body =
+                scheduleMode === 'once'
+                  ? {
+                      prompt: text,
+                      threadId: dialog.threadId,
+                      runAt: runAtLocal
+                        ? new Date(runAtLocal).getTime()
+                        : Date.now(),
+                    }
+                  : {
+                      prompt: text,
+                      threadId: dialog.threadId,
+                      intervalSeconds: Number(interval),
+                    };
             }
             if (await mutate(path, method, body)) onClose();
             else
@@ -266,6 +282,28 @@ export function WorkspaceDialog({
                 }
               />
             </>
+          )}
+          {dialog.type === 'dot' && (
+            <fieldset className="avatar-picker">
+              <legend>Avatar</legend>
+              <div className="avatar-swatches">
+                {AVATARS.map((id) => (
+                  <button
+                    type="button"
+                    key={id}
+                    className={`avatar-swatch ${avatar === id ? 'active' : ''}`}
+                    aria-label={id}
+                    title={id}
+                    onClick={() => setAvatar(avatar === id ? null : id)}
+                  >
+                    <img src={`/dots/${id}.png`} alt="" width={44} height={44} />
+                  </button>
+                ))}
+              </div>
+              <p className="muted">
+                Cliquez pour choisir, re-cliquez pour revenir au défaut.
+              </p>
+            </fieldset>
           )}
           {dialog.type === 'dot' && (
             <fieldset className="space-access-fields">
@@ -399,23 +437,51 @@ export function WorkspaceDialog({
           )}
           {dialog.type === 'schedule' && (
             <>
-              <label className="field-label" htmlFor="schedule-interval">
-                Repeat after each successful run
+              <label className="field-label" htmlFor="schedule-mode">
+                Quand exécuter
               </label>
               <select
-                id="schedule-interval"
-                value={interval}
-                onChange={(e) => setInterval(e.target.value)}
+                id="schedule-mode"
+                value={scheduleMode}
+                onChange={(e) =>
+                  setScheduleMode(e.target.value as 'repeat' | 'once')
+                }
               >
-                <option value="60">Every minute (testing)</option>
-                <option value="3600">Every hour</option>
-                <option value="86400">Every day</option>
-                <option value="604800">Every week</option>
+                <option value="repeat">Répéter</option>
+                <option value="once">Une seule fois, à une heure précise</option>
               </select>
+              {scheduleMode === 'once' ? (
+                <>
+                  <label className="field-label" htmlFor="schedule-runat">
+                    Date et heure (heure locale)
+                  </label>
+                  <input
+                    id="schedule-runat"
+                    type="datetime-local"
+                    value={runAtLocal}
+                    onChange={(e) => setRunAtLocal(e.target.value)}
+                  />
+                </>
+              ) : (
+                <>
+                  <label className="field-label" htmlFor="schedule-interval">
+                    Répéter après chaque exécution réussie
+                  </label>
+                  <select
+                    id="schedule-interval"
+                    value={interval}
+                    onChange={(e) => setInterval(e.target.value)}
+                  >
+                    <option value="60">Chaque minute (test)</option>
+                    <option value="3600">Chaque heure</option>
+                    <option value="86400">Chaque jour</option>
+                    <option value="604800">Chaque semaine</option>
+                  </select>
+                </>
+              )}
               <p className="muted">
-                Runs on the server in this same conversation, even with the tab
-                closed. Failed or interrupted runs wait for manual retry. Review
-                completed work before retrying an interrupted run.
+                S'exécute sur le serveur dans cette conversation, même onglet
+                fermé. Un échec attend une relance manuelle.
               </p>
             </>
           )}

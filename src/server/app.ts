@@ -116,6 +116,7 @@ export function createApp({
       .object({
         prompt: z.string().trim().min(3).max(4000),
         intervalSeconds: interval.optional(),
+        runAt: z.number().int().positive().optional(),
         threadId: z.string().optional(),
       })
       .strict()
@@ -152,7 +153,8 @@ export function createApp({
     }
     const task = store.createTask(
       parsed.data.prompt,
-      parsed.data.intervalSeconds,
+      parsed.data.runAt ? null : parsed.data.intervalSeconds,
+      parsed.data.runAt ?? null,
     );
     if (platform && parsed.data.threadId)
       platform.workspace.bindTask(task.id, parsed.data.threadId);

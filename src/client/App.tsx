@@ -7,6 +7,7 @@ import {
   ArrowUp,
   ArrowUpRight,
   BookOpen,
+  Brain,
   CircleHelp,
   Clock3,
   Globe,
@@ -203,6 +204,7 @@ export function App() {
     default: string | null;
     models: string[];
   }>({ default: null, models: [] });
+  const [reasoningBusy, setReasoningBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [conversationSearch, setConversationSearch] = useState('');
@@ -290,6 +292,34 @@ export function App() {
     workspace?.dots[0];
   const selectedModel =
     dot?.model ?? modelOptions.default ?? metrics?.model ?? '';
+  const reasoningEffort = dot?.reasoningEffort ?? '';
+  const reasoningLabel =
+    reasoningEffort === 'none'
+      ? 'désactivée'
+      : reasoningEffort === 'low'
+        ? 'basse'
+        : reasoningEffort === 'high'
+          ? 'haute'
+          : 'par défaut';
+  const cycleReasoning = async () => {
+    if (reasoningBusy || !dot) return;
+    const order = ['', 'none', 'low', 'high'];
+    const next = order[(order.indexOf(reasoningEffort) + 1) % order.length];
+    setReasoningBusy(true);
+    setError('');
+    try {
+      await api(`/dots/${dot.id}/reasoning`, 'PUT', { effort: next || null });
+      await refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Réglage de réflexion indisponible.',
+      );
+    } finally {
+      setReasoningBusy(false);
+    }
+  };
   const thread = workspace?.conversations.find(
     (item) => item.id === selectedThread && item.dotId === dot?.id,
   );
@@ -636,6 +666,7 @@ export function App() {
                   <Mascot
                     identity={item.id}
                     name={item.name}
+                    avatar={item.avatar}
                     small
                     decorative
                   />
@@ -855,6 +886,12 @@ export function App() {
               ) : (
                 <div className="new-conversation">
                   <div className="welcome-hero">
+                    <Mascot
+                      avatar={dot?.avatar}
+                      identity={dot?.id}
+                      name={dot?.name}
+                      state={busy ? 'working' : 'idle'}
+                    />
                     <span className="welcome-halo" aria-hidden="true" />
                     <h1>Par où commencer ?</h1>
                   </div>
@@ -1067,6 +1104,20 @@ export function App() {
                             ))}
                           </select>
                         )}
+                        <button
+                          type="button"
+                          className={`icon-button reasoning-button ${
+                            reasoningEffort && reasoningEffort !== 'none'
+                              ? 'active'
+                              : ''
+                          }`}
+                          aria-label={`Réflexion : ${reasoningLabel}`}
+                          title={`Réflexion : ${reasoningLabel} — cliquez pour changer`}
+                          onClick={() => void cycleReasoning()}
+                          disabled={reasoningBusy || !dot}
+                        >
+                          <Brain size={17} />
+                        </button>
                         <span className="welcome-composer-spacer" />
                         <button
                           className="send-button"

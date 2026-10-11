@@ -29,6 +29,8 @@ export class WorkspaceStore {
       ['dots', 'learningContainerId', 'TEXT'],
       ['dots', 'skillDeliveryEnabled', 'INTEGER NOT NULL DEFAULT 0'],
       ['dots', 'model', 'TEXT'],
+      ['dots', 'reasoningEffort', 'TEXT'],
+      ['dots', 'avatar', 'TEXT'],
       ['thread_bindings', 'learningContainerId', 'TEXT'],
     ]) {
       if (
@@ -114,6 +116,9 @@ export class WorkspaceStore {
         memoryAllowed: !!row.memoryAllowed,
         skillDeliveryEnabled: !!row.skillDeliveryEnabled,
         model: row.model == null ? null : String(row.model),
+        reasoningEffort:
+          row.reasoningEffort == null ? null : String(row.reasoningEffort),
+        avatar: row.avatar == null ? null : String(row.avatar),
       })) as unknown as Dot[];
   }
   dot(id: string) {
@@ -122,6 +127,18 @@ export class WorkspaceStore {
   setDotModel(id: string, model: string | null): Dot {
     if (!this.dot(id)) throw new Error('Dot not found.');
     this.db.prepare('UPDATE dots SET model=? WHERE id=?').run(model, id);
+    return this.dot(id)!;
+  }
+  setDotReasoning(id: string, effort: string | null): Dot {
+    if (!this.dot(id)) throw new Error('Dot not found.');
+    this.db
+      .prepare('UPDATE dots SET reasoningEffort=? WHERE id=?')
+      .run(effort, id);
+    return this.dot(id)!;
+  }
+  setDotAvatar(id: string, avatar: string | null): Dot {
+    if (!this.dot(id)) throw new Error('Dot not found.');
+    this.db.prepare('UPDATE dots SET avatar=? WHERE id=?').run(avatar, id);
     return this.dot(id)!;
   }
   createDot(
@@ -134,6 +151,7 @@ export class WorkspaceStore {
     learningContainerId: string | null = null,
     skillDeliveryEnabled = false,
     model: string | null = null,
+    avatar: string | null = null,
   ): Dot {
     this.validateSpaceAccess(spaceId, spaceIds);
     validateLearningSettings(learningContainerId, skillDeliveryEnabled);
@@ -148,13 +166,14 @@ export class WorkspaceStore {
       learningContainerId,
       skillDeliveryEnabled,
       model,
+      avatar,
       createdAt: Date.now(),
     };
     this.db.exec('BEGIN');
     try {
       this.db
         .prepare(
-          'INSERT INTO dots (id, spaceId, name, instructions, researchAllowed, memoryAllowed, createdAt, learningContainerId, skillDeliveryEnabled, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO dots (id, spaceId, name, instructions, researchAllowed, memoryAllowed, createdAt, learningContainerId, skillDeliveryEnabled, model, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
         .run(
           dot.id,
@@ -167,6 +186,7 @@ export class WorkspaceStore {
           learningContainerId,
           +skillDeliveryEnabled,
           model,
+          avatar,
         );
       for (const id of dot.spaceIds)
         this.db.prepare('INSERT INTO dot_spaces VALUES (?, ?)').run(dot.id, id);
@@ -199,6 +219,7 @@ export class WorkspaceStore {
       spaceIds?: string[];
       learningContainerId?: string | null;
       skillDeliveryEnabled?: boolean;
+      avatar?: string | null;
     },
   ): Dot {
     const current = this.dot(id);
@@ -234,6 +255,10 @@ export class WorkspaceStore {
       this.db.prepare('DELETE FROM dot_spaces WHERE dotId=?').run(id);
       for (const space of new Set(spaceIds))
         this.db.prepare('INSERT INTO dot_spaces VALUES (?, ?)').run(id, space);
+      if (patch.avatar !== undefined)
+        this.db
+          .prepare('UPDATE dots SET avatar=? WHERE id=?')
+          .run(patch.avatar, id);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');

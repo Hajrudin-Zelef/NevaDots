@@ -152,3 +152,27 @@ describe('durable task lifecycle', () => {
     }
   });
 });
+
+describe('one-shot scheduled tasks', () => {
+  it('holds a task until its run time, then runs it once', () => {
+    const { store } = fixture();
+    const now = Date.now();
+    const task = store.createTask('Remind me at six', null, now + 60_000);
+    // Not due yet.
+    expect(store.claim(now)).toBeNull();
+    // Due: claimed.
+    const claim = store.claim(now + 60_001);
+    expect(claim?.id).toBe(task.id);
+    // A one-shot has no repeat, so finishing leaves nothing to run again.
+    store.finish(claim!, { text: 'Done', sources: [], sample: true }, now + 61_000);
+    expect(store.task(task.id)?.nextRunAt).toBeNull();
+    expect(store.claim(now + 200_000)).toBeNull();
+  });
+
+  it('runs an overdue one-shot immediately', () => {
+    const { store } = fixture();
+    const now = Date.now();
+    const task = store.createTask('Overdue', null, now - 1_000);
+    expect(store.claim(now)?.id).toBe(task.id);
+  });
+});

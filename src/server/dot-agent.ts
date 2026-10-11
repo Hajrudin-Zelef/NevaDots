@@ -6,6 +6,23 @@ import { ConnectionService } from './connections.js';
 import { connectionTools } from './connection-tools.js';
 import { connectionActionTool } from '../shared/connection-types.js';
 import { pageAccess, pageTools } from './page-tools.js';
+import {
+  cachePage,
+  grepPage,
+  slicePage,
+  summarizePage,
+} from './page-cache.js';
+import {
+  archiveResult,
+  hasArchives,
+  recallArchived,
+  searchArchived,
+} from './tool-archive.js';
+import {
+  compactMessages,
+  type ChatMessage,
+} from './context-compaction.js';
+import { classifyModelError } from './model-errors.js';
 import { AbstractAgent } from '@ag-ui/client';
 import { type BaseEvent, type RunAgentInput, EventType } from '@ag-ui/core';
 import {
@@ -167,7 +184,7 @@ export class DotAgent extends AbstractAgent {
                 defineTool({
                   name: 'read_public_page',
                   description:
-                    'Read a provided canonical public HTTP(S) URL in a separate read-only browser, returning source evidence. No web search, redirects, authenticated sites, or write actions.',
+                    'Read a provided canonical public HTTP(S) URL in a separate read-only browser. Returns a compact outline and a short head excerpt with a pageId; use read_page_slice or grep_page to read more. No web search, redirects, authenticated sites, or write actions.',
                   parameters: z.object({ url: z.string().url().max(2048) }),
                   execute: async ({ url }) => {
                     check();
@@ -207,11 +224,9 @@ export class DotAgent extends AbstractAgent {
                       ],
                       screenshot: page.screenshot,
                     });
-                    return {
-                      title: page.title,
-                      url: page.url,
-                      text: page.text.slice(0, 24000),
-                    };
+                    return summarizePage(
+                      cachePage(page.title, page.url, page.text),
+                    );
                   },
                 }),
               ]
@@ -255,13 +270,16 @@ export class DotAgent extends AbstractAgent {
                 excerpt: page.text.slice(0, 320),
               })),
             });
-            return { sources, limitations };
+            const pages = sources.map((page) =>
+              summarizePage(cachePage(page.title, page.url, page.text)),
+            );
+            return { pages, limitations };
           };
           tools.push(
             defineTool({
               name: 'search_web',
               description:
-                'Search public web sources and read relevant excerpts for a research question. Return source URLs for citations. Sends the question to Parallel.',
+                'Search public web sources for a research question. Returns a compact outline and a short head excerpt per source with a pageId; use read_page_slice or grep_page to read more. Return source URLs for citations. Sends the question to Parallel.',
               parameters: z.object({
                 objective: z.string().min(1).max(4000),
                 search_queries: z
@@ -278,10 +296,93 @@ export class DotAgent extends AbstractAgent {
             defineTool({
               name: 'read_public_page',
               description:
-                'Extract source evidence from a public HTTP(S) URL with Parallel. No authenticated browsing or write actions.',
+                'Read a public HTTP(S) URL with Parallel. Returns a compact outline and a short head excerpt with a pageId; use read_page_slice or grep_page to read more. No authenticated browsing or write actions.',
               parameters: z.object({ url: z.string().url().max(2048) }),
               execute: ({ url }) =>
                 capture('Read the page for relevant source evidence.', [url]),
+            }),
+          );
+        }
+        if (dot.researchAllowed && initialSettings.researchAllowed) {
+          tools.push(
+            defineTool({
+              name: 'read_page_slice',
+              description:
+                'Read a line range from a page previously returned by read_public_page or search_web, using its pageId. Prefer this to re-fetching a URL.',
+              parameters: z.object({
+                pageId: z.string(),
+                from: z.number().int().min(1).describe('First line, 1-based.'),
+                to: z
+                  .number()
+                  .int()
+                  .min(1)
+                  .optional()
+                  .describe('Last line, inclusive. Defaults to 120 lines.'),
+              }),
+              execute: async ({ pageId, from, to }) => {
+                check();
+                return slicePage(pageId, from, to);
+              },
+            }),
+            defineTool({
+              name: 'grep_page',
+              description:
+                'Search a page previously returned by read_public_page or search_web for a keyword, using its pageId. Returns matching line numbers for read_page_slice.',
+              parameters: z.object({
+                pageId: z.string(),
+                query: z.string().min(1).max(200),
+              }),
+              execute: async ({ pageId, query }) => {
+                check();
+                return grepPage(pageId, query);
+              },
+            }),
+          );
+        }
+        // Recall tools only appear once a truncated tool result was archived in
+        // an earlier turn (saves schema tokens otherwise).
+        if (hasArchives(input.threadId)) {
+          tools.push(
+            defineTool({
+              name: 'recall',
+              description:
+                'Retrieve the full text of a tool result archived earlier because it was too large to keep in context. The id appears in a "[résultat tronqué …]" marker.',
+              parameters: z.object({ id: z.string() }),
+              execute: async ({ id }) => {
+                check();
+                const entry = recallArchived(id);
+                if (!entry)
+                  throw new Error('Unknown or expired archive id. Read it again instead.');
+                return {
+                  id: entry.id,
+                  label: entry.label,
+                  text: entry.text.slice(0, 20000),
+                };
+              },
+            }),
+            defineTool({
+              name: 'recall_search',
+              description:
+                'Search tool results archived earlier in this conversation for a keyword, returning matching ids to recall.',
+              parameters: z.object({
+                query: z.string().min(1).max(200),
+              }),
+              execute: async ({ query }) => {
+                check();
+                const matches = searchArchived(input.threadId, query).map(
+                  (entry) => ({
+                    id: entry.id,
+                    label: entry.label,
+                    excerpt: entry.text.slice(0, 240),
+                  }),
+                );
+                return {
+                  matches,
+                  note: matches.length
+                    ? 'Use recall(id=…) for the full text.'
+                    : 'No archived result matched. Try a shorter keyword.',
+                };
+              },
             }),
           );
         }
@@ -381,11 +482,47 @@ export class DotAgent extends AbstractAgent {
         const chatCompletionsUrl = this.config.baseUrl
           .replace(/\/$/, '')
           .concat('/chat/completions');
-        globalThis.fetch = createReasoningFetch(
+        const isChatCompletions = (url: string) =>
+          url.startsWith(chatCompletionsUrl);
+        const reasoningFetch = createReasoningFetch(
           previousFetch,
-          (url) => url.startsWith(chatCompletionsUrl),
+          isChatCompletions,
           reasoningHooks,
         );
+        // Classify provider/model HTTP failures into actionable messages while
+        // preserving abort signals and non-model errors untouched.
+        globalThis.fetch = (async (
+          input: RequestInfo | URL,
+          init?: RequestInit,
+        ) => {
+          const url =
+            typeof input === 'string'
+              ? input
+              : input instanceof URL
+                ? input.href
+                : input.url;
+          try {
+            const response = await reasoningFetch(input as never, init);
+            if (isChatCompletions(url) && !response.ok) {
+              const body = await response
+                .clone()
+                .text()
+                .catch(() => '');
+              throw new Error(
+                `${response.status} ${body}`.replace(/\s+/g, ' ').trim().slice(0, 600),
+              );
+            }
+            return response;
+          } catch (requestError) {
+            const aborted =
+              Boolean(init?.signal?.aborted) ||
+              (requestError instanceof Error && requestError.name === 'AbortError');
+            if (!isChatCompletions(url) || aborted) throw requestError;
+            throw new Error(classifyModelError(requestError), {
+              cause: requestError,
+            });
+          }
+        }) as typeof fetch;
         const wrappedFetch = globalThis.fetch;
         restoreFetch = () => {
           if (globalThis.fetch === wrappedFetch) globalThis.fetch = previousFetch;
@@ -415,26 +552,49 @@ export class DotAgent extends AbstractAgent {
                   apiUrl: this.config.intelligenceApiUrl,
                 }
               : undefined,
-          factory: (ctx) => {
+          factory: async (ctx) => {
+            check();
+            const compacted = await compactMessages(
+              ctx.input.messages as ChatMessage[],
+              {
+                threadId: input.threadId,
+                model,
+                apiKey: this.config.apiKey ?? '',
+                baseUrl: this.config.baseUrl,
+                contextWindow: this.config.contextWindow ?? 128000,
+                fetchImpl: previousFetch,
+                signal: ctx.abortSignal,
+              },
+            );
             check();
             const converted = convertInputToTanStackAI({
               ...ctx.input,
               // Match BuiltInAgent's default trust boundary for client messages.
-              messages: ctx.input.messages
+              messages: (compacted.messages as RunAgentInput['messages'])
                 .filter(
                   (message) =>
                     message.role !== 'system' && message.role !== 'developer',
                 )
-                .map((message) =>
-                  message.role === 'tool' &&
-                  typeof message.content === 'string' &&
-                  message.content.length > TOOL_RESULT_LIMIT
-                    ? {
-                        ...message,
-                        content: `${message.content.slice(0, TOOL_RESULT_LIMIT)}\n…[résultat tronqué]`,
-                      }
-                    : message,
-                ),
+                .map((message) => {
+                  if (
+                    message.role !== 'tool' ||
+                    typeof message.content !== 'string' ||
+                    message.content.length <= TOOL_RESULT_LIMIT
+                  )
+                    return message;
+                  const key =
+                    (message as { id?: string }).id ?? message.content;
+                  const { id } = archiveResult(
+                    input.threadId,
+                    key,
+                    'tool result',
+                    message.content,
+                  );
+                  return {
+                    ...message,
+                    content: `${message.content.slice(0, TOOL_RESULT_LIMIT)}\n…[résultat tronqué — contenu complet archivé sous l’id "${id}", utilise recall(id="${id}")]`,
+                  };
+                }),
             });
             return chat({
               adapter,
@@ -449,7 +609,12 @@ export class DotAgent extends AbstractAgent {
               abortController: ctx.abortController,
               threadId: ctx.input.threadId,
               runId: ctx.input.runId,
-              modelOptions: { max_completion_tokens: 2200 },
+              modelOptions: {
+                max_completion_tokens: 2200,
+                ...(dot.reasoningEffort
+                  ? { reasoning_effort: dot.reasoningEffort }
+                  : {}),
+              },
               agentLoopStrategy: maxIterations(
                 dot.skillDeliveryEnabled && conversation.learningContainerId
                   ? 10

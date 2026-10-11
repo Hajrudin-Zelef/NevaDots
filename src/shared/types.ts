@@ -89,6 +89,13 @@ export interface Dot {
   skillDeliveryEnabled?: boolean;
   /** Per-Dot model override; null/undefined uses the global default. */
   model?: string | null;
+  /**
+   * Reasoning effort sent to the model: 'none' disables thinking, 'low' /
+   * 'medium' / 'high' enable it. null/undefined uses the model default.
+   */
+  reasoningEffort?: string | null;
+  /** Avatar image id (blue|pink|green|mint|orange|purple); null = derived. */
+  avatar?: string | null;
 }
 export interface Conversation {
   id: string;
