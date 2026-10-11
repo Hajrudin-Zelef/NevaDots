@@ -19,6 +19,10 @@ const dotSchema = z
     skillDeliveryEnabled: z.boolean().optional(),
     spaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
     spaceId: z.string().min(1).optional(),
+    avatar: z
+      .enum(['blue', 'pink', 'green', 'mint', 'orange', 'purple'])
+      .nullable()
+      .optional(),
   })
   .strict();
 export function workspaceRoutes(platform: Platform, voice: VoiceService) {
@@ -63,9 +67,10 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   app.get('/reasoning-stats', (c) => {
     const messageId = c.req.query('messageId')?.trim();
     if (!messageId) return c.json({ error: 'messageId is required.' }, 400);
+    // Missing stats are normal (a turn without reasoning); return an empty
+    // object rather than 404 so the client poll does not log console errors.
     const stats = getReasoningStats(messageId);
-    if (!stats) return c.json({ error: 'No stats for this reasoning.' }, 404);
-    return c.json(stats);
+    return c.json(stats ?? {});
   });
   // Manual translation of reasoning-panel text via a free OpenRouter model.
   app.post('/translate', async (c) => {
@@ -205,6 +210,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         data.data.spaceIds,
         data.data.learningContainerId,
         data.data.skillDeliveryEnabled,
+        data.data.avatar ?? null,
       ),
       201,
     );
@@ -248,6 +254,40 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       return c.json({ error: 'Dot not found.' }, 404);
     return c.json(
       platform.workspace.setDotModel(c.req.param('id'), data.data.model),
+    );
+  });
+  app.put('/dots/:id/reasoning', async (c) => {
+    const data = z
+      .object({
+        effort: z.enum(['none', 'low', 'medium', 'high']).nullable(),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success)
+      return c.json({ error: 'Invalid reasoning effort.' }, 400);
+    if (!platform.workspace.dot(c.req.param('id')))
+      return c.json({ error: 'Dot not found.' }, 404);
+    return c.json(
+      platform.workspace.setDotReasoning(
+        c.req.param('id'),
+        data.data.effort,
+      ),
+    );
+  });
+  app.put('/dots/:id/avatar', async (c) => {
+    const data = z
+      .object({
+        avatar: z
+          .enum(['blue', 'pink', 'green', 'mint', 'orange', 'purple'])
+          .nullable(),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success) return c.json({ error: 'Invalid avatar.' }, 400);
+    if (!platform.workspace.dot(c.req.param('id')))
+      return c.json({ error: 'Dot not found.' }, 404);
+    return c.json(
+      platform.workspace.setDotAvatar(c.req.param('id'), data.data.avatar),
     );
   });
   app.post('/conversations', async (c) => {

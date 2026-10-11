@@ -41,6 +41,8 @@ export interface PlatformConfig extends WebConfig {
   model?: string;
   /** Selectable model ids; falls back to [model] when unset. */
   models?: string[];
+  /** Model context window in tokens, used for automatic compaction. */
+  contextWindow?: number;
   apiKey?: string;
   baseUrl: string;
   computerSupervisorUrl?: string;

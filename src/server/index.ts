@@ -3,6 +3,7 @@ import { createShutdown } from './shutdown.js';
 import { reportChannelFailure, safeFailure } from './slack-channel.js';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
+import { compress } from 'hono/compress';
 import { Store } from './store.js';
 import { Runner } from './runner.js';
 import { createApp } from './app.js';
@@ -41,6 +42,9 @@ const config: PlatformConfig = {
     .map((value) => value.trim())
     .filter(Boolean),
   baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+  contextWindow: process.env.OPENAI_CONTEXT_WINDOW
+    ? Number(process.env.OPENAI_CONTEXT_WINDOW)
+    : undefined,
   webSearchProvider: webSearchProvider(process.env.WEB_SEARCH_PROVIDER),
   parallelApiKey: process.env.PARALLEL_API_KEY,
   browserUrl: process.env.BROWSER_URL,
@@ -123,6 +127,9 @@ app.use('/*', async (c, next) => {
   );
   await next();
 });
+// Compress only hashed static assets. Scoped to /assets/* so the SSE endpoint
+// (/api/copilotkit) and JSON APIs are never buffered or compressed.
+app.use('/assets/*', compress({ threshold: 1024 }));
 app.use('/*', serveStatic({ root: './dist/client' }));
 app.get('*', serveStatic({ path: './dist/client/index.html' }));
 const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {

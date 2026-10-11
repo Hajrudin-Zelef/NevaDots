@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Brain,
+  CalendarClock,
   Check,
   ChevronRight,
   FileText,
@@ -13,7 +14,10 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { type ActivityEvent, type ActivityKind } from './activity';
+import {
+  type ActivityEvent,
+  type ActivityKind,
+} from './activity';
 
 const icons: Record<ActivityKind, LucideIcon> = {
   command: Terminal,
@@ -23,6 +27,7 @@ const icons: Record<ActivityKind, LucideIcon> = {
   search: Search,
   tool: Wrench,
   reasoning: Brain,
+  task: CalendarClock,
 };
 
 const filters: { id: string; label: string; kinds: ActivityKind[] }[] = [

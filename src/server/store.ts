@@ -107,15 +107,25 @@ export class Store {
       .prepare('SELECT * FROM tasks WHERE id=?')
       .get(id) as unknown as Task | undefined;
   }
-  createTask(prompt: string, intervalSeconds: number | null = null): Task {
+  createTask(
+    prompt: string,
+    intervalSeconds: number | null = null,
+    runAt: number | null = null,
+  ): Task {
     const now = Date.now();
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO tasks VALUES (?, ?, 'queued', ?, NULL, ?, ?, NULL, NULL, NULL)",
+        "INSERT INTO tasks VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, NULL, NULL)",
       )
-      .run(id, prompt, intervalSeconds, now, now);
-    this.event(id, null, 'Task added to the queue.');
+      .run(id, prompt, intervalSeconds, runAt, now, now);
+    this.event(
+      id,
+      null,
+      runAt
+        ? `Task scheduled for ${new Date(runAt).toISOString()}.`
+        : 'Task added to the queue.',
+    );
     return this.task(id)!;
   }
   detail(id: string): Detail | undefined {
@@ -219,9 +229,9 @@ export class Store {
         );
       const task = this.db
         .prepare(
-          "SELECT * FROM tasks WHERE status='queued' OR (status='completed' AND nextRunAt IS NOT NULL AND nextRunAt<=?) ORDER BY createdAt LIMIT 1",
+          "SELECT * FROM tasks WHERE (status='queued' AND (nextRunAt IS NULL OR nextRunAt<=?)) OR (status='completed' AND nextRunAt IS NOT NULL AND nextRunAt<=?) ORDER BY createdAt LIMIT 1",
         )
-        .get(now) as unknown as Task | undefined;
+        .get(now, now) as unknown as Task | undefined;
       if (!task) return null;
       const lease = randomUUID();
       this.db

@@ -17,10 +17,14 @@ import {
   useCopilotKit,
 } from '@copilotkit/react-core/v2';
 import {
+  Bell,
+  BellOff,
+  Brain,
   FilePlus,
   ArrowUp,
   Clock3,
   Link2,
+  Maximize2,
   Phone,
   PhoneOff,
   Plus,
@@ -35,6 +39,7 @@ import { ChatTranscript, isInternalVoiceReceipt } from './ChatTranscript';
 import { ReasoningPanel } from './ReasoningPanel';
 import { ActivityRail } from './ActivityRail';
 import { ActivityBubbles } from './ActivityBubbles';
+import { InterventionStage } from './InterventionStage';
 import { deriveActivity } from './activity';
 import type { ReasoningRunStats } from '../server/reasoning.js';
 import type { CallReceipt, Conversation, Dot, Memory } from '../shared/types';
@@ -85,6 +90,7 @@ export function Chat({
     threadId: thread.id,
   });
   const { copilotkit } = useCopilotKit();
+  const runError = useRef('');
   const [pageContext, setPageContext] = useState<PageContext | null>();
   const [contextError, setContextError] = useState('');
   const [contextAttempt, setContextAttempt] = useState(0);
@@ -113,12 +119,73 @@ export function Chat({
     };
   }, [thread.id, contextAttempt]);
   const [draft, setDraft] = useState('');
+  const [queued, setQueued] = useState<string[]>([]);
+  const [stageOpen, setStageOpen] = useState(false);
+  const [notify, setNotify] = useState(
+    () =>
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem('nevadots-notify') === '1',
+  );
+  const toggleNotify = async () => {
+    if (notify) {
+      setNotify(false);
+      localStorage.setItem('nevadots-notify', '0');
+      return;
+    }
+    if (typeof Notification === 'undefined') {
+      setError('Les notifications ne sont pas disponibles dans ce navigateur.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      setNotify(true);
+      localStorage.setItem('nevadots-notify', '1');
+    } else {
+      setError('Notifications refusées par le navigateur.');
+    }
+  };
   const [source, setSource] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [running, setRunning] = useState(false);
+  const prevRunForNotify = useRef(false);
+  useEffect(() => {
+    if (
+      prevRunForNotify.current &&
+      !running &&
+      notify &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'granted' &&
+      document.hidden
+    ) {
+      const last = [...agent.messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === 'assistant' &&
+            typeof message.content === 'string' &&
+            message.content.trim(),
+        );
+      const body = last
+        ? String(last.content)
+            .replace(/[#*`>_]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 120)
+        : 'Votre réponse est prête.';
+      try {
+        new Notification(`${dot.name} · réponse prête`, {
+          body,
+          tag: 'nevadots-turn',
+        });
+      } catch {
+        /* notifications are best-effort */
+      }
+    }
+    prevRunForNotify.current = running;
+  }, [running, notify, dot.name, agent.messages]);
   // --- Reasoning panel ------------------------------------------------------
   // Opens automatically only when the provider actually streams reasoning.
   // Auto-collapses when the run finishes; the "Raisonnement" button on each
@@ -267,6 +334,35 @@ export function Chat({
     };
   }, []);
   const selectedModel = dot.model ?? models.default ?? '';
+  const reasoningEffort = dot.reasoningEffort ?? '';
+  const reasoningLabel =
+    reasoningEffort === 'none'
+      ? 'désactivée'
+      : reasoningEffort === 'low'
+        ? 'basse'
+        : reasoningEffort === 'high'
+          ? 'haute'
+          : 'par défaut';
+  const [reasoningBusy, setReasoningBusy] = useState(false);
+  const cycleReasoning = async () => {
+    if (reasoningBusy) return;
+    const order = ['', 'none', 'low', 'high'];
+    const next = order[(order.indexOf(reasoningEffort) + 1) % order.length];
+    setReasoningBusy(true);
+    setModelError('');
+    try {
+      await api(`/dots/${dot.id}/reasoning`, 'PUT', {
+        effort: next || null,
+      });
+      onSaved();
+    } catch (err) {
+      setModelError(
+        err instanceof Error ? err.message : 'Réglage de réflexion indisponible.',
+      );
+    } finally {
+      setReasoningBusy(false);
+    }
+  };
   const voice = useVoice(thread.id, onSaved, agent.messages.at(-1)?.id);
   const voiceRequestStarted = useRef(false);
   useEffect(() => {
@@ -293,12 +389,55 @@ export function Chat({
   ]);
   const sent = useRef(false);
   const bottom = useRef<HTMLDivElement>(null);
+  const transcript = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  const touching = useRef(false);
+  const lastScrollAt = useRef(0);
+  const scrollToBottom = (force = false) => {
+    const element = transcript.current;
+    if (!element) return;
+    if (!force && (!following.current || touching.current)) return;
+    const now = performance.now();
+    if (!force && now - lastScrollAt.current < 150) return;
+    lastScrollAt.current = now;
+    element.scrollTop = element.scrollHeight;
+  };
+  useEffect(() => {
+    const element = transcript.current;
+    if (!element) return;
+    const onScroll = () => {
+      following.current =
+        element.scrollHeight - element.scrollTop - element.clientHeight < 48;
+    };
+    const onTouchStart = () => {
+      touching.current = true;
+    };
+    const onTouchEnd = () => {
+      touching.current = false;
+    };
+    element.addEventListener('scroll', onScroll, { passive: true });
+    element.addEventListener('touchstart', onTouchStart, { passive: true });
+    element.addEventListener('touchend', onTouchEnd, { passive: true });
+    element.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      element.removeEventListener('scroll', onScroll);
+      element.removeEventListener('touchstart', onTouchStart);
+      element.removeEventListener('touchend', onTouchEnd);
+      element.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
   useEffect(() => {
     const subscription = copilotkit.subscribe({
-      onError: ({ error }) => setError(error.message),
+      onError: ({ error }) => {
+        runError.current = error.message;
+        setError(error.message);
+      },
     });
     const events = agent.subscribe({
-      onRunErrorEvent: ({ event }) => setError(event.message),
+      onRunErrorEvent: ({ event }) => {
+        runError.current = event.message;
+        setError(event.message);
+      },
     });
     return () => {
       subscription.unsubscribe();
@@ -323,9 +462,9 @@ export function Chat({
       active = false;
     };
   }, [agent, copilotkit, isReady]);
-  const send = async (text: string) => {
-    if (!text.trim() || running || !loaded || !contextReady || paused) return;
+  const runPrompt = async (text: string) => {
     setError('');
+    runError.current = '';
     setRunning(true);
     agent.addMessage({
       id: crypto.randomUUID(),
@@ -337,21 +476,50 @@ export function Chat({
     setSourceOpen(false);
     try {
       const result = await copilotkit.runAgent({ agent });
-      if (!result.newMessages.some((message) => message.role === 'assistant'))
+      const answered = result.newMessages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          typeof message.content === 'string' &&
+          message.content.trim(),
+      );
+      if (!answered)
         throw new Error(
-          'The current turn returned no response. Check the runtime connection and retry.',
+          runError.current ||
+            'Le modèle n’a produit aucune réponse. Réessaie, ou choisis un autre modèle dans le sélecteur.',
         );
       onSaved();
     } catch (e) {
       setError(
-        e instanceof Error
-          ? e.message
-          : 'The turn failed. Your conversation remains saved.',
+        runError.current ||
+          (e instanceof Error
+            ? e.message
+            : 'Le tour a échoué. Votre conversation reste enregistrée.'),
       );
     } finally {
       setRunning(false);
     }
   };
+  const send = (text: string) => {
+    if (!text.trim() || !loaded || !contextReady || paused) return;
+    // While a turn runs, hold the message and start it as soon as the turn ends.
+    if (running) {
+      setQueued((current) => [...current, text.trim()]);
+      setDraft('');
+      setSource('');
+      setSourceOpen(false);
+      return;
+    }
+    void runPrompt(text);
+  };
+  const queuedRef = useRef<string[]>([]);
+  queuedRef.current = queued;
+  useEffect(() => {
+    if (running || paused || !loaded || !contextReady) return;
+    if (!queuedRef.current.length) return;
+    const next = queuedRef.current[0];
+    setQueued((current) => current.slice(1));
+    void runPrompt(next);
+  }, [running, queued, loaded, contextReady, paused]);
   useEffect(() => {
     if (loaded && contextReady && !paused && initialPrompt && !sent.current) {
       sent.current = true;
@@ -359,9 +527,25 @@ export function Chat({
       void send(initialPrompt);
     }
   }, [loaded, contextReady, paused, initialPrompt]);
+  // Follow the conversation while a turn runs (throttled, respects touches).
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: 'instant', block: 'end' });
-  }, [agent.messages.length, running]);
+    if (!running) {
+      scrollToBottom(true);
+      return;
+    }
+    let frame = 0;
+    const loop = () => {
+      scrollToBottom();
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frame);
+  }, [running]);
+  // Jump to the bottom when a new message is appended (e.g. the user's message).
+  useEffect(() => {
+    following.current = true;
+    scrollToBottom(true);
+  }, [agent.messages.length]);
   useEffect(() => {
     if (paused && voice.status !== 'idle') void voice.end();
   }, [paused]);
@@ -480,6 +664,25 @@ export function Chat({
   }, [reasonPanel]);
   // Cumulative session tokens for the cetas-style token bar.
   const [session, setSession] = useState({ in: 0, out: 0, cost: 0 });
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const start = Date.now();
+    setElapsed(0);
+    const timer = setInterval(
+      () => setElapsed(Math.floor((Date.now() - start) / 1000)),
+      500,
+    );
+    return () => clearInterval(timer);
+  }, [running]);
+  const lastAssistant = agent.messages
+    .filter((message) => message.role === 'assistant')
+    .at(-1);
+  const liveOut =
+    typeof lastAssistant?.content === 'string'
+      ? Math.round(lastAssistant.content.length / 4)
+      : 0;
+  const liveRate = elapsed > 0 ? Math.round(liveOut / elapsed) : 0;
   const prevRunForTokens = useRef(false);
   useEffect(() => {
     if (!prevRunForTokens.current || running) {
@@ -515,7 +718,7 @@ export function Chat({
           </a>
         </div>
       )}
-      <div className="chat-transcript">
+      <div className="chat-transcript" ref={transcript}>
         {!visible.length && (
           <div className="chat-welcome">
             <h1>Par où commencer ?</h1>
@@ -533,7 +736,13 @@ export function Chat({
           )}
           reasoningForMessage={reasoningForMessage}
           onOpenReasoning={openReasoning}
+          streaming={running}
         />
+        {queued.map((text, index) => (
+          <div className="chat-bubble user pending" key={`queued-${index}`}>
+            {text}
+          </div>
+        ))}
         {running && (
           <div className="thinking">
             <span />
@@ -612,11 +821,33 @@ export function Chat({
         <Mascot
           identity={dot.id}
           name={dot.name}
+          avatar={dot.avatar}
           small
+          animate
           decorative
           state={mascotState}
         />
         <div className="chat-token-actions">
+          <button
+            className={`icon-button ${notify ? 'active' : ''}`}
+            aria-label="Notifications de réponse"
+            title={
+              notify
+                ? 'Notifications activées'
+                : 'Me notifier quand la réponse est prête'
+            }
+            onClick={() => void toggleNotify()}
+          >
+            {notify ? <Bell size={16} /> : <BellOff size={16} />}
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Ouvrir la vue intervention"
+            title="Vue intervention (plein écran)"
+            onClick={() => setStageOpen(true)}
+          >
+            <Maximize2 size={16} />
+          </button>
           <button
             className="icon-button"
             aria-label="Save conversation as page"
@@ -674,6 +905,11 @@ export function Chat({
           </button>
         </div>
         <span className="chat-token-info">
+          {running && (
+            <>
+              ⏱ {elapsed}s · ~{liveOut} tok · {liveRate} tok/s ·{' '}
+            </>
+          )}
           ↑ {session.in} (input) ↓ {session.out} (output) Tokens · Coût estimé :
           ${session.cost.toFixed(4).replace('.', ',')}
         </span>
@@ -792,24 +1028,37 @@ export function Chat({
                 ))}
               </select>
             )}
-            {running ? (
+            <button
+              type="button"
+              className={`icon-button reasoning-button ${
+                reasoningEffort && reasoningEffort !== 'none' ? 'active' : ''
+              }`}
+              aria-label={`Réflexion : ${reasoningLabel}`}
+              title={`Réflexion : ${reasoningLabel} — cliquez pour changer`}
+              onClick={() => void cycleReasoning()}
+              disabled={reasoningBusy}
+            >
+              <Brain size={17} />
+            </button>
+            {running && (
               <button
                 type="button"
-                className="send-button"
+                className="send-button stop"
                 aria-label="Stop response"
+                title="Arrêter la réponse"
                 onClick={() => copilotkit.stopAgent({ agent })}
               >
                 <Square size={16} />
               </button>
-            ) : (
-              <button
-                className="send-button"
-                aria-label="Send message"
-                disabled={!draft.trim() || !loaded || !contextReady || paused}
-              >
-                <ArrowUp size={19} />
-              </button>
             )}
+            <button
+              className="send-button"
+              aria-label={running ? 'Queue message' : 'Send message'}
+              title={running ? 'Mettre en file' : 'Envoyer'}
+              disabled={!draft.trim() || !loaded || !contextReady || paused}
+            >
+              <ArrowUp size={19} />
+            </button>
           </div>
         </div>
         <div className="chat-compose-note">
@@ -817,6 +1066,15 @@ export function Chat({
           {paused ? ' · en pause' : ''}
         </div>
       </form>
+      <InterventionStage
+        open={stageOpen}
+        onClose={() => setStageOpen(false)}
+        dot={dot}
+        messages={visible}
+        events={activity}
+        running={running}
+        onStop={() => copilotkit.stopAgent({ agent })}
+      />
     </div>
   );
 }
