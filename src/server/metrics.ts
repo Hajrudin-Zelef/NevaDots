@@ -31,10 +31,17 @@ function cpuPercent(now: CpuSample): number | null {
   const totalDelta = now.total - previous.total;
   const idleDelta = now.idle - previous.idle;
   if (totalDelta <= 0) return null;
-  return Math.max(0, Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100));
+  return Math.max(
+    0,
+    Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100),
+  );
 }
 
-async function memPercent(): Promise<number | null> {
+async function memoryStats(): Promise<{
+  usedBytes: number;
+  totalBytes: number;
+  percent: number;
+} | null> {
   try {
     const mem = await readFile('/proc/meminfo', 'utf8');
     const value = (key: string) => {
@@ -44,19 +51,33 @@ async function memPercent(): Promise<number | null> {
     const total = value('MemTotal');
     const available = value('MemAvailable');
     if (!total) return null;
-    return Math.max(0, Math.min(100, ((total - available) / total) * 100));
+    const totalBytes = total * 1024;
+    const usedBytes = Math.max(0, (total - available) * 1024);
+    return {
+      usedBytes,
+      totalBytes,
+      percent: Math.max(0, Math.min(100, (usedBytes / totalBytes) * 100)),
+    };
   } catch {
     return null;
   }
 }
 
-async function diskPercent(): Promise<number | null> {
+async function diskStats(): Promise<{
+  usedBytes: number;
+  totalBytes: number;
+  percent: number;
+} | null> {
   try {
     const info = await statfs('/');
-    const total = info.blocks * info.bsize;
-    const free = info.bfree * info.bsize;
-    if (!total) return null;
-    return Math.max(0, Math.min(100, ((total - free) / total) * 100));
+    const totalBytes = info.blocks * info.bsize;
+    const usedBytes = Math.max(0, (info.blocks - info.bfree) * info.bsize);
+    if (!totalBytes) return null;
+    return {
+      usedBytes,
+      totalBytes,
+      percent: Math.max(0, Math.min(100, (usedBytes / totalBytes) * 100)),
+    };
   } catch {
     return null;
   }
@@ -93,7 +114,11 @@ async function netRate(): Promise<{ rx: number; tx: number } | null> {
 export interface SystemMetrics {
   cpu: number | null;
   mem: number | null;
+  memUsedBytes: number | null;
+  memTotalBytes: number | null;
   disk: number | null;
+  diskUsedBytes: number | null;
+  diskTotalBytes: number | null;
   netIn: number | null;
   netOut: number | null;
   uptime: number;
@@ -102,15 +127,19 @@ export interface SystemMetrics {
 
 export async function systemMetrics(): Promise<SystemMetrics> {
   const sample = await cpuSample();
-  const [mem, disk, net] = await Promise.all([
-    memPercent(),
-    diskPercent(),
+  const [memory, disk, net] = await Promise.all([
+    memoryStats(),
+    diskStats(),
     netRate(),
   ]);
   return {
     cpu: sample ? cpuPercent(sample) : null,
-    mem,
-    disk,
+    mem: memory?.percent ?? null,
+    memUsedBytes: memory?.usedBytes ?? null,
+    memTotalBytes: memory?.totalBytes ?? null,
+    disk: disk?.percent ?? null,
+    diskUsedBytes: disk?.usedBytes ?? null,
+    diskTotalBytes: disk?.totalBytes ?? null,
     netIn: net?.rx ?? null,
     netOut: net?.tx ?? null,
     uptime: Math.round(process.uptime()),

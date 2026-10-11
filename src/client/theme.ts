@@ -22,7 +22,7 @@ export const PALETTES: Palette[] = [
   { id: 'ocean', label: 'Ocean', color: '#2196f3' },
 ];
 
-export const DEFAULT_PALETTE = 'bleu';
+export const DEFAULT_PALETTE = 'vert';
 
 // The choice for this page, even if storage refuses to keep it.
 let chosen: ThemePreference | undefined;

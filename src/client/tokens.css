@@ -16,8 +16,8 @@
   color-scheme: light;
 
   /* Palette d'accent (pilotée par data-palette, défaut = bleu cetas) */
-  --nd-accent: #3b87ce;
-  --nd-accent-dark: #2a6da3;
+  --nd-accent: #22c55e;
+  --nd-accent-dark: #15803d;
 
   /* Surfaces & texte */
   --nd-bg: #ffffff;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
+import { api } from './api';
 import { ConnectionsSection } from './ConnectionsSection';
 import {
   PALETTES,
@@ -16,17 +17,31 @@ export type Dialog =
   | { type: 'settings' }
   | { type: 'memory'; memory?: Memory }
   | { type: 'schedule'; threadId: string };
+
+interface SystemMetrics {
+  cpu: number | null;
+  mem: number | null;
+  disk: number | null;
+  uptime: number;
+  model: string | null;
+}
+
+type SettingsTab =
+  'appearance' | 'preferences' | 'dots' | 'connections' | 'health' | 'about';
+
 export function WorkspaceDialog({
   dialog,
   state,
   workspace,
   onClose,
+  onOpenDialog,
   mutate,
 }: {
   dialog: Dialog;
   state: State;
   workspace: WorkspaceState;
   onClose: () => void;
+  onOpenDialog: (dialog: Dialog) => void;
   mutate: (path: string, method: string, body?: unknown) => Promise<boolean>;
 }) {
   const [name, setName] = useState(
@@ -66,6 +81,32 @@ export function WorkspaceDialog({
   const [error, setError] = useState('');
   const [theme, setTheme] = useState(themePreference);
   const [palette, setPalette] = useState(palettePreference);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
+  const [models, setModels] = useState<{
+    default: string | null;
+    models: string[];
+  }>({ default: null, models: [] });
+  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  const [connectionDot, setConnectionDot] = useState(
+    workspace.dots[0]?.id ?? '',
+  );
+  useEffect(() => {
+    if (dialog.type !== 'settings') return;
+    let active = true;
+    void api<{ default: string | null; models: string[] }>('/models')
+      .then((value) => {
+        if (active) setModels(value);
+      })
+      .catch(() => {});
+    void api<SystemMetrics>('/metrics')
+      .then((value) => {
+        if (active) setMetrics(value);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [dialog.type]);
   const container = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous =
@@ -106,7 +147,7 @@ export function WorkspaceDialog({
           ? 'Make this Dot yours.'
           : 'Meet your next specialist.'
         : dialog.type === 'settings'
-          ? 'Your workspace, your rules.'
+          ? 'Votre espace, vos règles.'
           : dialog.type === 'memory'
             ? 'Something to remember.'
             : 'Let your Dot keep time.';
@@ -127,7 +168,7 @@ export function WorkspaceDialog({
         >
           <X size={18} />
         </button>
-        <span className="eyebrow">OPENDOTS TEMPLATE</span>
+        <span className="eyebrow">NEVADOTS</span>
         <h2 id="dialog-title">{title}</h2>
         <form
           onSubmit={async (e) => {
@@ -156,6 +197,11 @@ export function WorkspaceDialog({
               };
             }
             if (dialog.type === 'settings') {
+              if (settingsTab !== 'preferences') {
+                onClose();
+                setBusy(false);
+                return;
+              }
               path = '/settings';
               method = 'PATCH';
               body = { researchAllowed: research, memoryAllowed: memory };
@@ -266,7 +312,7 @@ export function WorkspaceDialog({
               </select>
             </fieldset>
           )}
-          {(dialog.type === 'dot' || dialog.type === 'settings') && (
+          {dialog.type === 'dot' && (
             <>
               <label className="permission-row">
                 <input
@@ -374,8 +420,33 @@ export function WorkspaceDialog({
             </>
           )}
           {dialog.type === 'settings' && (
+            <div className="settings-tabs" role="tablist">
+              {(
+                [
+                  ['appearance', 'Apparence'],
+                  ['preferences', 'Réglages'],
+                  ['dots', 'Dots & Espaces'],
+                  ['connections', 'Connexions'],
+                  ['health', 'Santé'],
+                  ['about', 'À propos'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  className={`settings-tab ${settingsTab === id ? 'active' : ''}`}
+                  aria-selected={settingsTab === id}
+                  onClick={() => setSettingsTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {dialog.type === 'settings' && settingsTab === 'appearance' && (
             <fieldset className="appearance-fields">
-              <legend>Appearance</legend>
+              <legend>Apparence</legend>
               <div className="segmented" role="radiogroup">
                 {(
                   ['system', 'light', 'dark', 'hard_dark'] as ThemePreference[]
@@ -401,9 +472,13 @@ export function WorkspaceDialog({
                 ))}
               </div>
               <p className="muted">
-                Saved in this browser. System follows your device.
+                Mémorisé dans ce navigateur · Système suit l’appareil.
               </p>
-              <div className="palette-swatches" role="radiogroup" aria-label="Accent colour">
+              <div
+                className="palette-swatches"
+                role="radiogroup"
+                aria-label="Couleur d’accent"
+              >
                 {PALETTES.map((item) => (
                   <button
                     key={item.id}
@@ -420,51 +495,208 @@ export function WorkspaceDialog({
                   />
                 ))}
               </div>
-              <p className="muted">Accent colour.</p>
+              <p className="muted">Couleur d’accent.</p>
             </fieldset>
           )}
-          {dialog.type === 'settings' && (
+          {dialog.type === 'settings' && settingsTab === 'preferences' && (
+            <>
+              <label className="permission-row">
+                <input
+                  type="checkbox"
+                  checked={research}
+                  onChange={(e) => setResearch(e.target.checked)}
+                />
+                <span>
+                  <strong>Recherche sur pages publiques</strong>
+                  <small>
+                    Autorise le navigateur serveur en lecture seule. Les
+                    réglages globaux restent prioritaires.
+                  </small>
+                </span>
+              </label>
+              <label className="permission-row">
+                <input
+                  type="checkbox"
+                  checked={memory}
+                  onChange={(e) => setMemory(e.target.checked)}
+                />
+                <span>
+                  <strong>Utiliser les mémoires</strong>
+                  <small>
+                    Inclut vos préférences dans les nouveaux tours. Changer ce
+                    réglage arrête le travail en cours.
+                  </small>
+                </span>
+              </label>
+              <div className="config-note">
+                <strong>Modèles</strong>
+                <p>
+                  Modèle par défaut :{' '}
+                  <code>
+                    {models.default ?? metrics?.model ?? 'non configuré'}
+                  </code>
+                </p>
+                {models.models.length > 0 && (
+                  <p>
+                    Disponibles :{' '}
+                    {models.models.map((id, index) => (
+                      <span key={id}>
+                        {index > 0 && ', '}
+                        <code>{id}</code>
+                      </span>
+                    ))}
+                  </p>
+                )}
+                <p>
+                  Le modèle global et les clés se règlent dans <code>.env</code>{' '}
+                  (<code>OPENAI_MODEL</code>, <code>OPENAI_MODELS</code>).
+                </p>
+              </div>
+            </>
+          )}
+          {dialog.type === 'settings' && settingsTab === 'dots' && (
+            <div className="settings-list">
+              <div className="settings-list-head">
+                <strong>Dots</strong>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() =>
+                    onOpenDialog({
+                      type: 'dot',
+                      spaceId: workspace.spaces[0]?.id ?? '',
+                    })
+                  }
+                >
+                  Nouveau
+                </button>
+              </div>
+              {workspace.dots.map((item) => (
+                <div className="settings-list-row" key={item.id}>
+                  <span>{item.name}</span>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() =>
+                      onOpenDialog({
+                        type: 'dot',
+                        dot: item,
+                        spaceId: item.spaceId,
+                      })
+                    }
+                  >
+                    Modifier
+                  </button>
+                </div>
+              ))}
+              <div className="settings-list-head">
+                <strong>Espaces</strong>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => onOpenDialog({ type: 'space' })}
+                >
+                  Nouveau
+                </button>
+              </div>
+              {workspace.spaces.map((item) => (
+                <div className="settings-list-row" key={item.id}>
+                  <span>{item.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {dialog.type === 'settings' && settingsTab === 'connections' && (
+            <div className="settings-connections">
+              {workspace.dots.length > 1 && (
+                <>
+                  <label className="field-label" htmlFor="connection-dot">
+                    Dot
+                  </label>
+                  <select
+                    id="connection-dot"
+                    value={connectionDot}
+                    onChange={(e) => setConnectionDot(e.target.value)}
+                  >
+                    {workspace.dots.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+              {connectionDot ? (
+                <ConnectionsSection dotId={connectionDot} />
+              ) : (
+                <p className="muted">
+                  Créez un Dot pour gérer des services MCP.
+                </p>
+              )}
+            </div>
+          )}
+          {dialog.type === 'settings' && settingsTab === 'health' && (
             <div className="config-note">
-              <strong>Service setup</strong>
+              <strong>État du service</strong>
+              <ul className="settings-flags">
+                <li>
+                  Intelligence :{' '}
+                  {workspace.setup.intelligence ? 'connectée' : 'absente'}
+                </li>
+                <li>
+                  Modèle : {workspace.setup.model ? 'configuré' : 'absent'}
+                </li>
+                <li>
+                  Navigateur : {workspace.setup.browser ? 'actif' : 'inactif'}
+                </li>
+                <li>
+                  Voix : {workspace.setup.voice ? 'configurée' : 'à configurer'}
+                </li>
+                <li>Slack : {workspace.setup.slack.replaceAll('_', ' ')}</li>
+              </ul>
+              {metrics && (
+                <p>
+                  Hôte · CPU {Math.round(metrics.cpu ?? 0)}% · RAM{' '}
+                  {Math.round(metrics.mem ?? 0)}% · Disque{' '}
+                  {Math.round(metrics.disk ?? 0)}% · en service depuis{' '}
+                  {Math.floor(metrics.uptime / 3600)} h
+                </p>
+              )}
               <p>
                 {workspace.setup.missing.length ? (
                   <>
-                    Add{' '}
+                    À ajouter dans <code>.env</code> puis redémarrer :{' '}
                     {workspace.setup.missing.map((name, index) => (
                       <span key={name}>
                         {index > 0 && ', '}
                         <code>{name}</code>
                       </span>
-                    ))}{' '}
-                    to the server environment, then restart.
+                    ))}
                   </>
                 ) : (
-                  'Text configuration is present. A successful conversation confirms connectivity.'
+                  'Configuration présente.'
                 )}
               </p>
+            </div>
+          )}
+          {dialog.type === 'settings' && settingsTab === 'about' && (
+            <div className="config-note">
+              <strong>NevaDots v0.1.0</strong>
               <p>
-                Slack: {workspace.setup.slack.replaceAll('_', ' ')}. Voice:{' '}
-                {workspace.setup.voice
-                  ? 'configuration present'
-                  : 'needs VOICE_API_KEY and VOICE_MODEL'}
-                .
+                Assistant personnel auto-hébergé (Dots, Spaces, Computers,
+                Intelligence). Fork d’OpenDots (CopilotKit), interface inspirée
+                de Cetas Lite.
               </p>
               <p>
-                Setup and usage metadata is collected by default.{' '}
-                <a
-                  href="https://github.com/CopilotKit/OpenDots/blob/main/docs/SETUP-TELEMETRY.md"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Tracking and opt-out details
-                </a>
+                Données stockées localement dans le conteneur. Thème, palettes
+                et préférences restent dans ce navigateur.
               </p>
               <a
-                href="https://github.com/CopilotKit/OpenDots/blob/main/docs/SETUP.md"
+                href="https://github.com/CopilotKit/OpenDots"
                 target="_blank"
                 rel="noreferrer"
               >
-                Template setup guide ↗
+                OpenDots (projet amont) ↗
               </a>
             </div>
           )}
@@ -479,9 +711,21 @@ export function WorkspaceDialog({
               {error}
             </p>
           )}
-          <button className="primary full" disabled={busy}>
-            {busy ? 'Saving…' : 'Save'}
-          </button>
+          {dialog.type === 'settings' ? (
+            settingsTab === 'preferences' ? (
+              <button className="primary full" disabled={busy}>
+                {busy ? 'Saving…' : 'Enregistrer'}
+              </button>
+            ) : (
+              <button type="button" className="primary full" onClick={onClose}>
+                Fermer
+              </button>
+            )
+          ) : (
+            <button className="primary full" disabled={busy}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          )}
         </form>
       </section>
     </div>

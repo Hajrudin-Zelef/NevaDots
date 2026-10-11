@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowUpRight, FileText, Monitor, Terminal } from 'lucide-react';
 import { z } from 'zod';
 import { api } from './api';
+import { computerToolResult } from './activity';
 
 const screenSchema = z.object({
   base64: z
@@ -31,18 +32,6 @@ const labels: Record<string, string> = {
   files_list: 'Listing files',
   exec: 'Running terminal command',
 };
-export function computerToolResult(raw: unknown): Record<string, unknown> {
-  if (typeof raw === 'string') {
-    try {
-      raw = JSON.parse(raw);
-    } catch {
-      return { error: raw };
-    }
-  }
-  return raw && typeof raw === 'object' && !Array.isArray(raw)
-    ? Object.fromEntries(Object.entries(raw))
-    : {};
-}
 export function ComputerToolCard({
   name,
   status,

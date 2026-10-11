@@ -280,6 +280,16 @@ export class Platform {
       .slice(-12000);
   }
   async handle(request: Request): Promise<Response> {
+    // The CopilotKit client continuously polls inspector metadata that this
+    // fork deliberately does not serve; answering 204 stops the retry loop and
+    // the flood of 403s (which otherwise hammers the runtime).
+    const pathname = new URL(request.url).pathname;
+    if (
+      request.method === 'GET' &&
+      (pathname.endsWith('/inspector-metadata') ||
+        pathname.endsWith('/inspector-learning'))
+    )
+      return new Response(null, { status: 204 });
     if (!this.handler)
       return Response.json(
         { error: `Setup required: ${INTELLIGENCE_KEY_MISSING_LABEL}.` },

@@ -7,10 +7,11 @@ import {
   ArrowUp,
   ArrowUpRight,
   BookOpen,
+  CircleHelp,
   Clock3,
-  Code2,
-  Folder,
-  Menu,
+  Globe,
+  Link2,
+  Mic,
   MessageCircle,
   Monitor,
   MoreHorizontal,
@@ -18,6 +19,7 @@ import {
   PanelLeft,
   Play,
   Plus,
+  Puzzle,
   Search,
   Settings2,
   Trash2,
@@ -42,6 +44,7 @@ import {
 } from './poll-notice';
 import { Mascot } from './Mascot';
 import { Chat } from './Chat';
+import { ComposerMenu } from './ComposerMenu';
 import { ThreadList } from './ThreadList';
 import { ResultPane } from './ResultPane';
 import { TaskRow } from './TaskPresentation';
@@ -60,7 +63,11 @@ function describeFailure(error: unknown, fallback: string) {
 interface SystemMetrics {
   cpu: number | null;
   mem: number | null;
+  memUsedBytes: number | null;
+  memTotalBytes: number | null;
   disk: number | null;
+  diskUsedBytes: number | null;
+  diskTotalBytes: number | null;
   netIn: number | null;
   netOut: number | null;
   uptime: number;
@@ -89,11 +96,19 @@ function useMetrics() {
   return metrics;
 }
 
-function pct(value: number | null | undefined) {
-  return value == null ? 0 : Math.max(0, Math.min(100, value));
-}
 function fmtPct(value: number | null | undefined) {
   return value == null ? '—' : `${Math.round(value)}%`;
+}
+function fmtBytes(value: number | null | undefined) {
+  if (value == null) return '—';
+  const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
+  let amount = value;
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  return `${amount.toFixed(1)} ${units[unit]}`;
 }
 function fmtRate(value: number | null | undefined) {
   if (value == null) return '—';
@@ -178,9 +193,20 @@ export function App() {
   const [pane, setPane] = useState(false);
   const [capture, setCapture] = useState<Result>();
   const [prompt, setPrompt] = useState('');
+  const [promptSource, setPromptSource] = useState('');
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [promptMenuOpen, setPromptMenuOpen] = useState(false);
+  const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string>();
+  const [pendingVoice, setPendingVoice] = useState(false);
+  const [modelOptions, setModelOptions] = useState<{
+    default: string | null;
+    models: string[];
+  }>({ default: null, models: [] });
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
+  const [conversationSearch, setConversationSearch] = useState('');
+  const [conversationCategory, setConversationCategory] = useState('all');
   const [taskDetail, setTaskDetail] = useState<Detail>();
   const refresh = useCallback(async () => {
     try {
@@ -208,6 +234,17 @@ export function App() {
     const timer = setInterval(() => void refresh(), 3000);
     return () => clearInterval(timer);
   }, [refresh]);
+  useEffect(() => {
+    let active = true;
+    void api<{ default: string | null; models: string[] }>('/models')
+      .then((value) => {
+        if (active) setModelOptions(value);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
     setCapture(undefined);
     if (!selectedThread) return;
@@ -251,6 +288,8 @@ export function App() {
   const dot =
     workspace?.dots.find((item) => item.id === selectedDot) ??
     workspace?.dots[0];
+  const selectedModel =
+    dot?.model ?? modelOptions.default ?? metrics?.model ?? '';
   const thread = workspace?.conversations.find(
     (item) => item.id === selectedThread && item.dotId === dot?.id,
   );
@@ -274,20 +313,40 @@ export function App() {
     setView('chat');
     setMobile(false);
     setPendingPrompt(undefined);
+    setPendingVoice(false);
   };
   const newConversation = async (text?: string) => {
+    if (text === undefined) {
+      setSelectedThread(undefined);
+      setPendingPrompt(undefined);
+      setPendingVoice(false);
+      setPrompt('');
+      setPromptSource('');
+      setSourceOpen(false);
+      setPromptMenuOpen(false);
+      setComposerToolsOpen(false);
+      setView('chat');
+      setPane(false);
+      setMobile(false);
+      return;
+    }
     if (!dot || !configured || busy) return;
     setBusy(true);
     setError('');
     try {
       const next = await api<Conversation>('/conversations', 'POST', {
         dotId: dot.id,
-        title: text?.slice(0, 80) || 'A new thought',
+        title: text.trim().slice(0, 80) || 'Conversation vocale',
       });
       await refresh();
       setSelectedThread(next.id);
-      setPendingPrompt(text);
+      setPendingPrompt(text.trim() ? text : undefined);
+      setPendingVoice(text === '');
       setPrompt('');
+      setPromptSource('');
+      setSourceOpen(false);
+      setPromptMenuOpen(false);
+      setComposerToolsOpen(false);
       setView('chat');
       setMobile(false);
     } catch (e) {
@@ -401,58 +460,6 @@ export function App() {
     );
   const content = (
     <div className={`app template-app ${navCollapsed ? 'nav-collapsed' : ''}`}>
-      <nav className="icon-rail" aria-label="Workspace navigation">
-        <button
-          className="rail-brand"
-          aria-label="NevaDots home"
-          onClick={() => {
-            setView('chat');
-            setSelectedThread(undefined);
-          }}
-        >
-          o<span>·</span>
-        </button>
-        <button
-          aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          onClick={() => setNavCollapsed(!navCollapsed)}
-        >
-          <PanelLeft size={18} />
-        </button>
-        <button
-          aria-label="New chat"
-          disabled={!configured}
-          onClick={() => void newConversation()}
-        >
-          <Plus size={19} />
-        </button>
-        <button
-          aria-label="Open Spaces"
-          onClick={() => {
-            if (workspace.spaces[0]) openPage(workspace.spaces[0].id);
-          }}
-        >
-          <Folder size={18} />
-        </button>
-        <button aria-label="Open activity" onClick={() => setView('tasks')}>
-          <Clock3 size={18} />
-        </button>
-        <button
-          className="rail-settings"
-          aria-label="Open settings"
-          onClick={() => setDialog({ type: 'settings' })}
-        >
-          <Settings2 size={18} />
-        </button>
-      </nav>
-      <button
-        className="mobile-menu icon-button"
-        aria-label="Open navigation"
-        aria-expanded={mobile}
-        aria-controls="workspace-sidebar"
-        onClick={() => setMobile(true)}
-      >
-        <Menu size={21} />
-      </button>
       {mobile && (
         <button
           className="nav-scrim"
@@ -464,60 +471,52 @@ export function App() {
         id="workspace-sidebar"
         className={`sidebar ${mobile ? 'open' : ''}`}
       >
-        <button
-          className="wordmark"
-          onClick={() => {
-            setView('chat');
-            setSelectedThread(undefined);
-          }}
-        >
-          <img
-            className="wordmark-logo"
-            src="/icon-256.png"
-            alt=""
-            width={22}
-            height={22}
-          />
-          NevaDots<span className="wordmark-dot">•</span>
-        </button>
-        <span className="sidebar-credit">Espace de travail auto-hébergé</span>
+        <div className="sidebar-brand">
+          <button
+            className="wordmark"
+            onClick={() => {
+              setView('chat');
+              setSelectedThread(undefined);
+              setMobile(false);
+            }}
+          >
+            <img
+              className="wordmark-logo"
+              src="/icon-256.png"
+              alt=""
+              width={25}
+              height={25}
+            />
+            <span>NevaDots</span>
+          </button>
+          <span className="version-badge">v0.1.0</span>
+          <span className="sidebar-credit">Assistant IA auto-hébergé</span>
+        </div>
         <div className="sb-metrics" aria-label="Métriques système">
           <div className="sb-metrics-title">Métriques</div>
           <div className="sb-metric sb-metric-net">
             <span className="sb-metric-label">Modèle</span>
             <span className="sb-metric-val" title={metrics?.model ?? ''}>
-              {metrics?.model ?? '—'}
+              {metrics?.model ?? '—'} · 0 tok
             </span>
           </div>
           <div className="sb-metric">
             <span className="sb-metric-label">CPU</span>
-            <div className="sb-metric-bar">
-              <div
-                className="sb-metric-fill"
-                style={{ width: `${pct(metrics?.cpu)}%` }}
-              />
-            </div>
             <span className="sb-metric-val">{fmtPct(metrics?.cpu)}</span>
           </div>
           <div className="sb-metric">
             <span className="sb-metric-label">RAM</span>
-            <div className="sb-metric-bar">
-              <div
-                className="sb-metric-fill"
-                style={{ width: `${pct(metrics?.mem)}%` }}
-              />
-            </div>
-            <span className="sb-metric-val">{fmtPct(metrics?.mem)}</span>
+            <span className="sb-metric-val">
+              {fmtBytes(metrics?.memUsedBytes)} /{' '}
+              {fmtBytes(metrics?.memTotalBytes)}
+            </span>
           </div>
           <div className="sb-metric">
             <span className="sb-metric-label">Disque</span>
-            <div className="sb-metric-bar">
-              <div
-                className="sb-metric-fill"
-                style={{ width: `${pct(metrics?.disk)}%` }}
-              />
-            </div>
-            <span className="sb-metric-val">{fmtPct(metrics?.disk)}</span>
+            <span className="sb-metric-val">
+              {fmtBytes(metrics?.diskUsedBytes)} /{' '}
+              {fmtBytes(metrics?.diskTotalBytes)}
+            </span>
           </div>
           <div className="sb-metric sb-metric-net">
             <span className="sb-metric-label">Réseau</span>
@@ -526,177 +525,208 @@ export function App() {
             </span>
           </div>
         </div>
-        <button
-          className="new-chat nav-item"
-          disabled={!configured}
-          onClick={() => void newConversation()}
-        >
-          <Plus size={17} />
-          <span>New chat</span>
-        </button>
-        <div className="spaces-heading nav-label">
-          DOTS
+        <nav className="module-nav" aria-label="Modules">
           <button
-            className="icon-button"
-            aria-label="Create Dot"
-            onClick={() =>
-              setDialog({ type: 'dot', spaceId: workspace.spaces[0].id })
-            }
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-        <nav className="dots-nav" aria-label="Dots">
-          {workspace.dots.map((item) => (
-            <div className="dot-nav-row" key={item.id}>
-              <button
-                className={`dot-nav ${dot.id === item.id && view === 'chat' ? 'active' : ''}`}
-                aria-current={
-                  dot.id === item.id && view === 'chat' ? 'page' : undefined
-                }
-                onClick={() => chooseDot(item)}
-              >
-                <Mascot identity={item.id} name={item.name} small decorative />
-                <span>{item.name}</span>
-              </button>
-              <button
-                className="icon-button dot-settings"
-                aria-label={`Edit ${item.name} settings`}
-                onClick={() =>
-                  setDialog({ type: 'dot', dot: item, spaceId: item.spaceId })
-                }
-              >
-                <MoreHorizontal size={15} />
-              </button>
-            </div>
-          ))}
-        </nav>
-        <div className="spaces-heading nav-label">
-          SPACES
-          <button
-            className="icon-button"
-            aria-label="Create Space"
-            onClick={() => setDialog({ type: 'space' })}
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-        <nav className="spaces-nav" aria-label="Spaces">
-          {workspace.spaces.map((space) => (
-            <SpaceNav
-              key={space.id}
-              space={space}
-              active={view === 'space' && spaceId === space.id}
-              pageId={pageId}
-              onOpen={(id) => openPage(space.id, id)}
-            />
-          ))}
-        </nav>
-        {configured ? (
-          <ThreadList
-            dotId={dot.id}
-            dots={workspace.dots}
-            local={workspace.conversations}
-            selected={view === 'chat' ? selectedThread : undefined}
-            onSelect={(id) => {
-              const conversation = workspace.conversations.find(
-                (item) => item.id === id,
-              );
-              if (conversation) setSelectedDot(conversation.dotId);
-              setSelectedThread(id);
-              setView('chat');
-              setMobile(false);
-            }}
-            onNew={() => void newConversation()}
-            onDelete={(id) => void deleteConversation(id)}
-            onDeleteAll={() => void deleteAllConversations()}
-          />
-        ) : (
-          <div className="sidebar-empty">
-            Set up text chat to begin a persistent conversation.
-          </div>
-        )}
-        <div className="sidebar-bottom">
-          <button
-            className={`nav-item ${view === 'tasks' ? 'active' : ''}`}
+            className={`module-button ${view === 'chat' && !pane ? 'active' : ''}`}
             onClick={() => {
-              setView('tasks');
+              setView('chat');
+              setPane(false);
               setMobile(false);
             }}
           >
-            <Clock3 size={17} />
-            <span>Scheduled & activity</span>
-            {state.tasks.length > 0 && <small>{state.tasks.length}</small>}
+            <MessageCircle size={15} />
+            Agents
           </button>
           <button
-            className={`nav-item ${view === 'memories' ? 'active' : ''}`}
+            className={`module-button ${pane ? 'active' : ''}`}
+            onClick={() => {
+              setView('chat');
+              setPane(true);
+              setMobile(false);
+            }}
+          >
+            <Monitor size={15} />
+            Terminal
+          </button>
+          <button
+            className="module-button"
+            onClick={() => {
+              setDialog({ type: 'settings' });
+              setMobile(false);
+            }}
+          >
+            <Puzzle size={15} />
+            Plugins
+          </button>
+          <button
+            className={`module-button ${view === 'memories' ? 'active' : ''}`}
             onClick={() => {
               setView('memories');
               setMobile(false);
             }}
           >
-            <BookOpen size={17} />
-            <span>Memories</span>
-            {state.memories.length > 0 && (
-              <small>{state.memories.length}</small>
-            )}
+            <BookOpen size={15} />
+            Compétences
           </button>
+        </nav>
+        <button
+          className="new-chat-button"
+          disabled={!configured}
+          onClick={() => void newConversation()}
+        >
+          <Plus size={17} />
+          Nouvelle conversation
+        </button>
+        <div className="conversation-filters">
+          <label className="category-select-wrap">
+            <span className="sr-only">Catégorie des conversations</span>
+            <select
+              value={conversationCategory}
+              onChange={(event) => setConversationCategory(event.target.value)}
+            >
+              <option value="all">Toutes les catégories</option>
+              {workspace.dots.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
-            className="nav-item"
+            className="icon-button"
+            aria-label="Gérer les catégories et les paramètres"
+            title="Paramètres"
             onClick={() => setDialog({ type: 'settings' })}
           >
-            <Settings2 size={17} />
-            <span>Settings & setup</span>
+            <Settings2 size={15} />
           </button>
-          <a
-            className="nav-item"
-            href="https://github.com/CopilotKit/OpenDots"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Code2 size={17} />
-            <span>Make it your own</span>
-            <ArrowUpRight size={13} />
-          </a>
-          <div className="version">
-            OPEN SOURCE TEMPLATE <span>v0.1</span>
-          </div>
         </div>
-      </aside>
-      <div className="workspace">
-        <header className="topbar">
-          <button
-            className="desktop-nav-toggle document-icon"
-            aria-label={navCollapsed ? 'Show navigation' : 'Hide navigation'}
-            onClick={() => setNavCollapsed(!navCollapsed)}
-          >
-            <PanelLeft size={18} />
-          </button>
-          <div className="breadcrumbs">
-            <span>
-              {view === 'space'
-                ? workspace.spaces.find((space) => space.id === spaceId)?.name
-                : 'Dots'}
-            </span>
-            <span>/</span>
-            <strong>
-              {view === 'chat'
-                ? dot.name
-                : view === 'tasks'
-                  ? 'Activity'
-                  : view === 'space'
-                    ? 'Pages'
-                    : 'Memories'}
-            </strong>
-          </div>
-          <div className="top-actions">
-            <span className="mode-badge">
-              {configured ? 'SELF-HOSTED' : 'SETUP REQUIRED'}
-            </span>
+        <label className="conversation-search">
+          <Search size={15} />
+          <input
+            aria-label="Rechercher une conversation"
+            placeholder="Rechercher…"
+            value={conversationSearch}
+            onChange={(event) => setConversationSearch(event.target.value)}
+          />
+        </label>
+        <div className="sidebar-list">
+          <div className="spaces-heading nav-label">
+            Dots
             <button
-              className="pause-button"
+              className="icon-button"
+              aria-label="Créer un Dot"
+              onClick={() =>
+                setDialog({ type: 'dot', spaceId: workspace.spaces[0].id })
+              }
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+          <nav className="dots-nav" aria-label="Dots">
+            {workspace.dots.map((item) => (
+              <div className="dot-nav-row" key={item.id}>
+                <button
+                  className={`dot-nav ${dot.id === item.id && view === 'chat' ? 'active' : ''}`}
+                  aria-current={
+                    dot.id === item.id && view === 'chat' ? 'page' : undefined
+                  }
+                  onClick={() => chooseDot(item)}
+                >
+                  <Mascot
+                    identity={item.id}
+                    name={item.name}
+                    small
+                    decorative
+                  />
+                  <span>{item.name}</span>
+                </button>
+                <button
+                  className="icon-button dot-settings"
+                  aria-label={`Modifier les paramètres de ${item.name}`}
+                  onClick={() =>
+                    setDialog({ type: 'dot', dot: item, spaceId: item.spaceId })
+                  }
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+              </div>
+            ))}
+          </nav>
+          <div className="spaces-heading nav-label">
+            Spaces
+            <button
+              className="icon-button"
+              aria-label="Créer un Space"
+              onClick={() => setDialog({ type: 'space' })}
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+          <nav className="spaces-nav" aria-label="Spaces">
+            {workspace.spaces.map((space) => (
+              <SpaceNav
+                key={space.id}
+                space={space}
+                active={view === 'space' && spaceId === space.id}
+                pageId={pageId}
+                onOpen={(id) => openPage(space.id, id)}
+              />
+            ))}
+          </nav>
+          <button
+            className={`nav-item sidebar-activity ${view === 'tasks' ? 'active' : ''}`}
+            onClick={() => {
+              setView('tasks');
+              setMobile(false);
+            }}
+          >
+            <Clock3 size={14} />
+            <span>Activité</span>
+            {state.tasks.length > 0 && <small>{state.tasks.length}</small>}
+          </button>
+          <div className="conversation-list-label">Conversations</div>
+          {configured ? (
+            <ThreadList
+              dotId={dot.id}
+              dots={workspace.dots}
+              local={workspace.conversations}
+              selected={view === 'chat' ? selectedThread : undefined}
+              category={conversationCategory}
+              search={conversationSearch}
+              onSelect={(id) => {
+                const conversation = workspace.conversations.find(
+                  (item) => item.id === id,
+                );
+                if (conversation) setSelectedDot(conversation.dotId);
+                setSelectedThread(id);
+                setPendingVoice(false);
+                setView('chat');
+                setMobile(false);
+              }}
+              onDelete={(id) => void deleteConversation(id)}
+            />
+          ) : (
+            <div className="sidebar-empty">
+              Configurez le chat pour commencer une conversation.
+            </div>
+          )}
+        </div>
+        <div className="sidebar-bottom">
+          <div className="sidebar-profile">
+            <span className="sidebar-avatar">AI</span>
+            <span className="sidebar-profile-name">NevaDots</span>
+            <button
+              className="icon-button"
               aria-label={
-                state.settings.paused ? 'Resume all Dots' : 'Pause all Dots'
+                state.settings.paused
+                  ? 'Reprendre les Dots'
+                  : 'Mettre les Dots en pause'
+              }
+              title={
+                state.settings.paused
+                  ? 'Reprendre les Dots'
+                  : 'Mettre les Dots en pause'
               }
               onClick={() =>
                 void mutate('/settings', 'PATCH', {
@@ -704,18 +734,51 @@ export function App() {
                 })
               }
             >
-              {state.settings.paused ? <Play size={14} /> : <Pause size={14} />}
-              <span>{state.settings.paused ? 'Resume' : 'Pause'}</span>
+              {state.settings.paused ? <Play size={15} /> : <Pause size={15} />}
             </button>
             <button
               className="icon-button"
-              aria-label={pane ? 'Hide computer' : 'Show computer'}
-              aria-expanded={pane}
-              onClick={() => setPane(!pane)}
+              aria-label="Paramètres"
+              title="Paramètres"
+              onClick={() => setDialog({ type: 'settings' })}
             >
-              <Monitor size={18} />
+              <Settings2 size={17} />
+            </button>
+            <button
+              className="icon-button sidebar-delete-all"
+              aria-label="Supprimer toutes les conversations"
+              title="Supprimer toutes les conversations"
+              disabled={!workspace.conversations.length}
+              onClick={() => void deleteAllConversations()}
+            >
+              <Trash2 size={16} />
             </button>
           </div>
+        </div>
+      </aside>
+      <div className="workspace">
+        <header className="topbar">
+          <button
+            className="desktop-nav-toggle document-icon"
+            aria-label={
+              mobile
+                ? 'Fermer le panneau'
+                : navCollapsed
+                  ? 'Afficher le panneau'
+                  : 'Masquer le panneau'
+            }
+            aria-expanded={mobile ? true : !navCollapsed}
+            aria-controls="workspace-sidebar"
+            onClick={() => {
+              if (window.matchMedia('(max-width: 700px)').matches) {
+                setMobile(!mobile);
+              } else {
+                setNavCollapsed(!navCollapsed);
+              }
+            }}
+          >
+            {mobile ? <X size={17} /> : <PanelLeft size={17} />}
+          </button>
         </header>
         {error && (
           <div className="error-banner" role="alert">
@@ -756,6 +819,7 @@ export function App() {
                 setView('chat');
                 setSelectedDot(target.dotId);
                 setSelectedThread(id);
+                setPendingVoice(false);
               }
             }}
           />
@@ -767,8 +831,16 @@ export function App() {
                   key={thread.id}
                   thread={thread}
                   dot={dot}
+                  dots={workspace.dots}
+                  memories={state.memories}
+                  onChooseDot={chooseDot}
+                  onCreateDot={() =>
+                    setDialog({ type: 'dot', spaceId: dot.spaceId })
+                  }
                   initialPrompt={pendingPrompt}
                   onConsumed={() => setPendingPrompt(undefined)}
+                  startVoice={pendingVoice}
+                  onVoiceRequestHandled={() => setPendingVoice(false)}
                   voiceReady={workspace.setup.voice}
                   calls={workspace.calls.filter(
                     (call) => call.threadId === thread.id,
@@ -782,22 +854,9 @@ export function App() {
                 />
               ) : (
                 <div className="new-conversation">
-                  <div className="empty-chat-persona">
-                    <Mascot
-                      identity={dot.id}
-                      name={dot.name}
-                      state={state.settings.paused ? 'paused' : 'idle'}
-                    />
-                    <h2>{dot.name}</h2>
-                    <p>{dot.instructions}</p>
-                    <button
-                      className="text-button"
-                      onClick={() =>
-                        setDialog({ type: 'dot', dot, spaceId: dot.spaceId })
-                      }
-                    >
-                      Edit specialist <MoreHorizontal size={14} />
-                    </button>
+                  <div className="welcome-hero">
+                    <span className="welcome-halo" aria-hidden="true" />
+                    <h1>Par où commencer ?</h1>
                   </div>
                   {!configured && (
                     <div className="setup-card">
@@ -805,98 +864,226 @@ export function App() {
                         <Settings2 size={20} />
                       </span>
                       <div>
-                        <strong>Connect your Dot</strong>
+                        <strong>Configurez votre Dot</strong>
                         <p>
-                          Connect your model and conversation service in
-                          Settings to start chatting. Your Spaces and Dot
-                          preferences are ready to use.
+                          Connectez un modèle et le service de conversation dans
+                          les paramètres pour commencer. Vos Spaces et vos Dots
+                          restent disponibles.
                         </p>
-                        <p>
-                          Setup and usage metadata is collected by default.{' '}
-                          <a
-                            href="https://github.com/CopilotKit/OpenDots/blob/main/docs/SETUP-TELEMETRY.md"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Tracking and opt-out details
-                          </a>
-                        </p>
-                        <a
-                          href="https://github.com/CopilotKit/OpenDots/blob/main/docs/SETUP.md"
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          className="text-button"
+                          onClick={() => setDialog({ type: 'settings' })}
                         >
-                          Open the setup guide <ArrowUpRight size={12} />
-                        </a>
+                          Ouvrir les paramètres <ArrowUpRight size={12} />
+                        </button>
                       </div>
                     </div>
                   )}
-                  <form
-                    className="composer"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void newConversation(prompt);
-                    }}
-                  >
-                    <textarea
-                      aria-label="Start a conversation"
-                      placeholder={
-                        configured
-                          ? `Message ${dot.name}…`
-                          : 'Your first conversation starts after setup.'
-                      }
-                      value={prompt}
-                      maxLength={4000}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      onKeyDown={(e) =>
-                        submitComposerOnEnter(
-                          e,
-                          configured && !busy && !!prompt.trim(),
-                        )
-                      }
-                      disabled={!configured}
-                    />
-                    <div className="composer-bottom">
-                      <span>
-                        <MessageCircle size={14} />
-                        Text and calls, one continuing conversation
-                      </span>
-                      <button
-                        className="send-button"
-                        aria-label="Start conversation"
-                        disabled={!configured || busy || !prompt.trim()}
-                      >
-                        <ArrowUp size={19} />
-                      </button>
-                    </div>
-                  </form>
-                  <div className="starter-suggestions">
-                    {[
-                      'Help me think this through',
-                      'Research a public page',
-                      'Make a plan I can follow',
-                    ].map((text) => (
-                      <button
-                        key={text}
-                        disabled={!configured}
-                        onClick={() => setPrompt(text)}
-                      >
-                        {text}
-                        <ArrowUpRight size={12} />
-                      </button>
-                    ))}
-                  </div>
-                  <div className="connection-note">
-                    <span
-                      className={`online-dot ${workspace.setup.slack === 'online' ? '' : 'off'}`}
-                    />
-                    Slack · {workspace.setup.slack.replaceAll('_', ' ')}
-                    <button
-                      className="text-button"
-                      onClick={() => setDialog({ type: 'settings' })}
+                  <div className="welcome-composer-area">
+                    {composerToolsOpen && (
+                      <ComposerMenu
+                        dots={workspace.dots}
+                        activeDotId={dot.id}
+                        memories={state.memories}
+                        onSource={() => setSourceOpen(true)}
+                        onChooseDot={chooseDot}
+                        onInsertMemory={(text) =>
+                          setPrompt((current) =>
+                            current ? `${text}\n\n${current}` : text,
+                          )
+                        }
+                        onComputer={() => setPane(true)}
+                        onCreateDot={() =>
+                          setDialog({ type: 'dot', spaceId: dot.spaceId })
+                        }
+                        onClose={() => setComposerToolsOpen(false)}
+                      />
+                    )}
+                    {promptMenuOpen && (
+                      <div className="welcome-prompt-menu">
+                        {[
+                          'Aide-moi à réfléchir à cette idée',
+                          'Fais une recherche sur cette page',
+                          'Propose-moi un plan d’action',
+                        ].map((suggestion) => (
+                          <button
+                            type="button"
+                            key={suggestion}
+                            onClick={() => {
+                              setPrompt(suggestion);
+                              setPromptMenuOpen(false);
+                            }}
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <form
+                      className="welcome-composer"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void newConversation(
+                          `${promptSource.trim() ? `From ${promptSource.trim()}:\n\n` : ''}${prompt}`,
+                        );
+                      }}
                     >
-                      Setup details
-                    </button>
+                      {sourceOpen && (
+                        <div className="welcome-source-input">
+                          <Link2 size={15} />
+                          <input
+                            aria-label="URL de la page à consulter"
+                            type="url"
+                            value={promptSource}
+                            onChange={(event) =>
+                              setPromptSource(event.target.value)
+                            }
+                            placeholder="https://example.com/page"
+                          />
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label="Retirer la source"
+                            onClick={() => {
+                              setSourceOpen(false);
+                              setPromptSource('');
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )}
+                      <textarea
+                        aria-label="Démarrer une conversation"
+                        placeholder={
+                          configured
+                            ? `Demander à ${dot.name}`
+                            : 'Configurez un modèle pour commencer.'
+                        }
+                        value={prompt}
+                        rows={1}
+                        maxLength={4000}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        onKeyDown={(e) =>
+                          submitComposerOnEnter(
+                            e,
+                            configured && !busy && !!prompt.trim(),
+                          )
+                        }
+                        disabled={!configured}
+                      />
+                      <div className="welcome-composer-actions">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label="Ouvrir les outils du composer"
+                          title="Ajouter"
+                          aria-expanded={composerToolsOpen}
+                          onClick={() => setComposerToolsOpen((open) => !open)}
+                        >
+                          <Plus size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`icon-button ${sourceOpen ? 'active' : ''}`}
+                          aria-label="Ajouter une page web"
+                          title="Ajouter une page web"
+                          aria-expanded={sourceOpen}
+                          onClick={() => setSourceOpen((open) => !open)}
+                        >
+                          <Globe size={17} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`icon-button ${promptMenuOpen ? 'active' : ''}`}
+                          aria-label="Aide pour rédiger un prompt"
+                          title="Suggestions de prompts"
+                          aria-expanded={promptMenuOpen}
+                          onClick={() => {
+                            setComposerToolsOpen(false);
+                            setPromptMenuOpen((open) => !open);
+                          }}
+                        >
+                          <CircleHelp size={17} />
+                        </button>
+                        <button
+                          type="button"
+                          className="prompt-insert-button"
+                          onClick={() => {
+                            setComposerToolsOpen(false);
+                            setPromptMenuOpen((open) => !open);
+                          }}
+                        >
+                          Insérer un prompt
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label="Démarrer une conversation vocale"
+                          title={
+                            workspace.setup.voice
+                              ? 'Démarrer une conversation vocale'
+                              : 'La voix nécessite une configuration serveur'
+                          }
+                          disabled={
+                            !configured || !workspace.setup.voice || busy
+                          }
+                          onClick={() => void newConversation('')}
+                        >
+                          <Mic size={17} />
+                        </button>
+                        {modelOptions.models.length > 0 && (
+                          <select
+                            className="welcome-model-select"
+                            aria-label="Modèle pour ce Dot"
+                            title="Modèle pour ce Dot"
+                            value={selectedModel}
+                            onChange={async (event) => {
+                              const model = event.target.value;
+                              setError('');
+                              try {
+                                await api(`/dots/${dot.id}/model`, 'PUT', {
+                                  model: model || null,
+                                });
+                                await refresh();
+                              } catch (cause) {
+                                setError(
+                                  cause instanceof Error
+                                    ? cause.message
+                                    : 'Impossible de changer de modèle.',
+                                );
+                              }
+                            }}
+                          >
+                            <option value="">
+                              {modelOptions.default
+                                ? `Défaut · ${modelOptions.default}`
+                                : 'Défaut'}
+                            </option>
+                            {modelOptions.models.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <span className="welcome-composer-spacer" />
+                        <button
+                          className="send-button"
+                          aria-label="Démarrer la conversation"
+                          disabled={!configured || busy || !prompt.trim()}
+                        >
+                          <ArrowUp size={19} />
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                  <div className="welcome-model-note">
+                    {dot.name} · {selectedModel || 'Modèle'}
+                  </div>
+                  <div className="welcome-token-bar">
+                    ↑ 0 (entrée) · ↓ 0 (sortie) Tokens&nbsp; · &nbsp;Coût estimé
+                    : &nbsp;$0.0000
                   </div>
                 </div>
               )}
@@ -1095,13 +1282,18 @@ export function App() {
           state={state}
           workspace={workspace}
           onClose={() => setDialog(undefined)}
+          onOpenDialog={setDialog}
           mutate={mutate}
         />
       )}
     </div>
   );
   return configured ? (
-    <CopilotKitProvider runtimeUrl="/api/copilotkit" headers={authHeaders()}>
+    <CopilotKitProvider
+      runtimeUrl="/api/copilotkit"
+      headers={authHeaders()}
+      showDevConsole={false}
+    >
       {content}
     </CopilotKitProvider>
   ) : (

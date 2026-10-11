@@ -8,7 +8,7 @@ import { ConnectionActionCard } from './ConnectionActionCard';
 import { contextualMessage, type PageContext } from './page-context';
 import { api } from './api';
 import type { Page } from '../server/pages';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CopilotChatToolCallsView,
   useRenderTool,
@@ -23,6 +23,7 @@ import {
   Link2,
   Phone,
   PhoneOff,
+  Plus,
   Square,
   X,
 } from 'lucide-react';
@@ -32,9 +33,13 @@ import {
 } from './ComputerToolCard';
 import { ChatTranscript, isInternalVoiceReceipt } from './ChatTranscript';
 import { ReasoningPanel } from './ReasoningPanel';
+import { ActivityRail } from './ActivityRail';
+import { ActivityBubbles } from './ActivityBubbles';
+import { deriveActivity } from './activity';
 import type { ReasoningRunStats } from '../server/reasoning.js';
-import type { CallReceipt, Conversation, Dot } from '../shared/types';
+import type { CallReceipt, Conversation, Dot, Memory } from '../shared/types';
 import { Mascot } from './Mascot';
+import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
 import { CallView } from './CallView';
 import { shouldSubmitComposerOnKeyDown } from './chat-composer';
@@ -42,8 +47,14 @@ import { shouldSubmitComposerOnKeyDown } from './chat-composer';
 export function Chat({
   thread,
   dot,
+  dots,
+  memories,
+  onChooseDot,
+  onCreateDot,
   initialPrompt,
   onConsumed,
+  startVoice,
+  onVoiceRequestHandled,
   voiceReady,
   calls,
   paused,
@@ -53,8 +64,14 @@ export function Chat({
 }: {
   thread: Conversation;
   dot: Dot;
+  dots?: Dot[];
+  memories?: Memory[];
+  onChooseDot?: (dot: Dot) => void;
+  onCreateDot?: () => void;
   initialPrompt?: string;
   onConsumed: () => void;
+  startVoice?: boolean;
+  onVoiceRequestHandled?: () => void;
   voiceReady: boolean;
   calls: CallReceipt[];
   paused: boolean;
@@ -98,6 +115,7 @@ export function Chat({
   const [draft, setDraft] = useState('');
   const [source, setSource] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [running, setRunning] = useState(false);
@@ -250,6 +268,29 @@ export function Chat({
   }, []);
   const selectedModel = dot.model ?? models.default ?? '';
   const voice = useVoice(thread.id, onSaved, agent.messages.at(-1)?.id);
+  const voiceRequestStarted = useRef(false);
+  useEffect(() => {
+    if (
+      !startVoice ||
+      !voiceReady ||
+      !loaded ||
+      !contextReady ||
+      paused ||
+      voiceRequestStarted.current
+    )
+      return;
+    voiceRequestStarted.current = true;
+    onVoiceRequestHandled?.();
+    void voice.start();
+  }, [
+    startVoice,
+    voiceReady,
+    loaded,
+    contextReady,
+    paused,
+    voice.start,
+    onVoiceRequestHandled,
+  ]);
   const sent = useRef(false);
   const bottom = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -419,83 +460,53 @@ export function Chat({
               call.function.name === connectionActionTool.name,
           ))),
   );
+  // Live activity feed (commands, websites, files, searches) + collapsed bubbles.
+  const activity = useMemo(
+    () => deriveActivity(agent.messages),
+    [agent.messages],
+  );
+  const [railOpen, setRailOpen] = useState(false);
+  const railDismissed = useRef(false);
+  const prevRunningForRail = useRef(false);
+  const hasToolActivity = activity.some((event) => event.kind !== 'reasoning');
+  useEffect(() => {
+    if (running && !prevRunningForRail.current) railDismissed.current = false;
+    if (running && hasToolActivity && !railDismissed.current && !reasonPanel)
+      setRailOpen(true);
+    prevRunningForRail.current = running;
+  }, [running, hasToolActivity, reasonPanel]);
+  useEffect(() => {
+    if (reasonPanel) setRailOpen(false);
+  }, [reasonPanel]);
+  // Cumulative session tokens for the cetas-style token bar.
+  const [session, setSession] = useState({ in: 0, out: 0, cost: 0 });
+  const prevRunForTokens = useRef(false);
+  useEffect(() => {
+    if (!prevRunForTokens.current || running) {
+      prevRunForTokens.current = running;
+      return;
+    }
+    prevRunForTokens.current = running;
+    const lastReasoning = agent.messages
+      .filter((message) => message.role === 'reasoning')
+      .at(-1);
+    if (!lastReasoning) return;
+    void api<ReasoningRunStats>(
+      `/reasoning-stats?messageId=${encodeURIComponent(lastReasoning.id)}`,
+    )
+      .then((stats) =>
+        setSession((previous) => ({
+          in: previous.in + (stats.promptTokens ?? 0),
+          out: previous.out + (stats.completionTokens ?? 0),
+          cost: previous.cost + (stats.costUsd ?? 0),
+        })),
+      )
+      .catch(() => {
+        /* token totals are best-effort */
+      });
+  }, [running, agent.messages]);
   return (
-    <div className="live-chat">
-      <header className="chat-persona">
-        <Mascot
-          identity={dot.id}
-          name={dot.name}
-          small
-          state={mascotState}
-        />
-        <div>
-          <strong>{dot.name}</strong>
-          <span>
-            {paused
-              ? 'Paused'
-              : running
-                ? 'Thinking…'
-                : loaded && contextReady
-                  ? 'Here with you'
-                  : 'Connecting to your conversation…'}
-          </span>
-        </div>
-        <div className="chat-persona-actions">
-          <button
-            className="icon-button"
-            aria-label="Save conversation as page"
-            disabled={running}
-            onClick={async () => {
-              const title = window.prompt('Page title', thread.title);
-              if (!title) return;
-              try {
-                const page = await api<Page>(
-                  `/conversations/${thread.id}/page`,
-                  'POST',
-                  { title },
-                );
-                location.hash = `/spaces/${page.spaceId}/pages/${page.id}`;
-              } catch (e) {
-                setError(
-                  e instanceof Error
-                    ? e.message
-                    : 'Could not save conversation.',
-                );
-              }
-            }}
-          >
-            <FilePlus size={18} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label="Schedule a task in this conversation"
-            onClick={onSchedule}
-          >
-            <Clock3 size={18} />
-          </button>
-          <button
-            className={`icon-button ${voice.status === 'active' ? 'on-call' : ''}`}
-            aria-label={
-              voice.status === 'idle' ? 'Start voice call' : 'End voice call'
-            }
-            title={
-              voiceReady
-                ? 'Talk with your Dot'
-                : 'Voice setup requires VOICE_API_KEY and VOICE_MODEL'
-            }
-            disabled={!voiceReady || paused || !loaded || !contextReady}
-            onClick={() =>
-              voice.status === 'idle' ? void voice.start() : void voice.end()
-            }
-          >
-            {voice.status === 'idle' ? (
-              <Phone size={18} />
-            ) : (
-              <PhoneOff size={18} />
-            )}
-          </button>
-        </div>
-      </header>
+    <div className={`live-chat ${visible.length ? 'in-conversation' : ''}`}>
       {pageContext && (
         <div className="page-chat-context">
           Working on{' '}
@@ -507,12 +518,8 @@ export function Chat({
       <div className="chat-transcript">
         {!visible.length && (
           <div className="chat-welcome">
-            <span className="eyebrow">A LITTLE SPACE TO THINK</span>
-            <h1>What’s on your mind?</h1>
+            <h1>Par où commencer ?</h1>
             <p>{dot.instructions}</p>
-            <p className="muted">
-              Your conversation stays with this Dot, across text and calls.
-            </p>
           </div>
         )}
         <ChatTranscript
@@ -582,6 +589,95 @@ export function Chat({
         onTranslate={translateReasoning}
         onToggleTranslation={() => setShowTranslation((v) => !v)}
       />
+      <ActivityRail
+        open={railOpen}
+        events={activity}
+        running={running}
+        dotName={dot.name}
+        onClose={() => {
+          setRailOpen(false);
+          railDismissed.current = true;
+        }}
+        onOpenReasoning={(id) => setReasonPanel({ id, live: false })}
+        onOpenComputer={onComputer}
+      />
+      {!railOpen && !reasonPanel && (
+        <ActivityBubbles
+          events={activity}
+          running={running}
+          onOpen={() => setRailOpen(true)}
+        />
+      )}
+      <div className="chat-token-bar">
+        <Mascot
+          identity={dot.id}
+          name={dot.name}
+          small
+          decorative
+          state={mascotState}
+        />
+        <div className="chat-token-actions">
+          <button
+            className="icon-button"
+            aria-label="Save conversation as page"
+            title="Enregistrer la conversation en page"
+            disabled={running}
+            onClick={async () => {
+              const title = window.prompt('Page title', thread.title);
+              if (!title) return;
+              try {
+                const page = await api<Page>(
+                  `/conversations/${thread.id}/page`,
+                  'POST',
+                  { title },
+                );
+                location.hash = `/spaces/${page.spaceId}/pages/${page.id}`;
+              } catch (e) {
+                setError(
+                  e instanceof Error
+                    ? e.message
+                    : 'Could not save conversation.',
+                );
+              }
+            }}
+          >
+            <FilePlus size={16} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Schedule a task in this conversation"
+            title="Planifier une tâche"
+            onClick={onSchedule}
+          >
+            <Clock3 size={16} />
+          </button>
+          <button
+            className={`icon-button ${voice.status === 'active' ? 'on-call' : ''}`}
+            aria-label={
+              voice.status === 'idle' ? 'Start voice call' : 'End voice call'
+            }
+            title={
+              voiceReady
+                ? 'Talk with your Dot'
+                : 'Voice setup requires VOICE_API_KEY and VOICE_MODEL'
+            }
+            disabled={!voiceReady || paused || !loaded || !contextReady}
+            onClick={() =>
+              voice.status === 'idle' ? void voice.start() : void voice.end()
+            }
+          >
+            {voice.status === 'idle' ? (
+              <Phone size={16} />
+            ) : (
+              <PhoneOff size={16} />
+            )}
+          </button>
+        </div>
+        <span className="chat-token-info">
+          ↑ {session.in} (input) ↓ {session.out} (output) Tokens · Coût estimé :
+          ${session.cost.toFixed(4).replace('.', ',')}
+        </span>
+      </div>
       <form
         className="chat-composer"
         onSubmit={(e) => {
@@ -612,51 +708,26 @@ export function Chat({
             </button>
           </div>
         )}
+        {composerToolsOpen && (
+          <ComposerMenu
+            dots={dots ?? []}
+            activeDotId={dot.id}
+            memories={memories ?? []}
+            onSource={() => setSourceOpen(true)}
+            onChooseDot={onChooseDot ?? (() => {})}
+            onInsertMemory={(text) =>
+              setDraft((current) => (current ? `${text}\n\n${current}` : text))
+            }
+            onSchedule={onSchedule}
+            onComputer={onComputer}
+            onCreateDot={onCreateDot}
+            onClose={() => setComposerToolsOpen(false)}
+          />
+        )}
         <div className="chat-compose-row">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Add source page link"
-            onClick={() => setSourceOpen(!sourceOpen)}
-          >
-            <Link2 size={19} />
-          </button>
-          {models.models.length > 0 && (
-            <select
-              className="model-select"
-              aria-label="Model for this Dot"
-              title="Model for this Dot"
-              value={selectedModel}
-              onChange={async (e) => {
-                const value = e.target.value;
-                setModelError('');
-                try {
-                  await api(`/dots/${dot.id}/model`, 'PUT', {
-                    model: value || null,
-                  });
-                  onSaved();
-                } catch (err) {
-                  setModelError(
-                    err instanceof Error
-                      ? err.message
-                      : 'Could not change model.',
-                  );
-                }
-              }}
-            >
-              <option value="">
-                {models.default ? `Default (${models.default})` : 'Default'}
-              </option>
-              {models.models.map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
-            </select>
-          )}
           <textarea
             aria-label="Message your Dot"
-            placeholder={`Message ${dot.name}…`}
+            placeholder={`Demander à ${dot.name}`}
             rows={1}
             value={draft}
             maxLength={4000}
@@ -668,29 +739,82 @@ export function Chat({
               }
             }}
           />
-          {running ? (
+          <div className="chat-compose-tools">
             <button
               type="button"
-              className="send-button"
-              aria-label="Stop response"
-              onClick={() => copilotkit.stopAgent({ agent })}
+              className={`icon-button ${composerToolsOpen ? 'active' : ''}`}
+              aria-label="Ouvrir les outils du composer"
+              title="Ajouter"
+              aria-expanded={composerToolsOpen}
+              onClick={() => setComposerToolsOpen((open) => !open)}
             >
-              <Square size={16} />
+              <Plus size={17} />
             </button>
-          ) : (
             <button
-              className="send-button"
-              aria-label="Send message"
-              disabled={!draft.trim() || !loaded || !contextReady || paused}
+              type="button"
+              className="icon-button"
+              aria-label="Add source page link"
+              title="Ajouter une page web"
+              onClick={() => setSourceOpen(!sourceOpen)}
             >
-              <ArrowUp size={19} />
+              <Link2 size={17} />
             </button>
-          )}
+            {models.models.length > 0 && (
+              <select
+                className="model-select"
+                aria-label="Model for this Dot"
+                title="Modèle pour ce Dot"
+                value={selectedModel}
+                onChange={async (e) => {
+                  const value = e.target.value;
+                  setModelError('');
+                  try {
+                    await api(`/dots/${dot.id}/model`, 'PUT', {
+                      model: value || null,
+                    });
+                    onSaved();
+                  } catch (err) {
+                    setModelError(
+                      err instanceof Error
+                        ? err.message
+                        : 'Could not change model.',
+                    );
+                  }
+                }}
+              >
+                <option value="">
+                  {models.default ? `Défaut (${models.default})` : 'Défaut'}
+                </option>
+                {models.models.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            )}
+            {running ? (
+              <button
+                type="button"
+                className="send-button"
+                aria-label="Stop response"
+                onClick={() => copilotkit.stopAgent({ agent })}
+              >
+                <Square size={16} />
+              </button>
+            ) : (
+              <button
+                className="send-button"
+                aria-label="Send message"
+                disabled={!draft.trim() || !loaded || !contextReady || paused}
+              >
+                <ArrowUp size={19} />
+              </button>
+            )}
+          </div>
         </div>
         <div className="chat-compose-note">
-          {voiceReady
-            ? 'Text and voice, one conversation.'
-            : 'Text is ready. Voice needs separate server configuration.'}
+          {dot.name} · {selectedModel || 'défaut'}
+          {paused ? ' · en pause' : ''}
         </div>
       </form>
     </div>

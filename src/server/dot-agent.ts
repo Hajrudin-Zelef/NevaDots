@@ -35,6 +35,13 @@ const channelError = () => ({
     'NevaDots could not complete this request. Please check the app and try again.',
 });
 const TURN_TIME_LIMIT_MS = 90_000;
+/**
+ * Cap the size of a tool result fed back to the model. Large page/terminal
+ * outputs are kept in full for the UI (capture/brief) but resent to the model
+ * on every agent iteration; truncating here keeps each prompt small so turns
+ * stay fast (the model only needs a representative excerpt).
+ */
+const TOOL_RESULT_LIMIT = 6000;
 export class DotAgent extends AbstractAgent {
   private inner?: BuiltInAgent;
   private controller?: AbortController;
@@ -413,10 +420,21 @@ export class DotAgent extends AbstractAgent {
             const converted = convertInputToTanStackAI({
               ...ctx.input,
               // Match BuiltInAgent's default trust boundary for client messages.
-              messages: ctx.input.messages.filter(
-                (message) =>
-                  message.role !== 'system' && message.role !== 'developer',
-              ),
+              messages: ctx.input.messages
+                .filter(
+                  (message) =>
+                    message.role !== 'system' && message.role !== 'developer',
+                )
+                .map((message) =>
+                  message.role === 'tool' &&
+                  typeof message.content === 'string' &&
+                  message.content.length > TOOL_RESULT_LIMIT
+                    ? {
+                        ...message,
+                        content: `${message.content.slice(0, TOOL_RESULT_LIMIT)}\n…[résultat tronqué]`,
+                      }
+                    : message,
+                ),
             });
             return chat({
               adapter,
