@@ -300,10 +300,10 @@ export function App() {
         ? 'basse'
         : reasoningEffort === 'high'
           ? 'haute'
-          : 'par défaut';
+          : 'désactivée';
   const cycleReasoning = async () => {
     if (reasoningBusy || !dot) return;
-    const order = ['', 'none', 'low', 'high'];
+    const order = ['', 'low', 'high'];
     const next = order[(order.indexOf(reasoningEffort) + 1) % order.length];
     setReasoningBusy(true);
     setError('');
