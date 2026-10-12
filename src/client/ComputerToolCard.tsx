@@ -19,18 +19,18 @@ export type ComputerToolRenderProps = {
   result?: unknown;
 };
 const labels: Record<string, string> = {
-  navigate: 'Opening website',
-  snapshot: 'Inspecting browser',
-  read: 'Reading page',
-  screenshot: 'Viewing browser',
-  click: 'Clicking in browser',
-  type: 'Typing in browser',
-  key: 'Using keyboard',
-  scroll: 'Scrolling page',
-  files_write: 'Saving file',
-  files_read: 'Reading file',
-  files_list: 'Listing files',
-  exec: 'Running terminal command',
+  navigate: 'Ouvre un site',
+  snapshot: 'Inspecte la page',
+  read: 'Lit la page',
+  screenshot: 'Vue du navigateur',
+  click: 'Clique dans le navigateur',
+  type: 'Saisit dans le navigateur',
+  key: 'Utilise le clavier',
+  scroll: 'Fait défiler la page',
+  files_write: 'Enregistre un fichier',
+  files_read: 'Lit un fichier',
+  files_list: 'Liste les fichiers',
+  exec: 'Commande terminal',
 };
 export function ComputerToolCard({
   name,
@@ -70,14 +70,14 @@ export function ComputerToolCard({
     !!error ||
     (typeof data.exitCode === 'number' && data.exitCode !== 0);
   const state = interrupted
-    ? 'Interrupted'
+    ? 'Interrompu'
     : failed
-      ? 'Needs attention'
+      ? 'À vérifier'
       : complete
-        ? 'Finished'
+        ? 'Terminé'
         : running
-          ? 'Working'
-          : 'Interrupted';
+          ? 'En cours'
+          : 'Interrompu';
   const detail =
     typeof parameters.url === 'string'
       ? parameters.url
@@ -137,14 +137,14 @@ export function ComputerToolCard({
     >
       <header>
         <Icon size={16} aria-hidden="true" />
-        <strong>{labels[action] ?? 'Using computer'}</strong>
+        <strong>{labels[action] ?? 'Utilise l’ordinateur'}</strong>
         <span className={failed ? 'tool-state failed' : 'tool-state'}>
           {state}
         </span>
         {onExpand && (
           <button
             type="button"
-            aria-label={`Expand ${dotName} computer`}
+            aria-label="Ouvrir l’aperçu"
             onClick={onExpand}
           >
             <ArrowUpRight size={16} />
@@ -159,7 +159,7 @@ export function ComputerToolCard({
       {error && <p role="alert">{error}</p>}
       {interruption && <p role="status">{interruption}</p>}
       {action === 'exec' && complete && typeof data.stdout === 'string' && (
-        <pre aria-label="Computer terminal output">
+        <pre aria-label="Sortie terminal">
           {data.stdout.slice(0, 4000)}
         </pre>
       )}
@@ -171,20 +171,29 @@ export function ComputerToolCard({
         <div className="inline-computer-preview">
           <div className="inline-computer-caption">
             <span className="live-indicator" />
-            {dotName}’s computer · Current browser view
+            Navigateur de {dotName}
           </div>
           {screen && (
             <img
               src={`data:image/png;base64,${screen.base64}`}
-              alt={`Current browser view from ${dotName}'s computer`}
+              alt={`Écran du navigateur de ${dotName}`}
             />
           )}
           {screenError ? (
             <p role="status">{screenError}</p>
           ) : (
-            !screen && <p role="status">Connecting to computer…</p>
+            !screen && <p role="status">Connexion au navigateur…</p>
           )}
           {screen && <div className="inline-computer-url">{screen.url}</div>}
+          {onExpand && (
+            <button
+              type="button"
+              className="inline-computer-open"
+              onClick={onExpand}
+            >
+              Ouvrir l’aperçu
+            </button>
+          )}
         </div>
       )}
     </section>

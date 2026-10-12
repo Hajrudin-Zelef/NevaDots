@@ -891,6 +891,8 @@ export function App() {
                   }}
                   onOpenSettings={() => setDialog({ type: 'settings' })}
                   onOpenTasks={() => setView('tasks')}
+                  paneOpen={pane}
+                  onClosePane={() => setPane(false)}
                 />
               ) : (
                 <div className="new-conversation">
