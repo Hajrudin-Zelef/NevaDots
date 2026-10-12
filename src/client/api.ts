@@ -44,3 +44,7 @@ export async function api<T>(
 export function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+/** Raw owner token, for the WebSocket URL (browsers cannot set WS headers). */
+export function authToken(): string {
+  return token;
+}

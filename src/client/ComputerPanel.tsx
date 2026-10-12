@@ -3,6 +3,7 @@ import { RotateCw } from 'lucide-react';
 import type { Dot } from '../shared/types';
 import type { ComputerAction, ComputerStatus } from '../shared/computer-types';
 import { api } from './api';
+import { BrowserScreen } from './BrowserScreen';
 
 type Screen = {
   base64: string;
@@ -329,62 +330,22 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                     {screenError}
                   </p>
                 )}
-                {screen ? (
+                {browser && running ? (
                   <>
-                    <button
-                      className="computer-screen muse-screen"
-                      aria-label={
-                        human
-                          ? 'Cliquez un point de l’écran'
-                          : 'Écran du navigateur ; prenez le contrôle pour interagir'
-                      }
-                      disabled={!browser || !human || busy}
-                      onClick={(event) => {
-                        const rect =
-                          event.currentTarget.getBoundingClientRect();
-                        void action('human_click', {
-                          x: Math.min(
-                            screen.width - 1,
-                            Math.max(
-                              0,
-                              Math.floor(
-                                ((event.clientX - rect.left) / rect.width) *
-                                  screen.width,
-                              ),
-                            ),
-                          ),
-                          y: Math.min(
-                            screen.height - 1,
-                            Math.max(
-                              0,
-                              Math.floor(
-                                ((event.clientY - rect.top) / rect.height) *
-                                  screen.height,
-                              ),
-                            ),
-                          ),
-                        });
-                      }}
-                    >
-                      <img
-                        src={`data:image/png;base64,${screen.base64}`}
-                        alt={`Écran du navigateur de ${dot.name}`}
-                      />
-                    </button>
+                    <BrowserScreen
+                      dotId={dot.id}
+                      active={tab === 'Browser'}
+                      interactive={human}
+                    />
                     <small>
-                      Actualisé{' '}
-                      {new Date(screen.capturedAt).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                      . L’écran se rafraîchit tant que ce panneau est ouvert.
+                      {human
+                        ? 'Vous avez le contrôle : cliquez, tapez et défilez directement dans la page.'
+                        : 'Cliquez « Prendre le contrôle du navigateur » pour interagir.'}
                     </small>
                   </>
                 ) : (
                   <p className="computer-screen-empty">
-                    {running && status.permissions.browser
-                      ? 'En attente de l’écran…'
-                      : 'Démarrez l’ordinateur avec la permission Navigateur.'}
+                    Démarrez l’ordinateur avec la permission Navigateur.
                   </p>
                 )}
                 {status.control?.transitioning && (

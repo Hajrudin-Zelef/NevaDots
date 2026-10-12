@@ -10,6 +10,7 @@ import { createApp } from './app.js';
 import { resolveAppOrigins } from './app-origin.js';
 import { WorkspaceStore } from './workspace.js';
 import { Platform } from './platform.js';
+import { attachComputerStream } from './computer-stream.js';
 import {
   intelligenceApiKeyFromEnv,
   intelligenceWsUrlFromEnv,
@@ -144,6 +145,8 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
       ),
     );
 });
+// Live CDP screencast proxy for the Dot browser (owner-authenticated WebSocket).
+attachComputerStream(server, platform.computers, ownerToken);
 const shutdown = createShutdown({
   stopRunner: () => runner.stop(),
   stopPlatform: () => platform.stop(),
