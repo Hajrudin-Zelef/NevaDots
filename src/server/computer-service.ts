@@ -9,6 +9,37 @@ import {
 } from '../shared/computer-types.js';
 import type { WorkspaceStore } from './workspace.js';
 import type { PlatformConfig } from './platform-config.js';
+/** An HTTP error from a computer, carrying the status and parsed error payload. */
+export class ComputerHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly payload: unknown,
+  ) {
+    super(message);
+    this.name = 'ComputerHttpError';
+  }
+}
+/**
+ * Browser mutations that carry no element ref, so they are safe to retry after
+ * taking a fresh snapshot. Click/type carry a ref bound to a snapshot id and
+ * must not be replayed blindly.
+ */
+const REFLESS_BROWSER_MUTATIONS = new Set(['navigate', 'key', 'scroll']);
+function snapshotRequired(payload: unknown): boolean {
+  return (
+    !!payload &&
+    typeof payload === 'object' &&
+    (payload as { snapshotRequired?: unknown }).snapshotRequired === true
+  );
+}
+function humanHasControl(payload: unknown): boolean {
+  return (
+    !!payload &&
+    typeof payload === 'object' &&
+    (payload as { humanHasControl?: unknown }).humanHasControl === true
+  );
+}
 const stateSchema = z.object({
   botId: z.string(),
   container: z.string(),
@@ -85,12 +116,36 @@ export class ComputerService {
         redirect: 'error',
         signal: combined,
       });
-      if (response.status === 409)
-        throw new Error(
-          'Computer service returned HTTP 409: refresh the browser with computer_snapshot before retrying. If the owner has control, wait for them to release it; do not bypass takeover.',
+      if (!response.ok) {
+        let payload: unknown;
+        try {
+          payload = JSON.parse(await response.text());
+        } catch {
+          payload = undefined;
+        }
+        let detail =
+          payload &&
+          typeof payload === 'object' &&
+          typeof (payload as { error?: unknown }).error === 'string'
+            ? `: ${(payload as { error: string }).error}`
+            : '';
+        // Never let an upstream error reflect an infrastructure secret.
+        for (const secret of [
+          token,
+          this.config.computerToken?.trim(),
+          this.config.computerSupervisorToken?.trim(),
+        ])
+          if (secret) detail = detail.split(secret).join('[redacted]');
+        const suffix =
+          response.status === 409
+            ? ' Refresh with computer_snapshot before retrying, or wait for the owner to release control.'
+            : '.';
+        throw new ComputerHttpError(
+          `Computer service returned HTTP ${response.status}${detail}${suffix}`,
+          response.status,
+          payload,
         );
-      if (!response.ok)
-        throw new Error(`Computer service returned HTTP ${response.status}.`);
+      }
       if (!response.body)
         throw new Error('Computer service returned an empty response.');
       const reader = response.body.getReader();
@@ -120,6 +175,7 @@ export class ComputerService {
         throw new Error('Computer request was cancelled or timed out.', {
           cause: error,
         });
+      if (error instanceof ComputerHttpError) throw error;
       if (
         error instanceof Error &&
         /^Computer (service returned|response exceeded)/.test(error.message)
@@ -340,7 +396,7 @@ export class ComputerService {
           cancellation.abort();
         }
       }, 50);
-      try {
+      const perform = async () => {
         const url = await this.running(id, activeSignal);
         this.allowed(id, kind, actor);
         activeSignal.throwIfAborted();
@@ -355,6 +411,45 @@ export class ComputerService {
           id,
         );
         this.allowed(id, kind, actor);
+        return result;
+      };
+      try {
+        let result: unknown;
+        try {
+          result = await perform();
+        } catch (error) {
+          // After a restart or a control handback the browser requires a fresh
+          // snapshot before the next mutation. Take one (a snapshot is not a
+          // mutation) and retry once. Click/type carry a ref bound to a
+          // snapshot id, so only ref-less mutations are retried.
+          if (
+            error instanceof ComputerHttpError &&
+            error.status === 409 &&
+            snapshotRequired(error.payload) &&
+            REFLESS_BROWSER_MUTATIONS.has(action)
+          ) {
+            const url = await this.running(id, activeSignal);
+            await this.json(
+              `${url}/snapshot`,
+              this.token(id),
+              {},
+              activeSignal,
+              id,
+            );
+            result = await perform();
+          } else if (
+            error instanceof ComputerHttpError &&
+            error.status === 409 &&
+            humanHasControl(error.payload)
+          ) {
+            throw new Error(
+              "The owner currently has control of this Dot's computer. Release it from the Computer panel to let the agent act.",
+              { cause: error },
+            );
+          } else {
+            throw error;
+          }
+        }
         if (action === 'exec' && result && typeof result === 'object') {
           const copy = { ...result } as Record<string, unknown>;
           delete copy.command;

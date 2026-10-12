@@ -305,3 +305,40 @@ it('gives agents a safe recovery instruction for stale browser or control confli
   ).rejects.not.toThrow(f.config.computerToken);
   expect(f.workspace.computers.audit(f.id)[0].outcome).toBe('failed');
 });
+
+it('recovers from a snapshot-required conflict by snapshotting and retrying', async () => {
+  const f = fixture();
+  let navigations = 0;
+  f.handle(async (url) => {
+    if (url.endsWith('/snapshot'))
+      return Response.json({ snapshotId: 1, elements: [] });
+    if (url.endsWith('/navigate')) {
+      navigations += 1;
+      if (navigations === 1)
+        return Response.json(
+          { error: 'Take a new snapshot.', stale: true, snapshotRequired: true },
+          { status: 409 },
+        );
+      return Response.json({ url: 'https://example.com/', title: 'Example' });
+    }
+    return Response.json({ text: 'result' });
+  });
+  await expect(
+    f.service.action(f.id, 'navigate', { url: 'https://example.com' }, 'agent'),
+  ).resolves.toEqual({ url: 'https://example.com/', title: 'Example' });
+  expect(navigations).toBe(2);
+  expect(f.calls.some((call) => call.url.endsWith('/snapshot'))).toBe(true);
+});
+
+it('tells the agent to wait when the owner holds control', async () => {
+  const f = fixture();
+  f.handle(async () =>
+    Response.json(
+      { error: 'Human has control.', humanHasControl: true },
+      { status: 409 },
+    ),
+  );
+  await expect(
+    f.service.action(f.id, 'navigate', { url: 'https://example.com' }, 'agent'),
+  ).rejects.toThrow(/owner currently has control/i);
+});
