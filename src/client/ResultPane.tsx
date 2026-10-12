@@ -47,7 +47,7 @@ export function ResultPane({
             className={resultTab === 'Computer' ? 'selected' : ''}
             onClick={() => setResultTab('Computer')}
           >
-            <Monitor size={15} /> {computerDot?.name ?? 'Dot'}’s computer
+            <Monitor size={15} /> Navigateur
           </button>
         </div>
         <button
@@ -61,7 +61,7 @@ export function ResultPane({
       {resultTab === 'Computer' ? (
         <>
           <label className="computer-dot-picker">
-            Computer for
+            Ordinateur de
             <select
               value={computerDot?.id ?? ''}
               onChange={(event) => setComputerDotId(event.target.value)}

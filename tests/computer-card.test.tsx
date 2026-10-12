@@ -20,9 +20,9 @@ it('shows real terminal output and does not treat a nonzero exit as success', ()
       })}
     />,
   );
-  expect(html).toContain('Needs attention');
+  expect(html).toContain('À vérifier');
   expect(html).toContain('File not found');
-  expect(html).not.toContain('Finished');
+  expect(html).not.toContain('Terminé');
 });
 
 it('marks unfinished calls interrupted after a run ends and labels live views as current', () => {
@@ -38,8 +38,8 @@ it('marks unfinished calls interrupted after a run ends and labels live views as
       args={{ url: 'https://example.com' }}
     />,
   );
-  expect(html).toContain('Interrupted');
-  expect(html).toContain('Current browser view');
+  expect(html).toContain('Interrompu');
+  expect(html).toContain('Navigateur de');
   expect(html).toContain('https://example.com');
   expect(html).not.toContain('<img');
 });
@@ -51,7 +51,7 @@ it.each([
       reason: 'stop_requested',
       message: 'The run was stopped.',
     },
-    'Interrupted',
+    'Interrompu',
   ],
   [
     {
@@ -59,7 +59,7 @@ it.each([
       reason: 'missing_terminal_event',
       message: 'The tool never returned.',
     },
-    'Needs attention',
+    'À vérifier',
   ],
 ])('recognizes runtime-finalized tool result %j', (result, label) => {
   const html = renderToStaticMarkup(
@@ -76,5 +76,5 @@ it.each([
   );
   expect(html).toContain(label);
   expect(html).toContain(result.message);
-  expect(html).not.toContain('Finished');
+  expect(html).not.toContain('Terminé');
 });
