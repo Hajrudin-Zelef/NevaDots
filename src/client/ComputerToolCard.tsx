@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowUpRight, FileText, Monitor, Terminal } from 'lucide-react';
 import { z } from 'zod';
 import { api } from './api';
-import { computerToolResult } from './activity';
+import { computerToolResult } from '../shared/activity';
 
 const screenSchema = z.object({
   base64: z

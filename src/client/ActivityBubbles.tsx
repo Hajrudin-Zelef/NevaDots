@@ -1,4 +1,4 @@
-import { activityVerb, type ActivityEvent } from './activity';
+import { activityVerb, type ActivityEvent } from '../shared/activity';
 
 const chipText = (event: ActivityEvent) => {
   const verb = activityVerb(event);

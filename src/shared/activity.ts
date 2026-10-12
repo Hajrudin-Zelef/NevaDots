@@ -1,5 +1,5 @@
 import type { Message, ToolCall } from '@ag-ui/core';
-import { isScheduledTaskMessage } from '../shared/scheduled-message';
+import { isScheduledTaskMessage } from './scheduled-message.js';
 
 /**
  * Derives a human-readable activity feed from the AG-UI message stream.

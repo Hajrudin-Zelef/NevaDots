@@ -24,7 +24,8 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS thread_bindings(id TEXT PRIMARY KEY, dotId TEXT NOT NULL, ownerId TEXT NOT NULL, title TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS task_threads(taskId TEXT PRIMARY KEY, threadId TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS calls(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, status TEXT NOT NULL, transcript TEXT NOT NULL, error TEXT);
-      CREATE TABLE IF NOT EXISTS captures(threadId TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS captures(threadId TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS thread_activity(threadId TEXT PRIMARY KEY, value TEXT NOT NULL);`);
     for (const [table, column, definition] of [
       ['dots', 'learningContainerId', 'TEXT'],
       ['dots', 'skillDeliveryEnabled', 'INTEGER NOT NULL DEFAULT 0'],
@@ -32,6 +33,8 @@ export class WorkspaceStore {
       ['dots', 'reasoningEffort', 'TEXT'],
       ['dots', 'avatar', 'TEXT'],
       ['thread_bindings', 'learningContainerId', 'TEXT'],
+      ['thread_bindings', 'updatedAt', 'INTEGER'],
+      ['thread_bindings', 'summary', 'TEXT'],
     ]) {
       if (
         !this.db
@@ -298,6 +301,35 @@ export class WorkspaceStore {
       );
     return value;
   }
+  /** Records the outcome + activity of a finished turn for the activity timeline. */
+  recordThreadActivity(
+    id: string,
+    input: { summary: string | null; activity: unknown },
+  ): Conversation {
+    const thread = this.requireThread(id);
+    const now = Date.now();
+    this.db
+      .prepare(
+        'UPDATE thread_bindings SET updatedAt=?, summary=? WHERE id=? AND ownerId=?',
+      )
+      .run(now, input.summary, id, this.ownerId);
+    this.db
+      .prepare('INSERT OR REPLACE INTO thread_activity VALUES (?, ?)')
+      .run(id, JSON.stringify(input.activity ?? []));
+    return { ...thread, updatedAt: now, summary: input.summary };
+  }
+  threadActivity(id: string): unknown {
+    this.requireThread(id);
+    const row = this.db
+      .prepare('SELECT value FROM thread_activity WHERE threadId=?')
+      .get(id) as { value?: string } | undefined;
+    if (!row?.value) return null;
+    try {
+      return JSON.parse(row.value);
+    } catch {
+      return null;
+    }
+  }
   requireThread(id: string, dotId?: string): Conversation {
     const thread = this.conversations().find((thread) => thread.id === id);
     if (!thread || (dotId && thread.dotId !== dotId))
@@ -313,6 +345,7 @@ export class WorkspaceStore {
     this.db.prepare('DELETE FROM task_threads WHERE threadId=?').run(id);
     this.db.prepare('DELETE FROM calls WHERE threadId=?').run(id);
     this.db.prepare('DELETE FROM captures WHERE threadId=?').run(id);
+    this.db.prepare('DELETE FROM thread_activity WHERE threadId=?').run(id);
     return true;
   }
   deleteAllThreads(): number {

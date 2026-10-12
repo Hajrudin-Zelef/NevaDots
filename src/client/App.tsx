@@ -882,6 +882,15 @@ export function App() {
                   onSchedule={() =>
                     setDialog({ type: 'schedule', threadId: thread.id })
                   }
+                  conversations={workspace.conversations}
+                  tasks={state.tasks}
+                  settings={state.settings}
+                  onOpenConversation={(id) => {
+                    setPane(false);
+                    setSelectedThread(id);
+                  }}
+                  onOpenSettings={() => setDialog({ type: 'settings' })}
+                  onOpenTasks={() => setView('tasks')}
                 />
               ) : (
                 <div className="new-conversation">

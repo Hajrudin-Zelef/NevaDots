@@ -6,7 +6,7 @@ import {
   type PendingApproval,
 } from '../shared/connection-types';
 import { api } from './api';
-import { computerToolResult } from './activity';
+import { computerToolResult } from '../shared/activity';
 type Receipt = {
   approvalId: string | null;
   status: 'running' | 'done';

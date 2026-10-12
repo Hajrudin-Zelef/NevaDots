@@ -103,6 +103,10 @@ export interface Conversation {
   ownerId: string;
   title: string;
   createdAt: number;
+  /** Last turn time; falls back to createdAt in the UI when absent. */
+  updatedAt?: number | null;
+  /** One-line outcome of the last turn (Muse-style activity card subtitle). */
+  summary?: string | null;
   /** Frozen at creation; null means this conversation does not participate. */
   learningContainerId?: string | null;
 }
