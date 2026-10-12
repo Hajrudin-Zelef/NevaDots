@@ -242,6 +242,17 @@ export class ComputerService {
       throw new Error('Start this Dot’s computer first.');
     return this.endpoint(id, state);
   }
+  /** Target + credential for the live WebSocket screen stream of a Dot. */
+  async streamTarget(id: string): Promise<{ url: string; token: string }> {
+    this.requireDot(id);
+    if (!this.configured)
+      throw new Error('Computer service is not configured.');
+    const policy = this.workspace.computers.permissions(id);
+    if (!policy.enabled || !policy.browser)
+      throw new Error('Computer browser permission is disabled.');
+    const origin = await this.running(id);
+    return { url: origin.replace(/^http/, 'ws'), token: this.token(id) };
+  }
   async status(id: string): Promise<ComputerStatus> {
     this.requireDot(id);
     const base = {

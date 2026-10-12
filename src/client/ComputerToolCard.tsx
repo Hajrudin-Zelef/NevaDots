@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowUpRight, FileText, Monitor, Terminal } from 'lucide-react';
+import { FileText, Globe, Terminal } from 'lucide-react';
 import { z } from 'zod';
 import { api } from './api';
 import { computerToolResult } from '../shared/activity';
@@ -124,32 +124,27 @@ export function ComputerToolCard({
       clearTimeout(timer);
     };
   }, [dotId, showScreen]);
-  const Icon =
-    action === 'exec'
-      ? Terminal
-      : action.startsWith('files_')
-        ? FileText
-        : Monitor;
+  const isFiles = action.startsWith('files_');
+  const title =
+    action === 'exec' ? 'Terminal' : isFiles ? 'Fichiers' : 'Navigateur';
+  const Icon = action === 'exec' ? Terminal : isFiles ? FileText : Globe;
   return (
     <section
-      className={`inline-computer ${showScreen ? 'with-screen' : ''}`}
-      aria-label={`${dotName} computer: ${labels[action] ?? action}`}
+      className={`inline-computer muse-tool ${showScreen ? 'with-screen' : ''} ${
+        failed ? 'failed' : ''
+      }`}
+      aria-label={`${dotName} · ${labels[action] ?? action}`}
     >
-      <header>
-        <Icon size={16} aria-hidden="true" />
-        <strong>{labels[action] ?? 'Utilise l’ordinateur'}</strong>
-        <span className={failed ? 'tool-state failed' : 'tool-state'}>
-          {state}
+      <header className="muse-tool-head">
+        <span className="muse-tool-icon">
+          <Icon size={16} aria-hidden="true" />
         </span>
-        {onExpand && (
-          <button
-            type="button"
-            aria-label="Ouvrir l’aperçu"
-            onClick={onExpand}
-          >
-            <ArrowUpRight size={16} />
-          </button>
-        )}
+        <span className="muse-tool-titles">
+          <strong>{title}</strong>
+          <span className={`muse-tool-sub ${failed ? 'failed' : ''}`}>
+            {state} · {labels[action] ?? 'Ordinateur'}
+          </span>
+        </span>
       </header>
       {detail && (
         <div className="inline-computer-detail" title={detail}>
@@ -159,42 +154,30 @@ export function ComputerToolCard({
       {error && <p role="alert">{error}</p>}
       {interruption && <p role="status">{interruption}</p>}
       {action === 'exec' && complete && typeof data.stdout === 'string' && (
-        <pre aria-label="Sortie terminal">
-          {data.stdout.slice(0, 4000)}
-        </pre>
+        <pre aria-label="Sortie terminal">{data.stdout.slice(0, 4000)}</pre>
       )}
       {action === 'exec' &&
         complete &&
         typeof data.stderr === 'string' &&
         data.stderr && <pre>{data.stderr.slice(0, 2000)}</pre>}
       {showScreen && (
-        <div className="inline-computer-preview">
-          <div className="inline-computer-caption">
-            <span className="live-indicator" />
-            Navigateur de {dotName}
-          </div>
-          {screen && (
+        <div className="muse-preview">
+          {screen ? (
             <img
               src={`data:image/png;base64,${screen.base64}`}
               alt={`Écran du navigateur de ${dotName}`}
             />
-          )}
-          {screenError ? (
-            <p role="status">{screenError}</p>
           ) : (
-            !screen && <p role="status">Connexion au navigateur…</p>
-          )}
-          {screen && <div className="inline-computer-url">{screen.url}</div>}
-          {onExpand && (
-            <button
-              type="button"
-              className="inline-computer-open"
-              onClick={onExpand}
-            >
-              Ouvrir l’aperçu
-            </button>
+            <div className="muse-preview-empty" role="status">
+              {screenError || 'Connexion au navigateur…'}
+            </div>
           )}
         </div>
+      )}
+      {onExpand && (
+        <button type="button" className="muse-open" onClick={onExpand}>
+          Ouvrir l’aperçu
+        </button>
       )}
     </section>
   );

@@ -39,7 +39,7 @@ it('marks unfinished calls interrupted after a run ends and labels live views as
     />,
   );
   expect(html).toContain('Interrompu');
-  expect(html).toContain('Navigateur de');
+  expect(html).toContain('Navigateur');
   expect(html).toContain('https://example.com');
   expect(html).not.toContain('<img');
 });
