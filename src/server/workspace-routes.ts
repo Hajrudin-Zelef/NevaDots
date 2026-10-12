@@ -313,6 +313,37 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   app.get('/conversations/:id/capture', (c) =>
     c.json(platform.workspace.capture(c.req.param('id'))),
   );
+  // The client posts a finished turn's outcome + activity so the Muse-style
+  // activity timeline can show conversations it never had open.
+  app.post('/conversations/:id/activity', async (c) => {
+    const data = z
+      .object({
+        summary: z.string().trim().max(400).nullable().optional(),
+        activity: z.array(z.unknown()).max(200).optional(),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success) return c.json({ error: 'Invalid activity.' }, 400);
+    try {
+      return c.json(
+        platform.workspace.recordThreadActivity(c.req.param('id'), {
+          summary: data.data.summary?.trim() || null,
+          activity: data.data.activity ?? [],
+        }),
+      );
+    } catch {
+      return c.json({ error: 'Conversation not found.' }, 404);
+    }
+  });
+  app.get('/conversations/:id/activity', (c) => {
+    try {
+      return c.json({
+        events: platform.workspace.threadActivity(c.req.param('id')) ?? [],
+      });
+    } catch {
+      return c.json({ error: 'Conversation not found.' }, 404);
+    }
+  });
   app.delete('/conversations/:id', async (c) => {
     await platform.deleteConversation(c.req.param('id'));
     return c.json({ ok: true });

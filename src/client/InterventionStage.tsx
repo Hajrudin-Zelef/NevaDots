@@ -1,6 +1,6 @@
 import { Mascot } from './Mascot';
 import { StreamingMarkdown } from './ChatTranscript';
-import { activityVerb, type ActivityEvent } from './activity';
+import { activityVerb, type ActivityEvent } from '../shared/activity';
 import { Minimize2, Square } from 'lucide-react';
 import type { Message } from '@ag-ui/core';
 

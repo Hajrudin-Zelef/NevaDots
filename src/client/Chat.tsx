@@ -37,12 +37,19 @@ import {
 } from './ComputerToolCard';
 import { ChatTranscript, isInternalVoiceReceipt } from './ChatTranscript';
 import { ReasoningPanel } from './ReasoningPanel';
-import { ActivityRail } from './ActivityRail';
+import { ActivityPanel } from './ActivityPanel';
 import { ActivityBubbles } from './ActivityBubbles';
 import { InterventionStage } from './InterventionStage';
-import { deriveActivity } from './activity';
+import { deriveActivity } from '../shared/activity';
 import type { ReasoningRunStats } from '../server/reasoning.js';
-import type { CallReceipt, Conversation, Dot, Memory } from '../shared/types';
+import type {
+  CallReceipt,
+  Conversation,
+  Dot,
+  Memory,
+  Settings,
+  Task,
+} from '../shared/types';
 import { Mascot } from './Mascot';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
@@ -66,6 +73,12 @@ export function Chat({
   onSaved,
   onSchedule,
   onComputer,
+  conversations,
+  tasks,
+  settings,
+  onOpenConversation,
+  onOpenSettings,
+  onOpenTasks,
 }: {
   thread: Conversation;
   dot: Dot;
@@ -83,6 +96,12 @@ export function Chat({
   onSaved: () => void;
   onSchedule: () => void;
   onComputer?: () => void;
+  conversations?: Conversation[];
+  tasks?: Task[];
+  settings?: Settings;
+  onOpenConversation?: (id: string) => void;
+  onOpenSettings?: () => void;
+  onOpenTasks?: () => void;
 }) {
   const { agent, isReady } = useAgent({
     agentId: `chat-${thread.id}`,
@@ -708,6 +727,30 @@ export function Chat({
         /* token totals are best-effort */
       });
   }, [running, agent.messages]);
+  // Persist the finished turn's outcome + activity so the Muse-style activity
+  // timeline can show conversations that were never open in this browser.
+  const activityPosted = useRef(true);
+  useEffect(() => {
+    if (running) {
+      activityPosted.current = false;
+      return;
+    }
+    if (activityPosted.current) return;
+    activityPosted.current = true;
+    if (runError.current) return;
+    const last = agent.messages
+      .filter((message) => message.role === 'assistant')
+      .at(-1);
+    const text = typeof last?.content === 'string' ? last.content.trim() : '';
+    if (!text && !activity.length) return;
+    const summary = text.replace(/\s+/g, ' ').slice(0, 240) || null;
+    void api(`/conversations/${encodeURIComponent(thread.id)}/activity`, 'POST', {
+      summary,
+      activity: activity.slice(-60),
+    }).catch(() => {
+      /* best-effort */
+    });
+  }, [running, activity, agent.messages, thread.id]);
   return (
     <div className={`live-chat ${visible.length ? 'in-conversation' : ''}`}>
       {pageContext && (
@@ -798,17 +841,33 @@ export function Chat({
         onTranslate={translateReasoning}
         onToggleTranslation={() => setShowTranslation((v) => !v)}
       />
-      <ActivityRail
+      <ActivityPanel
         open={railOpen}
-        events={activity}
-        running={running}
-        dotName={dot.name}
         onClose={() => {
           setRailOpen(false);
           railDismissed.current = true;
         }}
+        dot={dot}
+        dots={dots ?? [dot]}
+        conversations={conversations ?? [thread]}
+        currentThreadId={thread.id}
+        liveEvents={activity}
+        running={running}
+        paused={paused}
+        tasks={tasks ?? []}
+        settings={
+          settings ?? {
+            name: dot.name,
+            paused,
+            researchAllowed: true,
+            memoryAllowed: true,
+          }
+        }
+        onOpenConversation={(id) => onOpenConversation?.(id)}
         onOpenReasoning={(id) => setReasonPanel({ id, live: false })}
         onOpenComputer={onComputer}
+        onOpenSettings={() => onOpenSettings?.()}
+        onOpenTasks={() => onOpenTasks?.()}
       />
       {!railOpen && !reasonPanel && (
         <ActivityBubbles
