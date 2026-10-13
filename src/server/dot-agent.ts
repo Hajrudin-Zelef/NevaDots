@@ -419,10 +419,10 @@ export class DotAgent extends AbstractAgent {
         // AG-UI REASONING_* events. If the provider emits no reasoning, nothing
         // is emitted and the client panel never opens.
         const reasoningMessageId = `reasoning-${input.threadId}-${Date.now()}`;
-        // The TanStack adapter also emits its own reasoning message with a
-        // generated id (e.g. "openai-compatible-…"). The client panel may key
-        // on that id or on ours, so we record stats under both.
-        let adapterReasoningId: string | undefined;
+        // The TanStack adapter also emits its own reasoning message, but it
+        // never closes it, which left the AG-UI stream malformed and swallowed
+        // the assistant reply. We emit the canonical reasoning events from the
+        // SSE tee below and drop the adapter's duplicates in the subscription.
         let reasoningLive = false;
         let reasoningClosed = false;
         const emitReasoning = (event: BaseEvent) => {
@@ -445,7 +445,10 @@ export class DotAgent extends AbstractAgent {
         const reasoningHooks = {
           onStart: () => {
             reasoningLive = true;
-            emitReasoning({ type: EventType.REASONING_START });
+            emitReasoning({
+              type: EventType.REASONING_START,
+              messageId: reasoningMessageId,
+            });
             emitReasoning({
               type: EventType.REASONING_MESSAGE_START,
               messageId: reasoningMessageId,
@@ -459,6 +462,7 @@ export class DotAgent extends AbstractAgent {
               delta: text,
             });
           },
+          onAnswerStart: () => closeReasoning(),
           onEnd: (info: {
             promptTokens: number | null;
             completionTokens: number | null;
@@ -466,12 +470,6 @@ export class DotAgent extends AbstractAgent {
           }) => {
             const stats = buildReasoningStats(model, info);
             saveReasoningStats(reasoningMessageId, stats);
-            if (
-              adapterReasoningId &&
-              adapterReasoningId !== reasoningMessageId
-            ) {
-              saveReasoningStats(adapterReasoningId, stats);
-            }
             closeReasoning();
           },
         };
@@ -621,18 +619,11 @@ export class DotAgent extends AbstractAgent {
           })
           .subscribe({
             next: (event) => {
-              // Learn the adapter's reasoning message id so stats can be
-              // recorded under it too (the client panel may key on it).
-              if (
-                (event.type === EventType.REASONING_MESSAGE_START ||
-                  event.type === EventType.REASONING_START) &&
-                typeof (event as unknown as { messageId?: unknown })
-                  .messageId === 'string'
-              ) {
-                adapterReasoningId = (
-                  event as unknown as { messageId: string }
-                ).messageId;
-              }
+              // Drop the adapter's own REASONING_* events: our SSE tee already
+              // emits the canonical, well-closed reasoning message. The
+              // adapter's copy left a message open and broke the assistant
+              // reply downstream.
+              if (String(event.type).startsWith('REASONING')) return;
               if (controller.signal.aborted)
                 observe({ type: EventType.RUN_ERROR });
               observe(event);

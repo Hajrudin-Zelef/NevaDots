@@ -270,7 +270,7 @@ export function Chat({
         void api<ReasoningRunStats>(
           `/reasoning-stats?messageId=${encodeURIComponent(reasonPanel.id)}`,
         )
-          .then((stats) => setReasonStats(stats))
+          .then((stats) => setReasonStats(stats?.model ? stats : null))
           .catch(() => {
             // Stats are best-effort; the reasoning text is what matters.
           });
@@ -292,7 +292,7 @@ export function Chat({
       `/reasoning-stats?messageId=${encodeURIComponent(reasonPanel.id)}`,
     )
       .then((stats) => {
-        if (!cancelled) setReasonStats(stats);
+        if (!cancelled) setReasonStats(stats?.model ? stats : null);
       })
       .catch(() => {
         // Stats are best-effort; the reasoning text is what matters.

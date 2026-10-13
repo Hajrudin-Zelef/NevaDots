@@ -42,6 +42,8 @@ export function getReasoningStats(
 export interface ReasoningStreamHooks {
   onStart(): void;
   onDelta(text: string): void;
+  /** The answer/tool call started: close the reasoning message now. */
+  onAnswerStart?(): void;
   onEnd(info: {
     promptTokens: number | null;
     completionTokens: number | null;
@@ -56,6 +58,8 @@ function toNumber(value: unknown): number | null {
 interface SseDelta {
   reasoning_content?: unknown;
   reasoning?: unknown;
+  content?: unknown;
+  tool_calls?: unknown;
 }
 
 interface SseChoice {
@@ -131,6 +135,7 @@ export function createReasoningFetch(
 
     let reasoningActive = false;
     let ended = false;
+    let answerStarted = false;
     let promptTokens: number | null = null;
     let completionTokens: number | null = null;
     const finish = () => {
@@ -179,6 +184,22 @@ export function createReasoningFetch(
           hooks.onStart();
         }
         hooks.onDelta(text);
+        return;
+      }
+      // The answer (or a tool call) has started: close the reasoning message
+      // now so the AG-UI stream stays well ordered (reasoning ends before
+      // text). Stats keep collecting usage until [DONE].
+      const delta = choice.delta;
+      if (
+        reasoningActive &&
+        !answerStarted &&
+        delta &&
+        typeof delta === 'object' &&
+        ((typeof delta.content === 'string' && delta.content.length > 0) ||
+          delta.tool_calls !== undefined)
+      ) {
+        answerStarted = true;
+        hooks.onAnswerStart?.();
       }
     };
 
