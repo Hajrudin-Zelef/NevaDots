@@ -13,6 +13,7 @@ export const AVATAR_IDS = [
   'orange',
   'purple',
   'robot',
+  'robot-blue',
 ] as const;
 
 export type AvatarId = (typeof AVATAR_IDS)[number];
@@ -26,6 +27,8 @@ export const AVATAR_FILES: Record<AvatarId, string> = {
   orange: 'orange.png',
   purple: 'purple.png',
   robot: 'robot.webp',
+  // Blue robot has no idle clip yet; its resting pose doubles as the base.
+  'robot-blue': 'robot-blue-complete.webp',
 };
 
 /** Public URL for an avatar id, or `null` when the id is unknown. */
@@ -47,7 +50,23 @@ export const AVATAR_STATE_FILES: Partial<Record<AvatarId, Record<string, string>
     searching: 'robot-searching.webp',
     working: 'robot-working.webp',
     writing: 'robot-writing.webp',
+    complete: 'robot-complete.webp',
+    error: 'robot-error.webp',
     paused: 'robot-paused.webp',
+  },
+  // LEO's blue robot only ships a subset of clips; the missing states alias the
+  // nearest available blue pose so the color never flicks to another avatar.
+  // `listening` is a temporary alias until the real clip is re-exported.
+  'robot-blue': {
+    listening: 'robot-blue-thinking.webp',
+    thinking: 'robot-blue-thinking.webp',
+    analyzing: 'robot-blue-thinking.webp',
+    searching: 'robot-blue-searching.webp',
+    writing: 'robot-blue-writing.webp',
+    working: 'robot-blue-writing.webp',
+    complete: 'robot-blue-complete.webp',
+    error: 'robot-blue-error.webp',
+    paused: 'robot-blue-complete.webp',
   },
 };
 
