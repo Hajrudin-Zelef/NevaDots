@@ -3737,6 +3737,33 @@ h3 {
   position: relative;
   z-index: 1;
 }
+/* Live bodies stack two layers (base + state clip) for a seamless crossfade. */
+.dot-layers {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+.dot-layers > .dot-body {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.dot-layers[data-active='a'] > .dot-body:nth-child(1),
+.dot-layers[data-active='b'] > .dot-body:nth-child(2) {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot-layers > .dot-body {
+    transition: none;
+  }
+}
 
 /* Metaball blobs: liquid fusion effect behind the dot body, active states only */
 .blob-group {

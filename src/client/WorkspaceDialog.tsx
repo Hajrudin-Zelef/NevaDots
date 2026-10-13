@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
 import { api } from './api';
 import { AVATARS } from './Mascot';
+import { avatarSrc } from '../shared/avatars';
 import { ConnectionsSection } from './ConnectionsSection';
 import {
   PALETTES,
@@ -296,7 +297,12 @@ export function WorkspaceDialog({
                     title={id}
                     onClick={() => setAvatar(avatar === id ? null : id)}
                   >
-                    <img src={`/dots/${id}.png`} alt="" width={44} height={44} />
+                    <img
+                      src={avatarSrc(id) ?? undefined}
+                      alt=""
+                      width={44}
+                      height={44}
+                    />
                   </button>
                 ))}
               </div>

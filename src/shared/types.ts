@@ -94,7 +94,9 @@ export interface Dot {
    * 'medium' / 'high' enable it. null/undefined uses the model default.
    */
   reasoningEffort?: string | null;
-  /** Avatar image id (blue|pink|green|mint|orange|purple); null = derived. */
+  /**
+   * Avatar id (see `AVATAR_IDS` in `./avatars`); null = identity-derived.
+   */
   avatar?: string | null;
 }
 export interface Conversation {

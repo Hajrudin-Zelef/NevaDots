@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Mascot, AVATARS } from './Mascot';
+import { avatarSrc } from '../shared/avatars';
 import { api } from './api';
 import { activityVerb, type ActivityEvent, type ActivityKind } from '../shared/activity';
 import { groupByDay, timeOfDay } from './day-groups';
@@ -470,7 +471,7 @@ export function ActivityPanel({
                     onClick={() => void setAvatar(avatar)}
                   >
                     <img
-                      src={`/dots/${avatar}.png`}
+                      src={avatarSrc(avatar) ?? undefined}
                       alt=""
                       width={34}
                       height={34}

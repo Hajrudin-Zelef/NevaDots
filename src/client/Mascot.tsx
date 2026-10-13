@@ -1,14 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { AVATAR_IDS, avatarSrc, avatarStateSrc } from '../shared/avatars';
 
 const characters = ['blue', 'pink', 'green'] as const;
-export const AVATARS = [
-  'blue',
-  'pink',
-  'green',
-  'mint',
-  'orange',
-  'purple',
-] as const;
+export const AVATARS = AVATAR_IDS;
 export type Avatar = (typeof AVATARS)[number];
 
 /** Stable identity keeps each specialist recognizable across views and reloads. */
@@ -45,6 +39,10 @@ const step = (s: Spring, dt: number) => {
  * Animated Dot avatar. Body motion is driven by a single requestAnimationFrame
  * loop with damped springs (lean toward the pointer, idle bob, click hop). The
  * loop only runs while the element is visible and when motion is allowed.
+ *
+ * When an avatar ships per-state clips (an animated WebP per mascot state) the
+ * live body crossfades between two stacked <img> layers on each state change,
+ * so the switch is seamless (the outgoing clip keeps playing while it fades).
  */
 export function Mascot({
   state = 'idle',
@@ -64,17 +62,55 @@ export function Mascot({
   /** Force body animation even for small avatars (defaults to !small). */
   animate?: boolean;
 }) {
-  const imgRef = useRef<HTMLImageElement>(null);
+  const layersRef = useRef<HTMLSpanElement>(null);
   const rootRef = useRef<HTMLSpanElement>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
   const live = animate ?? !small;
 
+  const character = avatarFile(avatar, identity);
+  const baseSrc = avatarSrc(character) ?? `/dots/${character}.png`;
+  const wanted = (live && avatarStateSrc(character, state)) || baseSrc;
+
+  // Two stacked layers for the crossfade; `active` is the visible one.
+  const [layers, setLayers] = useState(() => ({
+    a: baseSrc,
+    b: baseSrc,
+    active: 'a' as 'a' | 'b',
+  }));
+  const activeSrc = useRef(baseSrc);
+  const alt = decorative ? '' : `${name} is ${stateRef.current}`;
+
+  // Crossfade to the state clip once it is decoded (never shows a blank frame).
+  useEffect(() => {
+    if (!live || wanted === activeSrc.current) return;
+    const next = wanted;
+    const img = new Image();
+    let cancelled = false;
+    const commit = () => {
+      if (cancelled || next === activeSrc.current) return;
+      activeSrc.current = next;
+      setLayers((prev) =>
+        prev.active === 'a'
+          ? { a: prev.a, b: next, active: 'b' }
+          : { a: next, b: prev.b, active: 'a' },
+      );
+    };
+    img.onload = commit;
+    img.onerror = commit;
+    img.src = next;
+    return () => {
+      cancelled = true;
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [wanted, live]);
+
   useEffect(() => {
     if (!live) return;
-    const img = imgRef.current;
+    const layers = layersRef.current;
     const root = rootRef.current;
-    if (!img || !root) return;
+    if (!layers || !root) return;
     // Honour reduced-motion by calming the movement, not freezing the avatar.
     const calm =
       typeof matchMedia === 'function' &&
@@ -90,10 +126,19 @@ export function Mascot({
     let frame = 0;
     let last = performance.now();
     let pointer: { x: number; y: number; t: number } | null = null;
+    let center: { x: number; y: number } | null = null;
+    // Measure the mascot centre only when it may have moved (pointer, resize,
+    // scroll) instead of forcing a layout read on every animation frame.
+    const measure = () => {
+      const r = root.getBoundingClientRect();
+      center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    };
     const onMove = (event: PointerEvent) => {
+      measure();
       pointer = { x: event.clientX, y: event.clientY, t: performance.now() };
     };
     const onDown = () => {
+      measure();
       S.hop.v -= 42 * gain;
       S.squash.v += 7 * gain;
     };
@@ -104,10 +149,9 @@ export function Mascot({
       const mode = stateRef.current;
       let lx = 0.4 * Math.sin(now / 2600);
       let ly = 0.2 * Math.sin(now / 3700);
-      if (pointer && now - pointer.t < 6000) {
-        const r = root.getBoundingClientRect();
-        lx = clamp((pointer.x - (r.left + r.width / 2)) / 420, -1, 1);
-        ly = clamp((pointer.y - (r.top + r.height / 2)) / 420, -1, 1);
+      if (pointer && center && now - pointer.t < 6000) {
+        lx = clamp((pointer.x - center.x) / 420, -1, 1);
+        ly = clamp((pointer.y - center.y) / 420, -1, 1);
       }
       let bob = Math.sin(now / 1400) * 3;
       let tiltT = 0;
@@ -130,7 +174,7 @@ export function Mascot({
         (S.lookX.x * 0.06 + S.tilt.x + S.lookX.v * 0.002) * gain;
       const sx = 1 + S.squash.x * 0.05 * gain;
       const sy = 1 - S.squash.x * 0.05 * gain;
-      img.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) rotate(${tilt.toFixed(4)}rad) scale(${sx.toFixed(3)}, ${sy.toFixed(3)})`;
+      layers.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) rotate(${tilt.toFixed(4)}rad) scale(${sx.toFixed(3)}, ${sy.toFixed(3)})`;
       frame = requestAnimationFrame(loop);
     };
     const start = () => {
@@ -146,20 +190,24 @@ export function Mascot({
       }
     };
     const onVisibility = () => (visible() ? start() : stop());
+    const onResize = () => measure();
     window.addEventListener('pointermove', onMove, { passive: true });
     root.addEventListener('pointerdown', onDown);
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onResize, { passive: true, capture: true });
     start();
     return () => {
       stop();
       window.removeEventListener('pointermove', onMove);
       root.removeEventListener('pointerdown', onDown);
       document.removeEventListener('visibilitychange', onVisibility);
-      img.style.transform = '';
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, { capture: true });
+      layers.style.transform = '';
     };
   }, [live]);
 
-  const character = avatarFile(avatar, identity);
   return (
     <span
       className={`mascot ${state} ${small ? 'small' : ''} ${live ? 'live' : ''}`}
@@ -181,15 +229,26 @@ export function Mascot({
         <i className="blob" />
         <i className="blob" />
       </span>
-      <img
-        className="dot-body"
-        ref={imgRef}
-        src={`/dots/${character}.png`}
-        alt={decorative ? '' : `${name} is ${state}`}
-        width={512}
-        height={512}
-        draggable={false}
-      />
+      {live ? (
+        <span
+          className="dot-layers"
+          ref={layersRef}
+          data-active={layers.active}
+          aria-hidden={decorative}
+        >
+          <img className="dot-body" src={layers.a} alt={alt} width={512} height={512} draggable={false} />
+          <img className="dot-body" src={layers.b} alt="" width={512} height={512} draggable={false} />
+        </span>
+      ) : (
+        <img
+          className="dot-body"
+          src={baseSrc}
+          alt={alt}
+          width={512}
+          height={512}
+          draggable={false}
+        />
+      )}
     </span>
   );
 }

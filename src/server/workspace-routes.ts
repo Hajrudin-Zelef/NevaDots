@@ -9,6 +9,7 @@ import {
   validateLearningSettings,
 } from '../shared/learning.js';
 import { getReasoningStats } from './reasoning.js';
+import { AVATAR_IDS } from '../shared/avatars.js';
 const dotSchema = z
   .object({
     name: z.string().trim().min(1).max(40),
@@ -19,10 +20,7 @@ const dotSchema = z
     skillDeliveryEnabled: z.boolean().optional(),
     spaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
     spaceId: z.string().min(1).optional(),
-    avatar: z
-      .enum(['blue', 'pink', 'green', 'mint', 'orange', 'purple'])
-      .nullable()
-      .optional(),
+    avatar: z.enum(AVATAR_IDS).nullable().optional(),
   })
   .strict();
 export function workspaceRoutes(platform: Platform, voice: VoiceService) {
@@ -277,9 +275,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   app.put('/dots/:id/avatar', async (c) => {
     const data = z
       .object({
-        avatar: z
-          .enum(['blue', 'pink', 'green', 'mint', 'orange', 'purple'])
-          .nullable(),
+        avatar: z.enum(AVATAR_IDS).nullable(),
       })
       .strict()
       .safeParse(await c.req.json().catch(() => null));
