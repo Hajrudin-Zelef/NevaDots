@@ -3761,7 +3761,7 @@ h3 {
   height: 100%;
   object-fit: contain;
   opacity: 0;
-  transition: opacity 0.35s ease;
+  transition: opacity 0.5s ease;
 }
 .dot-layers[data-active='a'] > .dot-body:nth-child(1),
 .dot-layers[data-active='b'] > .dot-body:nth-child(2) {
