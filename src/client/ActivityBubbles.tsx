@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { activityVerb, type ActivityEvent } from '../shared/activity';
+import type { Dot } from '../shared/types';
+import { Mascot } from './Mascot';
 
 const chipText = (event: ActivityEvent) => {
   const verb = activityVerb(event);
@@ -8,14 +10,20 @@ const chipText = (event: ActivityEvent) => {
 
 const POSITION_KEY = 'nevadots-activity-bubble';
 
-/** Floating activity bubbles shown while the right rail is collapsed. */
+/**
+ * Pop-pop avatar bubble. Shown while the activity rail is collapsed — most
+ * notably when the browser pane takes over the width — so the Dot stays
+ * visible and one click brings the full activity rail back.
+ */
 export function ActivityBubbles({
   events,
   running,
+  dot,
   onOpen,
 }: {
   events: ActivityEvent[];
   running: boolean;
+  dot: Dot;
   onOpen: () => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -38,8 +46,14 @@ export function ActivityBubbles({
       if (!current) return;
       current.moved = true;
       setPos({
-        x: Math.max(4, Math.min(window.innerWidth - 60, event.clientX - current.dx)),
-        y: Math.max(4, Math.min(window.innerHeight - 30, event.clientY - current.dy)),
+        x: Math.max(
+          4,
+          Math.min(window.innerWidth - 60, event.clientX - current.dx),
+        ),
+        y: Math.max(
+          4,
+          Math.min(window.innerHeight - 30, event.clientY - current.dy),
+        ),
       });
     };
     const onUp = () => {
@@ -80,7 +94,6 @@ export function ActivityBubbles({
     setPos({ x: rect.left, y: rect.top });
   };
 
-  if (!events.length) return null;
   const recent = events.slice(-3);
   const latest = events[events.length - 1];
   return (
@@ -89,24 +102,28 @@ export function ActivityBubbles({
       className={`activity-bubbles ${running ? 'running' : ''} ${
         pos ? 'dragged' : ''
       }`}
-      style={pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined}
+      style={
+        pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined
+      }
     >
-      <div className="activity-chips">
-        {recent.map((event) => (
-          <button
-            key={event.id}
-            type="button"
-            className={`activity-chip ${event.status}`}
-            onClick={onOpen}
-            title="Voir toute l’activité"
-          >
-            {chipText(event)}
-          </button>
-        ))}
-      </div>
+      {recent.length > 0 && (
+        <div className="activity-chips">
+          {recent.map((event) => (
+            <button
+              key={event.id}
+              type="button"
+              className={`activity-chip ${event.status}`}
+              onClick={onOpen}
+              title="Voir toute l’activité"
+            >
+              {chipText(event)}
+            </button>
+          ))}
+        </div>
+      )}
       <button
         type="button"
-        className={`activity-pill ${running ? 'running' : ''}`}
+        className={`activity-pill pop-pop ${running ? 'running' : ''}`}
         onPointerDown={startDrag}
         onClick={() => {
           if (moved.current) {
@@ -115,11 +132,24 @@ export function ActivityBubbles({
           }
           onOpen();
         }}
-        title="Glisser pour déplacer · cliquer pour ouvrir"
+        title="Glisser pour déplacer · cliquer pour ouvrir l’activité"
       >
-        <span className="activity-pill-dot" />
-        <span className="activity-pill-text">{activityVerb(latest)}</span>
-        <span className="activity-pill-count">{events.length}</span>
+        <span className="activity-avatar">
+          <Mascot
+            identity={dot.id}
+            name={dot.name}
+            avatar={dot.avatar}
+            small
+            animate
+            state={running ? 'working' : 'idle'}
+          />
+        </span>
+        <span className="activity-pill-text">
+          {latest ? activityVerb(latest) : 'Prêt'}
+        </span>
+        {events.length > 0 && (
+          <span className="activity-pill-count">{events.length}</span>
+        )}
       </button>
     </div>
   );

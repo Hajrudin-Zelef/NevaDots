@@ -36,6 +36,9 @@ export function PageConversation({
   const [pending, setPending] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [rail, setRail] = useState(
+    () => localStorage.getItem('nevadots-rail') !== 'closed',
+  );
   const requests = useRef(new PageChatRequests());
   const scope = `${page.id}:${dot?.id ?? ''}`;
   requests.current.select(scope);
@@ -112,6 +115,8 @@ export function PageConversation({
           paused={paused}
           onSaved={onRefresh}
           onSchedule={() => onSchedule(thread.id)}
+          railOpen={rail}
+          onRailChange={setRail}
         />
       </aside>
     );

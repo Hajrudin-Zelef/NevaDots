@@ -192,6 +192,24 @@ export function App() {
   const [mobile, setMobile] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [pane, setPane] = useState(false);
+  // Muse-style activity rail: docked, open by default, persisted. It collapses
+  // into the pop-pop avatar bubble while the browser pane is open.
+  const [rail, setRail] = useState(
+    () => localStorage.getItem('nevadots-rail') !== 'closed',
+  );
+  const railBeforePane = useRef(rail);
+  useEffect(() => {
+    if (pane) {
+      railBeforePane.current = rail;
+      setRail(false);
+    } else {
+      setRail(railBeforePane.current);
+    }
+  }, [pane]);
+  const changeRail = useCallback((open: boolean) => {
+    setRail(open);
+    localStorage.setItem('nevadots-rail', open ? 'open' : 'closed');
+  }, []);
   const [capture, setCapture] = useState<Result>();
   const [prompt, setPrompt] = useState('');
   const [promptSource, setPromptSource] = useState('');
@@ -855,7 +873,9 @@ export function App() {
             }}
           />
         ) : view === 'chat' ? (
-          <div className={`chat-workspace ${pane ? 'split' : ''}`}>
+          <div
+            className={`chat-workspace ${pane ? 'split' : ''} ${rail && !pane ? 'rail' : ''}`}
+          >
             <div className="chat-column">
               {thread && configured ? (
                 <Chat
@@ -893,6 +913,8 @@ export function App() {
                   onOpenTasks={() => setView('tasks')}
                   paneOpen={pane}
                   onClosePane={() => setPane(false)}
+                  railOpen={rail && !pane}
+                  onRailChange={changeRail}
                 />
               ) : (
                 <div className="new-conversation">

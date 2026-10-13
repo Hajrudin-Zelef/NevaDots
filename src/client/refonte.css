@@ -2048,11 +2048,11 @@ textarea::placeholder {
 /* Phase A (Muse) — panneau Activité : en-tête avatar, onglets, frise par jour */
 .muse-overlay {
   position: fixed;
-  top: 0;
+  top: 83px;
   right: 0;
   bottom: 0;
   z-index: 24;
-  width: min(420px, 100vw);
+  width: min(var(--nd-rail-w, 420px), 100vw);
   background: var(--nd-bg, #fdfcfb);
   border-left: 1px solid var(--nd-line, #e7e5e0);
   box-shadow: -12px 0 36px #20263422;
@@ -2671,4 +2671,98 @@ textarea::placeholder {
   padding: 6px;
   font-size: 14px;
   background: color-mix(in oklab, #ffffff 82%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+   Phase E — Rail activité permanent + bulle-avatar « pop-pop » + navigateur
+   prioritaire. Le rail est docké (colonne réservée à droite) ; quand le
+   navigateur s'ouvre, le rail se replie en bulle-avatar pop-pop et le
+   navigateur prend la largeur.
+--------------------------------------------------------------------------- */
+:root {
+  --nd-rail-w: 420px;
+}
+.chat-workspace.rail {
+  padding-right: var(--nd-rail-w);
+  transition: padding-right 0.35s ease;
+}
+.chat-workspace.rail > .chat-column {
+  transition: padding-right 0.35s ease;
+}
+.activity-avatar {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 30%,
+    var(--nd-bg, #fff) 0%,
+    var(--nd-bg-sidebar, #f3f1ec) 70%,
+    var(--nd-bg-active, #eceae3) 100%
+  );
+  border: 1px solid var(--nd-border, #e7e5e0);
+  overflow: hidden;
+}
+.activity-avatar .mascot {
+  width: 30px;
+  height: 30px;
+}
+@keyframes pop-pop {
+  0% {
+    transform: scale(0.25);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.14);
+    opacity: 1;
+  }
+  72% {
+    transform: scale(0.94);
+  }
+  86% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.activity-pill.pop-pop {
+  transform-origin: bottom right;
+  animation: pop-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes bubble-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+.activity-pill.pop-pop.running .activity-avatar {
+  animation: bubble-bob 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-pill.pop-pop,
+  .activity-pill.pop-pop.running .activity-avatar {
+    animation: none;
+  }
+  .chat-workspace.rail {
+    transition: none;
+  }
+}
+/* Below 1100px the rail and the browser stop docking and float over the chat. */
+@media (max-width: 1100px) {
+  .chat-workspace.rail {
+    padding-right: 0;
+  }
+  .chat-workspace.split > .result-pane {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .chat-workspace.split .chat-column {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
 }

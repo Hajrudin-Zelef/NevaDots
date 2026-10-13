@@ -79,8 +79,9 @@ export function Chat({
   onOpenConversation,
   onOpenSettings,
   onOpenTasks,
-  paneOpen,
   onClosePane,
+  railOpen,
+  onRailChange,
 }: {
   thread: Conversation;
   dot: Dot;
@@ -106,6 +107,8 @@ export function Chat({
   onOpenTasks?: () => void;
   paneOpen?: boolean;
   onClosePane?: () => void;
+  railOpen: boolean;
+  onRailChange: (open: boolean) => void;
 }) {
   const { agent, isReady } = useAgent({
     agentId: `chat-${thread.id}`,
@@ -672,26 +675,11 @@ export function Chat({
     () => deriveActivity(agent.messages),
     [agent.messages],
   );
-  const [railOpen, setRailOpen] = useState(false);
-  const railDismissed = useRef(false);
-  const prevRunningForRail = useRef(false);
-  const hasToolActivity = activity.some((event) => event.kind !== 'reasoning');
   useEffect(() => {
-    if (running && !prevRunningForRail.current) railDismissed.current = false;
-    if (
-      running &&
-      hasToolActivity &&
-      !railDismissed.current &&
-      !reasonPanel &&
-      !paneOpen
-    )
-      setRailOpen(true);
-    prevRunningForRail.current = running;
-  }, [running, hasToolActivity, reasonPanel, paneOpen]);
-  useEffect(() => {
-    if (reasonPanel) setRailOpen(false);
-  }, [reasonPanel]);
+    if (reasonPanel) onRailChange(false);
+  }, [reasonPanel, onRailChange]);
   // Muse-style: open the browser pane when the agent starts navigating.
+  // App collapses the activity rail into the pop-pop bubble while it is open.
   const browserOpenedForRun = useRef(false);
   useEffect(() => {
     if (!running) {
@@ -700,9 +688,6 @@ export function Chat({
     }
     if (browserOpenedForRun.current || !latestBrowserCall) return;
     browserOpenedForRun.current = true;
-    // The browser pane and the activity panel are mutually exclusive.
-    setRailOpen(false);
-    railDismissed.current = true;
     onComputer?.();
   }, [running, latestBrowserCall, onComputer]);
   // Cumulative session tokens for the cetas-style token bar.
@@ -867,10 +852,7 @@ export function Chat({
       />
       <ActivityPanel
         open={railOpen}
-        onClose={() => {
-          setRailOpen(false);
-          railDismissed.current = true;
-        }}
+        onClose={() => onRailChange(false)}
         dot={dot}
         dots={dots ?? [dot]}
         conversations={conversations ?? [thread]}
@@ -890,8 +872,7 @@ export function Chat({
         onOpenConversation={(id) => onOpenConversation?.(id)}
         onOpenReasoning={(id) => setReasonPanel({ id, live: false })}
         onOpenComputer={() => {
-          setRailOpen(false);
-          railDismissed.current = true;
+          onRailChange(false);
           onComputer?.();
         }}
         onOpenSettings={() => onOpenSettings?.()}
@@ -901,9 +882,10 @@ export function Chat({
         <ActivityBubbles
           events={activity}
           running={running}
+          dot={dot}
           onOpen={() => {
             onClosePane?.();
-            setRailOpen(true);
+            onRailChange(true);
           }}
         />
       )}

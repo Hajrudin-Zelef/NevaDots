@@ -2068,12 +2068,20 @@ h3 {
   min-width: 0;
 }
 .chat-workspace.split .chat-column {
-  flex: 1;
+  flex: 0 1 38%;
+  min-width: 340px;
 }
 .chat-workspace > .result-pane {
   width: 400px;
   overflow: auto;
   flex-shrink: 0;
+}
+/* Browser-first split (Muse): the browser takes the width, chat narrows. */
+.chat-workspace.split > .result-pane {
+  flex: 1 1 62%;
+  width: auto;
+  min-width: 560px;
+  transition: flex-basis 0.35s ease;
 }
 .new-conversation {
   max-width: 780px;
