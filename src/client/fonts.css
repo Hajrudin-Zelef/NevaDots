@@ -1,0 +1,35 @@
+/* NevaDots — self-hosted premium type (Geist Sans + Geist Mono).
+   CSP is `default-src 'self'`, so fonts are served from /fonts, not a CDN.
+   Variable fonts: one file covers weights 100–900. */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/Geist-Variable.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'Geist';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/Geist-Italic-Variable.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'GeistMono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/GeistMono-Variable.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'GeistMono';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/GeistMono-Italic-Variable.woff2') format('woff2-variations');
+}

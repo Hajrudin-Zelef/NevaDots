@@ -118,7 +118,9 @@ app.use('/*', async (c, next) => {
       ? 'public, max-age=31536000, immutable'
       : path.startsWith('/dots/')
         ? 'public, max-age=86400'
-        : 'no-store',
+        : path.startsWith('/fonts/')
+          ? 'public, max-age=604800'
+          : 'no-store',
   );
   await next();
 });
