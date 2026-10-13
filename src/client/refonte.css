@@ -1860,6 +1860,8 @@ textarea::placeholder {
 /* Phase C1 — avatar vivant (moteur à ressorts JS ; on coupe les animations CSS) */
 .template-app .mascot.live .dot-body {
   animation: none;
+}
+.template-app .mascot.live .dot-layers {
   transform-origin: 50% 92%;
   will-change: transform;
   cursor: pointer;
@@ -2088,8 +2090,27 @@ textarea::placeholder {
   padding: 26px 18px 14px;
 }
 .muse-head .mascot {
-  width: 84px;
-  height: 84px;
+  width: 96px;
+  height: 96px;
+}
+/* Muse-style round badge behind the Dot avatar (header only). */
+.muse-head .mascot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 28%,
+    var(--nd-bg) 0%,
+    var(--nd-bg-sidebar) 68%,
+    var(--nd-bg-active) 100%
+  );
+  border: 1px solid var(--nd-border);
+  box-shadow: 0 10px 22px color-mix(in oklab, var(--nd-text) 12%, transparent);
+}
+.muse-head .mascot .blob-group {
+  z-index: 1;
 }
 .muse-name {
   margin: 4px 0 0;

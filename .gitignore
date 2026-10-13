@@ -21,3 +21,7 @@ data/
 
 # Local fork assets (source images)
 docs/FORKoffLine/
+
+# Large source animation art (APNG/PNG sources); the shipped WebPs live in
+# public/dots/, only these masters are kept out of the repo.
+OffLineFork/AVATAR DOTS/
