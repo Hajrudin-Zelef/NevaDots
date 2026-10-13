@@ -41,7 +41,7 @@ afterEach(() => {
   inner.configure.mockClear();
 });
 
-it('uses the conversation container for delivery and preserves tools and override restrictions', async () => {
+it('preserves tools and override restrictions for channel runs', async () => {
   const f = fixture(false);
   const dot = f.workspace.dots()[0];
   f.workspace.updateDot(dot.id, {
@@ -70,11 +70,6 @@ it('uses the conversation container for delivery and preserves tools and overrid
   );
   expect(inner.configure).toHaveBeenLastCalledWith(
     expect.objectContaining({
-      learnedSkills: {
-        containers: [{ id: 'research' }],
-        apiKey: 'fixture',
-        apiUrl: undefined,
-      },
       type: 'tanstack',
       factory: expect.any(Function),
     }),
@@ -84,7 +79,7 @@ it('uses the conversation container for delivery and preserves tools and overrid
   );
   await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
   expect(inner.configure).toHaveBeenLastCalledWith(
-    expect.objectContaining({ learnedSkills: undefined, type: 'tanstack' }),
+    expect.objectContaining({ type: 'tanstack' }),
   );
   f.workspace.updateDot(dot.id, {
     ...dot,
@@ -95,7 +90,7 @@ it('uses the conversation container for delivery and preserves tools and overrid
     f.agent.run({ ...f.input, threadId: 'learning' }).pipe(toArray()),
   );
   expect(inner.configure).toHaveBeenLastCalledWith(
-    expect.objectContaining({ learnedSkills: undefined, type: 'tanstack' }),
+    expect.objectContaining({ type: 'tanstack' }),
   );
 });
 function fixture(channel = true) {
@@ -109,7 +104,6 @@ function fixture(channel = true) {
     store,
     workspace,
     {
-      intelligenceKey: 'fixture',
       apiKey: 'fixture',
       model: 'fixture',
       baseUrl: 'https://unused.invalid',

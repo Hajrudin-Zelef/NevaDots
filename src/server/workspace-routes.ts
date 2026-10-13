@@ -413,7 +413,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     if (text.startsWith('Space access must include'))
       return c.json({ error: text }, 400);
     const known =
-      /^(Setup|Voice setup|Dot |Space |Specialist |Conversation |Call |This call|Voice provider|An audio|Intelligence could not|CopilotKit Intelligence)/.test(
+      /^(Setup|Voice setup|Dot |Space |Specialist |Conversation |Call |This call|Voice provider|An audio)/.test(
         text,
       );
     // A conversation, call or Dot the caller named that does not exist is a missing resource, not a

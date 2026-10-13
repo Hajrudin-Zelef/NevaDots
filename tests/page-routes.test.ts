@@ -123,7 +123,7 @@ it('supports manual pages without credentials and returns validation, scope and 
         request({ dotId: ws.dots()[0].id }),
       )
     ).status,
-  ).toBe(503);
+  ).toBe(200);
   expect(ws.pages.get(space, page.id).content).toBe('First');
   expect(
     (

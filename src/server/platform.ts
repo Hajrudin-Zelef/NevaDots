@@ -2,71 +2,26 @@ import { ComputerService } from './computer-service.js';
 import { ConnectionService } from './connections.js';
 import { PageService } from './page-service.js';
 import { randomUUID } from 'node:crypto';
-import {
-  CopilotKitIntelligence,
-  CopilotRuntime,
-  createCopilotHonoHandler,
-  type CopilotHonoApp,
-} from '@copilotkit/runtime/v2';
-import { createSlackChannel } from './slack-channel.js';
-export { slackIdentity } from './slack-channel.js';
+import { CopilotRuntime, createCopilotHonoHandler } from '@copilotkit/runtime/v2';
+import type { Message, RunAgentInput } from '@ag-ui/core';
 import { Store } from './store.js';
 import { WorkspaceStore } from './workspace.js';
 import { DotAgent } from './dot-agent.js';
-import { runThreadTurn } from './headless.js';
-import {
-  INTELLIGENCE_KEY_MISSING_LABEL,
-  setupStatus,
-  type PlatformConfig,
-} from './platform-config.js';
+import { currentTurnText } from './headless.js';
+import { setupStatus, type PlatformConfig } from './platform-config.js';
 import { validateRuntimeScope } from './runtime-scope.js';
-import { learningSelector } from './learning.js';
 import { SetupTelemetry } from './setup-telemetry.js';
-
-/** True when an Intelligence request failed for a transient reason worth retrying. */
-function isRetryableIntelligenceError(error: unknown): boolean {
-  if ((error as { retryable?: unknown })?.retryable === true) return true;
-  const status = (error as { status?: unknown })?.status;
-  if (typeof status === 'number') return status >= 500 || status === 429;
-  // No HTTP status means a transport/timeout failure — worth one more try.
-  return true;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Reject if `promise` does not settle within `ms` (the SDK has no timeout). */
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      const error = new Error('Intelligence request timed out') as Error & {
-        timeout?: boolean;
-      };
-      error.timeout = true;
-      reject(error);
-    }, ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
+import { SqliteAgentRunner } from './sqlite-runner.js';
+import { voiceReceiptMessagePrefix } from '../shared/voice-receipt.js';
+import { scheduledTaskMessagePrefix } from '../shared/scheduled-message.js';
 
 export class Platform {
-  private channelStartupFailed = false;
   readonly setupTelemetry: SetupTelemetry;
   readonly pages: PageService;
   readonly computers: ComputerService;
   readonly connections: ConnectionService;
-  readonly intelligence?: CopilotKitIntelligence;
-  readonly handler?: CopilotHonoApp;
+  readonly runner: SqliteAgentRunner;
+  readonly handler: ReturnType<typeof createCopilotHonoHandler>;
   constructor(
     readonly store: Store,
     readonly workspace: WorkspaceStore,
@@ -79,50 +34,21 @@ export class Platform {
       () => store.settings().paused,
     );
     this.connections = new ConnectionService(workspace.connections);
-    this.pages = new PageService(workspace, () => {
-      this.requireReady();
-      return this.intelligence!;
-    });
-    if (!config.intelligenceKey) return;
-    this.intelligence = new CopilotKitIntelligence({
-      apiKey: config.intelligenceKey,
-      apiUrl: config.intelligenceApiUrl,
-      wsUrl: config.intelligenceWsUrl,
-      getLearningContainerId: learningSelector(
-        workspace,
-        config.slackDotId ?? workspace.dots()[0]?.id,
-      ),
-    });
-    const channels = [];
-    if (config.slackChannel && config.slackTeam && config.slackUsers.length) {
-      const dotId = config.slackDotId ?? workspace.dots()[0].id;
-      if (!workspace.dot(dotId))
-        throw new Error('SLACK_DOT_ID does not identify an existing Dot.');
-      const slack = createSlackChannel({
-        name: config.slackChannel,
-        config,
-        ownerId: workspace.ownerId,
-        paused: () => store.settings().paused,
-        agent: () =>
-          new DotAgent(
-            store,
-            workspace,
-            config,
-            dotId,
-            true,
-            this.setupTelemetry,
-          ),
-      });
-      channels.push(slack);
-    }
+    // Local-only runtime: a durable SQLite AgentRunner, no hosted Intelligence.
+    this.runner = new SqliteAgentRunner(config.databasePath);
+    this.pages = new PageService(workspace, () => ({
+      getOrCreateThread: async () => ({}),
+      getThreadMessages: async ({ threadId }) => ({
+        messages: this.runner.getThreadMessages(threadId) as {
+          role: string;
+          content?: unknown;
+        }[],
+      }),
+    }));
     const runtime = new CopilotRuntime({
-      intelligence: this.intelligence,
       telemetryId: this.setupTelemetry.identity,
       telemetryProperties: this.setupTelemetry.metadata,
-      identifyUser: async () => ({
-        id: workspace.ownerId,
-        name: 'NevaDots owner',
-      }),
+      runner: this.runner,
       agents: async () =>
         Object.fromEntries(
           workspace
@@ -139,8 +65,6 @@ export class Platform {
               ),
             ]),
         ),
-      channels,
-      generateThreadNames: true,
     });
     this.handler = createCopilotHonoHandler({
       runtime,
@@ -149,127 +73,45 @@ export class Platform {
     });
   }
   setup() {
-    return setupStatus(
-      this.config,
-      this.handler?.channels?.status().overall ??
-        (this.config.slackChannel ? 'setup_required' : 'not_configured'),
-      this.channelStartupFailed,
-    );
+    return setupStatus(this.config);
   }
   requireReady() {
     const missing = this.setup().missing;
-    if (missing.length)
-      throw new Error(
-        `Setup required: ${missing.join(', ')}. Conversations require CopilotKit Intelligence.`,
-      );
+    if (missing.length) throw new Error(`Setup required: ${missing.join(', ')}.`);
   }
   async start() {
     this.setupTelemetry.start();
-    if (this.handler?.channels) {
-      try {
-        await this.handler.channels.ready({ timeoutMs: 15000 });
-        this.channelStartupFailed = false;
-      } catch (error) {
-        this.channelStartupFailed = true;
-        this.setupTelemetry.capture({
-          kind: 'setup_failed',
-          step: 'settings',
-          error_class: 'channel_start_failed',
-        });
-        throw error;
-      }
-    }
   }
   async stop() {
     await this.setupTelemetry.stop();
-    await this.handler?.channels?.stop();
   }
   async createConversation(dotId: string, title: string) {
     this.requireReady();
     if (!this.workspace.dot(dotId)) throw new Error('Dot not found.');
-    const id = randomUUID();
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      try {
-        await withTimeout(
-          this.intelligence!.createThread({
-            threadId: id,
-            userId: this.workspace.ownerId,
-            agentId: dotId,
-            name: title,
-          }),
-          6000,
-        );
-        lastError = undefined;
-        break;
-      } catch (error) {
-        lastError = error;
-        if (attempt === 3 || !isRetryableIntelligenceError(error)) break;
-        await delay(attempt * 600);
-      }
-    }
-    if (lastError !== undefined) {
-      const status = (lastError as { status?: unknown }).status;
-      const timedOut = (lastError as { timeout?: unknown }).timeout === true;
-      if (typeof status === 'number') {
-        throw new Error(
-          `CopilotKit Intelligence is unavailable right now (${status}). Please try again in a moment.`,
-        );
-      }
-      if (timedOut) {
-        throw new Error(
-          'CopilotKit Intelligence is unreachable right now. Please try again in a moment.',
-        );
-      }
-      throw new Error(
-        'Intelligence could not create this conversation. Check the runtime key and connection.',
-      );
-    }
-    return this.workspace.bindThread(id, dotId, title);
+    // The thread id is minted locally and its transcript is stored locally by
+    // the runner; no hosted round-trip is needed.
+    return this.workspace.bindThread(randomUUID(), dotId, title);
   }
-  /** Remove a conversation locally right away; the hosted delete runs in the background. */
   async deleteConversation(threadId: string): Promise<void> {
     this.requireReady();
-    const conversation = this.workspace.requireThread(threadId);
+    this.workspace.requireThread(threadId);
     this.workspace.deleteThread(threadId);
-    void withTimeout(
-      this.intelligence!.deleteThread({
-        threadId,
-        userId: this.workspace.ownerId,
-        agentId: conversation.dotId,
-      }),
-      6000,
-    ).catch(() => {
-      // Intelligence may be unreachable; the local binding is already removed.
-    });
+    this.runner.deleteThread(threadId);
   }
   async deleteAllConversations(): Promise<number> {
     this.requireReady();
     const conversations = this.workspace.conversations();
-    for (const conversation of conversations)
+    for (const conversation of conversations) {
       this.workspace.deleteThread(conversation.id);
-    void Promise.allSettled(
-      conversations.map((conversation) =>
-        withTimeout(
-          this.intelligence!.deleteThread({
-            threadId: conversation.id,
-            userId: this.workspace.ownerId,
-            agentId: conversation.dotId,
-          }),
-          6000,
-        ),
-      ),
-    );
+      this.runner.deleteThread(conversation.id);
+    }
     return conversations.length;
   }
   async history(threadId: string): Promise<string> {
     this.requireReady();
     this.workspace.requireThread(threadId);
-    const history = await this.intelligence!.getThreadMessages({
-      threadId,
-      userId: this.workspace.ownerId,
-    });
-    return history.messages
+    const history = this.runner.getThreadMessages(threadId);
+    return history
       .filter((message) => ['user', 'assistant'].includes(message.role))
       .slice(-12)
       .map(
@@ -281,8 +123,7 @@ export class Platform {
   }
   async handle(request: Request): Promise<Response> {
     // The CopilotKit client continuously polls inspector metadata that this
-    // fork deliberately does not serve; answering 204 stops the retry loop and
-    // the flood of 403s (which otherwise hammers the runtime).
+    // fork deliberately does not serve; answering 204 stops the retry loop.
     const pathname = new URL(request.url).pathname;
     if (
       request.method === 'GET' &&
@@ -290,11 +131,6 @@ export class Platform {
         pathname.endsWith('/inspector-learning'))
     )
       return new Response(null, { status: 204 });
-    if (!this.handler)
-      return Response.json(
-        { error: `Setup required: ${INTELLIGENCE_KEY_MISSING_LABEL}.` },
-        { status: 503 },
-      );
     let body: unknown;
     if (request.method !== 'GET' && request.method !== 'HEAD')
       body = await request
@@ -316,6 +152,10 @@ export class Platform {
     }
     return this.handler.fetch(request);
   }
+  /**
+   * Run a headless turn (scheduled tasks, voice compute) fully in-process
+   * through the local runner, persisting it to the thread transcript.
+   */
   async turn(
     threadId: string,
     prompt: string,
@@ -323,17 +163,52 @@ export class Platform {
     metadata?: Record<string, unknown>,
   ): Promise<string> {
     this.requireReady();
+    signal.throwIfAborted();
     const thread = this.workspace.requireThread(threadId);
-    return runThreadTurn(
-      this.config.runtimeUrl,
-      this.config.ownerToken
-        ? { Authorization: `Bearer ${this.config.ownerToken}` }
-        : {},
+    const agent = new DotAgent(
+      this.store,
+      this.workspace,
+      this.config,
       thread.dotId,
-      threadId,
-      prompt,
-      signal,
-      metadata,
+      false,
+      this.setupTelemetry,
     );
+    const idPrefix =
+      metadata?.opendotsSource === 'voice_receipt'
+        ? voiceReceiptMessagePrefix
+        : metadata?.opendotsSource === 'scheduled_task'
+          ? scheduledTaskMessagePrefix
+          : '';
+    const prior = this.runner.getThreadMessages(threadId);
+    const messages: Message[] = [
+      ...prior,
+      {
+        id: `${idPrefix}${randomUUID()}`,
+        role: 'user',
+        content: prompt,
+        ...(metadata ? { metadata } : {}),
+      } as Message,
+    ];
+    const input: RunAgentInput = {
+      threadId,
+      runId: randomUUID(),
+      state: {},
+      messages,
+      tools: [],
+      context: [],
+    };
+    const stop = () => void this.runner.stop({ threadId });
+    signal.addEventListener('abort', stop, { once: true });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.runner
+          .run({ threadId, agent, input })
+          .subscribe({ error: reject, complete: resolve });
+      });
+      signal.throwIfAborted();
+      return currentTurnText(this.runner.getThreadMessages(threadId));
+    } finally {
+      signal.removeEventListener('abort', stop);
+    }
   }
 }

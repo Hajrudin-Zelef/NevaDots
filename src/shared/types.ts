@@ -123,7 +123,6 @@ export interface CallReceipt {
   error: string | null;
 }
 export interface SetupStatus {
-  intelligence: boolean;
   model: boolean;
   browser: boolean;
   voice: boolean;

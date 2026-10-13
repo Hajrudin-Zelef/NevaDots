@@ -711,10 +711,7 @@ export function WorkspaceDialog({
             <div className="config-note">
               <strong>État du service</strong>
               <ul className="settings-flags">
-                <li>
-                  Intelligence :{' '}
-                  {workspace.setup.intelligence ? 'connectée' : 'absente'}
-                </li>
+                <li>Transcriptions : locales (auto-hébergées)</li>
                 <li>
                   Modèle : {workspace.setup.model ? 'configuré' : 'absent'}
                 </li>
