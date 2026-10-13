@@ -72,13 +72,13 @@ export function Mascot({
   const baseSrc = avatarSrc(character) ?? `/dots/${character}.png`;
   const wanted = (live && avatarStateSrc(character, state)) || baseSrc;
 
-  // Two stacked layers for the crossfade; `active` is the visible one.
-  const [layers, setLayers] = useState(() => ({
-    a: baseSrc,
-    b: baseSrc,
-    active: 'a' as 'a' | 'b',
-  }));
+  // One visible layer at rest; a second layer only exists during the short
+  // crossfade. Two always-mounted copies of the same animated WebP drift out
+  // of sync (double image / ghosting) and double the decode cost.
+  const [shown, setShown] = useState(baseSrc);
+  const [incoming, setIncoming] = useState<string | null>(null);
   const activeSrc = useRef(baseSrc);
+  const fadeTimer = useRef<number | undefined>(undefined);
   const alt = decorative ? '' : `${name} is ${stateRef.current}`;
 
   // Crossfade to the state clip once it is decoded (never shows a blank frame).
@@ -89,12 +89,13 @@ export function Mascot({
     let cancelled = false;
     const commit = () => {
       if (cancelled || next === activeSrc.current) return;
-      activeSrc.current = next;
-      setLayers((prev) =>
-        prev.active === 'a'
-          ? { a: prev.a, b: next, active: 'b' }
-          : { a: next, b: prev.b, active: 'a' },
-      );
+      setIncoming(next);
+      window.clearTimeout(fadeTimer.current);
+      fadeTimer.current = window.setTimeout(() => {
+        activeSrc.current = next;
+        setShown(next);
+        setIncoming(null);
+      }, 360);
     };
     img.onload = commit;
     img.onerror = commit;
@@ -105,6 +106,8 @@ export function Mascot({
       img.onerror = null;
     };
   }, [wanted, live]);
+
+  useEffect(() => () => window.clearTimeout(fadeTimer.current), []);
 
   useEffect(() => {
     if (!live) return;
@@ -233,11 +236,27 @@ export function Mascot({
         <span
           className="dot-layers"
           ref={layersRef}
-          data-active={layers.active}
+          data-active={incoming ? 'b' : 'a'}
           aria-hidden={decorative}
         >
-          <img className="dot-body" src={layers.a} alt={alt} width={512} height={512} draggable={false} />
-          <img className="dot-body" src={layers.b} alt="" width={512} height={512} draggable={false} />
+          <img
+            className="dot-body"
+            src={shown}
+            alt={alt}
+            width={512}
+            height={512}
+            draggable={false}
+          />
+          {incoming && (
+            <img
+              className="dot-body"
+              src={incoming}
+              alt=""
+              width={512}
+              height={512}
+              draggable={false}
+            />
+          )}
         </span>
       ) : (
         <img
