@@ -3,7 +3,7 @@ import { ConnectionService } from './connections.js';
 import { PageService } from './page-service.js';
 import { randomUUID } from 'node:crypto';
 import { CopilotRuntime, createCopilotHonoHandler } from '@copilotkit/runtime/v2';
-import type { Message, RunAgentInput } from '@ag-ui/core';
+import type { BaseEvent, Message, RunAgentInput } from '@ag-ui/core';
 import { Store } from './store.js';
 import { WorkspaceStore } from './workspace.js';
 import { DotAgent } from './dot-agent.js';
@@ -173,6 +173,9 @@ export class Platform {
       false,
       this.setupTelemetry,
     );
+    // The AG-UI agent rebuilds each run input from its own threadId/messages
+    // (see AbstractAgent.prepareRunAgentInput), so seed both before running.
+    agent.threadId = threadId;
     const idPrefix =
       metadata?.opendotsSource === 'voice_receipt'
         ? voiceReceiptMessagePrefix
@@ -189,6 +192,7 @@ export class Platform {
         ...(metadata ? { metadata } : {}),
       } as Message,
     ];
+    agent.setMessages(messages);
     const input: RunAgentInput = {
       threadId,
       runId: randomUUID(),
@@ -200,13 +204,22 @@ export class Platform {
     const stop = () => void this.runner.stop({ threadId });
     signal.addEventListener('abort', stop, { once: true });
     try {
+      const events: BaseEvent[] = [];
       await new Promise<void>((resolve, reject) => {
-        this.runner
-          .run({ threadId, agent, input })
-          .subscribe({ error: reject, complete: resolve });
+        this.runner.run({ threadId, agent, input }).subscribe({
+          next: (event) => events.push(event),
+          error: reject,
+          complete: resolve,
+        });
       });
       signal.throwIfAborted();
-      return currentTurnText(this.runner.getThreadMessages(threadId));
+      const failure = events.find(
+        (event) => event.type === 'RUN_ERROR',
+      ) as { message?: string } | undefined;
+      return currentTurnText(
+        this.runner.getThreadMessages(threadId),
+        failure ? new Error(failure.message ?? 'The turn failed.') : undefined,
+      );
     } finally {
       signal.removeEventListener('abort', stop);
     }
