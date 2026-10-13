@@ -88,7 +88,10 @@ function useMetrics() {
       }
     };
     void load();
-    const timer = window.setInterval(load, 3000);
+    // Only poll a visible tab: keeps the UI fluid and the box calm when hidden.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 3000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -251,7 +254,9 @@ export function App() {
   }, []);
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), 3000);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, 3000);
     return () => clearInterval(timer);
   }, [refresh]);
   useEffect(() => {
@@ -286,7 +291,9 @@ export function App() {
           );
         });
     load();
-    const timer = setInterval(load, 3000);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, 3000);
     return () => {
       active = false;
       clearInterval(timer);
