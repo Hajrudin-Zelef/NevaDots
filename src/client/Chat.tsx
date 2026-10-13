@@ -8,7 +8,7 @@ import { ConnectionActionCard } from './ConnectionActionCard';
 import { contextualMessage, type PageContext } from './page-context';
 import { api } from './api';
 import type { Page } from '../server/pages';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CopilotChatToolCallsView,
   useRenderTool,
@@ -736,8 +736,42 @@ export function Chat({
         /* token totals are best-effort */
       });
   }, [running, agent.messages]);
-  // Persist the finished turn's outcome + activity so the Muse-style activity
-  // timeline can show conversations that were never open in this browser.
+  // Persist the turn outcome + activity so the Muse activity timeline can show
+  // conversations that were never open in this browser. While the turn runs we
+  // also post on a throttle so the rail follows the work live; the final post
+  // lands on completion, with the one-line summary.
+  const postActivity = useCallback(
+    (withSummary: boolean) => {
+      const last = agent.messages
+        .filter((message) => message.role === 'assistant')
+        .at(-1);
+      const text = typeof last?.content === 'string' ? last.content.trim() : '';
+      if (!withSummary && !activity.length) return;
+      const body: { summary?: string | null; activity: unknown[] } = {
+        activity: activity.slice(-60),
+      };
+      if (withSummary)
+        body.summary = text.replace(/\s+/g, ' ').slice(0, 240) || null;
+      void api(
+        `/conversations/${encodeURIComponent(thread.id)}/activity`,
+        'POST',
+        body,
+      ).catch(() => {
+        /* best-effort */
+      });
+    },
+    [agent.messages, activity, thread.id],
+  );
+  // Live: throttled posts while the turn is running.
+  const lastPostAt = useRef(0);
+  useEffect(() => {
+    if (!running || runError.current) return;
+    const now = Date.now();
+    if (now - lastPostAt.current < 2000) return;
+    lastPostAt.current = now;
+    postActivity(false);
+  }, [running, activity, postActivity]);
+  // Final: one post when the turn completes.
   const activityPosted = useRef(true);
   useEffect(() => {
     if (running) {
@@ -747,19 +781,8 @@ export function Chat({
     if (activityPosted.current) return;
     activityPosted.current = true;
     if (runError.current) return;
-    const last = agent.messages
-      .filter((message) => message.role === 'assistant')
-      .at(-1);
-    const text = typeof last?.content === 'string' ? last.content.trim() : '';
-    if (!text && !activity.length) return;
-    const summary = text.replace(/\s+/g, ' ').slice(0, 240) || null;
-    void api(`/conversations/${encodeURIComponent(thread.id)}/activity`, 'POST', {
-      summary,
-      activity: activity.slice(-60),
-    }).catch(() => {
-      /* best-effort */
-    });
-  }, [running, activity, agent.messages, thread.id]);
+    postActivity(true);
+  }, [running, postActivity]);
   return (
     <div className={`live-chat ${visible.length ? 'in-conversation' : ''}`}>
       {pageContext && (

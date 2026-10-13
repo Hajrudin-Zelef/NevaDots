@@ -90,7 +90,9 @@ export function ActivityPanel({
 }) {
   const [tab, setTab] = useState<Tab>('activity');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [fetched, setFetched] = useState<Record<string, ActivityEvent[]>>({});
+  const [fetched, setFetched] = useState<
+    Record<string, { events: ActivityEvent[]; at: number }>
+  >({});
   const [computer, setComputer] = useState<ComputerStatus>();
   const [computerError, setComputerError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -125,32 +127,53 @@ export function ActivityPanel({
   );
 
   const eventsFor = (id: string): ActivityEvent[] =>
-    id === currentThreadId ? liveEvents : (fetched[id] ?? []);
+    id === currentThreadId ? liveEvents : (fetched[id]?.events ?? []);
+
+  // Keep expanded conversations' activity fresh: re-fetch whenever the
+  // conversation's updatedAt moves past what we last cached (the workspace
+  // poll refreshes updatedAt every few seconds), so the rail tracks live work
+  // in threads that are not currently open.
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    const stale = conversations.filter((conversation) => {
+      if (conversation.id === currentThreadId) return false;
+      if (!expanded.has(conversation.id)) return false;
+      const at = fetched[conversation.id]?.at ?? -1;
+      return (conversation.updatedAt ?? conversation.createdAt) > at;
+    });
+    for (const conversation of stale) {
+      void api<{ events: ActivityEvent[] }>(
+        `/conversations/${encodeURIComponent(conversation.id)}/activity`,
+      )
+        .then((value) => {
+          if (active)
+            setFetched((current) => ({
+              ...current,
+              [conversation.id]: { events: value.events, at: Date.now() },
+            }));
+        })
+        .catch(() => {
+          if (active)
+            setFetched((current) => ({
+              ...current,
+              [conversation.id]: { events: [], at: Date.now() },
+            }));
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [open, conversations, expanded, currentThreadId, fetched]);
 
   const toggle = (conversation: Conversation) => {
     const id = conversation.id;
-    if (id === currentThreadId) {
-      setExpanded((current) => {
-        const next = new Set(current);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-      return;
-    }
     setExpanded((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-    if (!fetched[id]) {
-      void api<{ events: ActivityEvent[] }>(
-        `/conversations/${encodeURIComponent(id)}/activity`,
-      )
-        .then((value) => setFetched((current) => ({ ...current, [id]: value.events })))
-        .catch(() => setFetched((current) => ({ ...current, [id]: [] })));
-    }
   };
 
   const patchComputer = async (patch: Record<string, boolean>) => {

@@ -14,6 +14,7 @@ import { SetupTelemetry } from './setup-telemetry.js';
 import { SqliteAgentRunner } from './sqlite-runner.js';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt.js';
 import { scheduledTaskMessagePrefix } from '../shared/scheduled-message.js';
+import { deriveActivity } from '../shared/activity.js';
 
 export class Platform {
   readonly setupTelemetry: SetupTelemetry;
@@ -213,13 +214,25 @@ export class Platform {
         });
       });
       signal.throwIfAborted();
+      const finalMessages = this.runner.getThreadMessages(threadId);
       const failure = events.find(
         (event) => event.type === 'RUN_ERROR',
       ) as { message?: string } | undefined;
-      return currentTurnText(
-        this.runner.getThreadMessages(threadId),
+      const text = currentTurnText(
+        finalMessages,
         failure ? new Error(failure.message ?? 'The turn failed.') : undefined,
       );
+      // Persist the turn's activity so the Muse rail can show scheduled-task
+      // and voice turns, which never run through an open browser client.
+      try {
+        this.workspace.recordThreadActivity(threadId, {
+          summary: text.replace(/\s+/g, ' ').slice(0, 240) || null,
+          activity: deriveActivity(finalMessages).slice(-60),
+        });
+      } catch {
+        /* best-effort: activity persistence must not fail the turn */
+      }
+      return text;
     } finally {
       signal.removeEventListener('abort', stop);
     }
