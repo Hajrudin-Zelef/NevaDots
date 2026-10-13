@@ -893,7 +893,6 @@ export function Chat({
           }
         }
         onOpenConversation={(id) => onOpenConversation?.(id)}
-        onOpenReasoning={(id) => setReasonPanel({ id, live: false })}
         onOpenComputer={() => {
           onRailChange(false);
           onComputer?.();

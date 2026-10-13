@@ -1,44 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Brain,
-  CalendarClock,
   Check,
-  ChevronRight,
   Clock,
-  FileText,
   Fingerprint,
-  Globe,
-  Keyboard,
   ListChecks,
   Loader2,
   Monitor,
-  Search,
   ShieldCheck,
-  Terminal,
-  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { Mascot, AVATARS } from './Mascot';
 import { avatarSrc } from '../shared/avatars';
 import { api } from './api';
-import { activityVerb, type ActivityEvent, type ActivityKind } from '../shared/activity';
+import type { ActivityEvent } from '../shared/activity';
 import { groupByDay, timeOfDay } from './day-groups';
+import { ActivityDetailModal } from './ActivityDetailModal';
 import type { ComputerStatus } from '../shared/computer-types';
 import type { Conversation, Dot, Settings, Task } from '../shared/types';
 
 type Tab = 'activity' | 'security' | 'tasks' | 'profile';
-
-const kindIcons: Record<ActivityKind, LucideIcon> = {
-  command: Terminal,
-  typing: Keyboard,
-  web: Globe,
-  file: FileText,
-  search: Search,
-  tool: Wrench,
-  reasoning: Brain,
-  task: CalendarClock,
-};
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: 'activity', label: 'Activité', icon: ListChecks },
@@ -66,7 +47,6 @@ export function ActivityPanel({
   tasks,
   settings,
   onOpenConversation,
-  onOpenReasoning,
   onOpenComputer,
   onOpenSettings,
   onOpenTasks,
@@ -83,16 +63,12 @@ export function ActivityPanel({
   tasks: Task[];
   settings: Settings;
   onOpenConversation: (id: string) => void;
-  onOpenReasoning: (id: string) => void;
   onOpenComputer?: () => void;
   onOpenSettings: () => void;
   onOpenTasks: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('activity');
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [fetched, setFetched] = useState<
-    Record<string, { events: ActivityEvent[]; at: number }>
-  >({});
+  const [detail, setDetail] = useState<Conversation | null>(null);
   const [computer, setComputer] = useState<ComputerStatus>();
   const [computerError, setComputerError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -125,56 +101,6 @@ export function ActivityPanel({
       ),
     [conversations],
   );
-
-  const eventsFor = (id: string): ActivityEvent[] =>
-    id === currentThreadId ? liveEvents : (fetched[id]?.events ?? []);
-
-  // Keep expanded conversations' activity fresh: re-fetch whenever the
-  // conversation's updatedAt moves past what we last cached (the workspace
-  // poll refreshes updatedAt every few seconds), so the rail tracks live work
-  // in threads that are not currently open.
-  useEffect(() => {
-    if (!open) return;
-    let active = true;
-    const stale = conversations.filter((conversation) => {
-      if (conversation.id === currentThreadId) return false;
-      if (!expanded.has(conversation.id)) return false;
-      const at = fetched[conversation.id]?.at ?? -1;
-      return (conversation.updatedAt ?? conversation.createdAt) > at;
-    });
-    for (const conversation of stale) {
-      void api<{ events: ActivityEvent[] }>(
-        `/conversations/${encodeURIComponent(conversation.id)}/activity`,
-      )
-        .then((value) => {
-          if (active)
-            setFetched((current) => ({
-              ...current,
-              [conversation.id]: { events: value.events, at: Date.now() },
-            }));
-        })
-        .catch(() => {
-          if (active)
-            setFetched((current) => ({
-              ...current,
-              [conversation.id]: { events: [], at: Date.now() },
-            }));
-        });
-    }
-    return () => {
-      active = false;
-    };
-  }, [open, conversations, expanded, currentThreadId, fetched]);
-
-  const toggle = (conversation: Conversation) => {
-    const id = conversation.id;
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const patchComputer = async (patch: Record<string, boolean>) => {
     if (busy) return;
@@ -215,7 +141,8 @@ export function ActivityPanel({
 
   if (!open) return null;
   return (
-    <aside className="muse-overlay" aria-label={`Assistant ${dot.name}`}>
+    <>
+      <aside className="muse-overlay" aria-label={`Assistant ${dot.name}`}>
       <div className="muse-panel">
         <button
           type="button"
@@ -267,20 +194,15 @@ export function ActivityPanel({
                 <section className="muse-day" key={group.label}>
                   <h3 className="muse-day-title">{group.label}</h3>
                   {group.items.map((conversation) => {
-                    const event = eventsFor(conversation.id);
-                    const isOpen = expanded.has(conversation.id);
                     const doing = conversation.id === currentThreadId && running;
                     const owner = dots.find((item) => item.id === conversation.dotId);
                     return (
-                      <article
-                        className={`muse-card ${isOpen ? 'expanded' : ''}`}
-                        key={conversation.id}
-                      >
+                      <article className="muse-card" key={conversation.id}>
                         <button
                           type="button"
                           className="muse-card-head"
-                          onClick={() => onOpenConversation(conversation.id)}
-                          title={conversation.title}
+                          onClick={() => setDetail(conversation)}
+                          title={`Voir le détail — ${conversation.title}`}
                         >
                           <span className="muse-card-icon">
                             <Mascot
@@ -314,57 +236,6 @@ export function ActivityPanel({
                             )}
                           </span>
                         </button>
-                        <button
-                          type="button"
-                          className="muse-card-toggle"
-                          aria-label="Voir les actions"
-                          aria-expanded={isOpen}
-                          onClick={() => toggle(conversation)}
-                        >
-                          <ChevronRight
-                            size={14}
-                            className={isOpen ? 'open' : ''}
-                          />
-                        </button>
-                        {isOpen && (
-                          <div className="muse-card-tools">
-                            {event.length ? (
-                              event.map((item) => {
-                                const Icon = kindIcons[item.kind];
-                                return (
-                                  <button
-                                    type="button"
-                                    className={`muse-tool ${item.status}`}
-                                    key={item.id}
-                                    onClick={() =>
-                                      item.kind === 'reasoning' &&
-                                      onOpenReasoning(item.id)
-                                    }
-                                    title={item.detail}
-                                  >
-                                    <Icon size={13} />
-                                    <span className="muse-tool-text">
-                                      {item.kind === 'reasoning'
-                                        ? item.label
-                                        : activityVerb(item)}
-                                    </span>
-                                    <span className={`muse-tool-state ${item.status}`}>
-                                      {item.status === 'running'
-                                        ? 'en cours'
-                                        : item.status === 'error'
-                                          ? 'erreur'
-                                          : item.status === 'stopped'
-                                            ? 'arrêté'
-                                            : 'fait'}
-                                    </span>
-                                  </button>
-                                );
-                              })
-                            ) : (
-                              <p className="muse-empty">Aucune action enregistrée.</p>
-                            )}
-                          </div>
-                        )}
                       </article>
                     );
                   })}
@@ -521,6 +392,20 @@ export function ActivityPanel({
           )}
         </div>
       </div>
-    </aside>
+      </aside>
+      {detail && (
+        <ActivityDetailModal
+          conversation={detail}
+          liveEvents={liveEvents}
+          isCurrent={detail.id === currentThreadId}
+          running={running}
+          onClose={() => setDetail(null)}
+          onOpenConversation={(id) => {
+            setDetail(null);
+            onOpenConversation(id);
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -2766,3 +2766,226 @@ textarea::placeholder {
     min-width: 0;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Phase F — Modal « détail d'activité » (Muse) : timeline à gauche, détail de
+   l'étape sélectionnée à droite.
+--------------------------------------------------------------------------- */
+.ad-modal {
+  width: min(1100px, 94vw);
+  max-height: min(86dvh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--nd-bg, #fff);
+  border: 1px solid var(--nd-border, #e7e5e0);
+  border-radius: 20px;
+  box-shadow: 0 30px 80px color-mix(in srgb, #000 30%, transparent);
+  overflow: hidden;
+}
+.ad-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--nd-border, #eee);
+}
+.ad-chip {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.ad-chip.done {
+  color: #15803d;
+  background: color-mix(in srgb, #22c55e 16%, transparent);
+}
+.ad-chip.live {
+  color: #b45309;
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+}
+.ad-title {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--nd-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ad-close {
+  flex: 0 0 auto;
+}
+.ad-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(260px, 34%) 1fr;
+  min-height: 0;
+}
+.ad-timeline {
+  overflow: auto;
+  padding: 14px 10px 18px;
+  border-right: 1px solid var(--nd-border, #eee);
+  background: var(--nd-bg-sidebar, #faf9f6);
+}
+.ad-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ad-step {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--nd-text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+}
+.ad-step:hover {
+  background: color-mix(in oklab, var(--nd-text) 6%, transparent);
+}
+.ad-step.selected {
+  background: color-mix(in oklab, var(--nd-accent, #22c55e) 14%, transparent);
+}
+.ad-step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: var(--nd-bg-input, #f1efe9);
+  color: var(--nd-text-secondary, #666);
+}
+.ad-step-icon.big {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+.ad-step-icon.error {
+  color: #dc2626;
+}
+.ad-step-icon.ok {
+  color: #16a34a;
+}
+.ad-step-icon.running {
+  color: #d97706;
+}
+.ad-step-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ad-step-state {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--nd-text-secondary, #888);
+}
+.ad-step-state.error {
+  color: #dc2626;
+}
+.ad-step-state.ok {
+  color: #16a34a;
+}
+.ad-detail {
+  overflow: auto;
+  padding: 22px 26px 26px;
+}
+.ad-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.ad-detail-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+}
+.ad-detail-sub {
+  margin: 12px 0 0;
+  font-size: 15px;
+  color: var(--nd-text);
+  word-break: break-word;
+}
+.ad-detail h4 {
+  margin: 20px 0 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--nd-text-secondary, #888);
+}
+.ad-result {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--nd-bg-input, #f6f5f1);
+  border: 1px solid var(--nd-border, #eceae3);
+  font-family: var(--nd-font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 46vh;
+  overflow: auto;
+}
+.ad-result.error {
+  color: #b91c1c;
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  border-color: color-mix(in srgb, #ef4444 30%, transparent);
+}
+.ad-empty {
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--nd-text-secondary, #888);
+  font-size: 14px;
+}
+.ad-foot {
+  padding: 12px 22px;
+  border-top: 1px solid var(--nd-border, #eee);
+  display: flex;
+  justify-content: flex-end;
+}
+.ad-open {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--nd-accent, #22c55e);
+  cursor: pointer;
+}
+.ad-open:hover {
+  filter: brightness(0.96);
+}
+@media (max-width: 760px) {
+  .ad-modal {
+    width: 100vw;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+  }
+  .ad-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 40%) 1fr;
+  }
+  .ad-timeline {
+    border-right: 0;
+    border-bottom: 1px solid var(--nd-border, #eee);
+  }
+}
