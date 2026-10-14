@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import type {
+  CatalogModel,
   CatalogResponse,
   CreditsResponse,
   ModelsResponse,
@@ -8,11 +9,49 @@ import type {
 } from '../shared/models';
 
 type DefaultRef = { provider: string; model: string | null };
+type KindFilter = 'all' | 'text' | 'image';
 
 /** Notifies the composers to re-fetch `/models` after a provider change. */
 function notifyModelsChanged() {
   window.dispatchEvent(new Event('models-changed'));
 }
+
+/** Tab icons per provider (cetas-lite uses SVG logos; emoji stay CSP-safe). */
+const PROVIDER_ICONS: Record<string, string> = {
+  opencode: '⬡',
+  openrouter: '🔀',
+  deepseek: '🐋',
+  freellmapi: '🆓',
+};
+
+/** `"$2.50 — $7.50 /M"`, `"Gratuit"` when both are 0, null when unknown. */
+function priceStr(model: CatalogModel): string | null {
+  const { promptPer1M: p, completionPer1M: c } = model;
+  if (p === undefined && c === undefined) return null;
+  if ((p ?? 0) === 0 && (c ?? 0) === 0) return 'Gratuit';
+  const fmt = (n: number) =>
+    `$${n.toLocaleString('en-US', { maximumFractionDigits: 3 })}`;
+  return `${fmt(p ?? 0)} — ${fmt(c ?? 0)} /M`;
+}
+
+/** Tooltip text for the info badge: name, maker, context, description. */
+function modelTooltip(model: CatalogModel): string {
+  const parts: string[] = [];
+  parts.push(model.name && model.name !== model.id ? model.name : model.id);
+  if (model.maker) parts.push(`Fabricant : ${model.maker}`);
+  if (model.contextLength)
+    parts.push(
+      `Contexte : ${model.contextLength.toLocaleString('fr-FR')} tokens`,
+    );
+  if (model.description) parts.push(model.description);
+  return parts.join('\n');
+}
+
+const KIND_LABELS: Record<KindFilter, string> = {
+  all: 'Tous',
+  text: 'Textes',
+  image: 'Images',
+};
 
 export function ApiProvidersPanel() {
   const [providers, setProviders] = useState<ProviderModels[]>([]);
@@ -21,7 +60,10 @@ export function ApiProvidersPanel() {
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [keyInput, setKeyInput] = useState('');
+  const [kind, setKind] = useState<KindFilter>('all');
+  const [maker, setMaker] = useState('all');
+  /** Typed (not yet validated) keys, kept per provider so tab switches keep them. */
+  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -38,6 +80,27 @@ export function ApiProvidersPanel() {
       /* credits are best-effort */
     }
   }, []);
+
+  const loadCatalog = useCallback(
+    async (providerId: string, refresh: boolean, isOn: () => boolean) => {
+      setCatalogLoading(true);
+      if (refresh) setCatalog(null);
+      try {
+        const value = await api<CatalogResponse>(
+          `/catalog/${providerId}${refresh ? '?refresh=1' : ''}`,
+        );
+        if (isOn()) setCatalog(value);
+      } catch (cause) {
+        if (isOn())
+          setError(
+            cause instanceof Error ? cause.message : 'Catalogue indisponible.',
+          );
+      } finally {
+        if (isOn()) setCatalogLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     let on = true;
@@ -62,28 +125,17 @@ export function ApiProvidersPanel() {
   useEffect(() => {
     if (!active) return;
     let on = true;
-    setCatalogLoading(true);
+    const isOn = () => on;
     setCatalog(null);
     setSearch('');
-    setKeyInput('');
+    setKind('all');
+    setMaker('all');
     setReveal(false);
-    void api<CatalogResponse>(`/catalog/${active}`)
-      .then((value) => {
-        if (on) setCatalog(value);
-      })
-      .catch((cause) => {
-        if (on)
-          setError(
-            cause instanceof Error ? cause.message : 'Catalogue indisponible.',
-          );
-      })
-      .finally(() => {
-        if (on) setCatalogLoading(false);
-      });
+    void loadCatalog(active, false, isOn);
     return () => {
       on = false;
     };
-  }, [active]);
+  }, [active, loadCatalog]);
 
   const flash = (label: string) => {
     setSaved(label);
@@ -128,28 +180,57 @@ export function ApiProvidersPanel() {
     );
   };
 
-  const saveKey = async () => {
-    if (!provider || !keyInput.trim()) return;
+  /** Core key PUT shared by single save and save-all. No busy handling. */
+  const putKey = useCallback(
+    async (providerId: string, key: string): Promise<boolean> => {
+      try {
+        const result = await api<{ providers: ProviderModels[] }>(
+          `/providers/${providerId}`,
+          'PUT',
+          { key },
+        );
+        setProviders(result.providers);
+        setKeyInputs((current) => ({ ...current, [providerId]: '' }));
+        setReveal(false);
+        notifyModelsChanged();
+        void loadCredits();
+        return true;
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Clé refusée.');
+        return false;
+      }
+    },
+    [loadCredits],
+  );
+
+  const saveKey = () => {
+    const key = (keyInputs[active] ?? '').trim();
+    if (!provider || !key || busy) return;
     setBusy('key');
     setError('');
-    try {
-      const result = await api<{ providers: ProviderModels[] }>(
-        `/providers/${provider.id}`,
-        'PUT',
-        { key: keyInput.trim() },
-      );
-      setProviders(result.providers);
-      setKeyInput('');
-      setReveal(false);
-      flash('key');
-      notifyModelsChanged();
-      void loadCredits();
-      setActive(provider.id);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Clé refusée.');
-    } finally {
+    void putKey(provider.id, key).then((ok) => {
+      if (ok) flash('key');
       setBusy('');
-    }
+    });
+  };
+
+  /** Validates every typed-but-unsaved key (cetas-lite's "Sauvegarder tout"). */
+  const saveAllKeys = () => {
+    const pending = providers.filter((item) =>
+      (keyInputs[item.id] ?? '').trim(),
+    );
+    if (!pending.length || busy) return;
+    setBusy('all');
+    setError('');
+    void (async () => {
+      let failed = 0;
+      for (const item of pending) {
+        const ok = await putKey(item.id, (keyInputs[item.id] ?? '').trim());
+        if (!ok) failed += 1;
+      }
+      if (failed === 0) flash('all');
+      setBusy('');
+    })();
   };
 
   const removeKey = async () => {
@@ -174,6 +255,13 @@ export function ApiProvidersPanel() {
     }
   };
 
+  const refreshCatalog = () => {
+    if (!active || busy) return;
+    setBusy('refresh');
+    setError('');
+    void loadCatalog(active, true, () => true).finally(() => setBusy(''));
+  };
+
   const changeDefault = async (next: DefaultRef) => {
     setDefaultRef(next);
     try {
@@ -193,8 +281,25 @@ export function ApiProvidersPanel() {
   const defaultProvider = providers.find(
     (item) => item.id === defaultRef?.provider,
   );
-  const filtered = (catalog?.models ?? []).filter((model) =>
-    model.id.toLowerCase().includes(search.trim().toLowerCase()),
+  const models = catalog?.models ?? [];
+  const makers = [...new Set(models.map((m) => m.maker).filter(Boolean))].sort(
+    (a, b) => a!.localeCompare(b!, 'fr'),
+  ) as string[];
+  const hasImages = models.some((m) => m.isImage);
+  const query = search.trim().toLowerCase();
+  const filtered = models.filter((model) => {
+    if (kind === 'image' && !model.isImage) return false;
+    if (kind === 'text' && model.isImage) return false;
+    if (maker !== 'all' && model.maker !== maker) return false;
+    if (
+      query &&
+      !`${model.id} ${model.name ?? ''}`.toLowerCase().includes(query)
+    )
+      return false;
+    return true;
+  });
+  const hasPendingKeys = providers.some((item) =>
+    (keyInputs[item.id] ?? '').trim(),
   );
 
   return (
@@ -260,6 +365,9 @@ export function ApiProvidersPanel() {
             className={`provider-tab ${item.id === active ? 'active' : ''}`}
             onClick={() => setActive(item.id)}
           >
+            <span className="provider-tab-icon" aria-hidden="true">
+              {PROVIDER_ICONS[item.id] ?? '🔌'}
+            </span>
             <span className="provider-tab-label">{item.label}</span>
             <span
               className={`provider-status ${item.configured ? 'ok' : ''}`}
@@ -310,10 +418,15 @@ export function ApiProvidersPanel() {
                   ? 'Nouvelle clé (laisser vide pour conserver)'
                   : 'Coller la clé API…'
               }
-              value={keyInput}
-              onChange={(event) => setKeyInput(event.target.value)}
+              value={keyInputs[provider.id] ?? ''}
+              onChange={(event) =>
+                setKeyInputs((current) => ({
+                  ...current,
+                  [provider.id]: event.target.value,
+                }))
+              }
               onKeyDown={(event) => {
-                if (event.key === 'Enter') void saveKey();
+                if (event.key === 'Enter') saveKey();
               }}
             />
             <button
@@ -327,8 +440,10 @@ export function ApiProvidersPanel() {
             <button
               type="button"
               className="connection-connect"
-              disabled={busy === 'key' || !keyInput.trim()}
-              onClick={() => void saveKey()}
+              disabled={
+                busy === 'key' || !(keyInputs[provider.id] ?? '').trim()
+              }
+              onClick={saveKey}
             >
               {busy === 'key' ? 'Validation…' : 'Valider'}
             </button>
@@ -337,12 +452,55 @@ export function ApiProvidersPanel() {
 
           <div className="api-catalog-head">
             <strong>Modèles disponibles</strong>
+            {hasImages && (
+              <div
+                className="api-kind-seg"
+                role="group"
+                aria-label="Type de modèle"
+              >
+                {(Object.keys(KIND_LABELS) as KindFilter[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={`api-kind-btn ${kind === k ? 'active' : ''}`}
+                    onClick={() => setKind(k)}
+                  >
+                    {KIND_LABELS[k]}
+                  </button>
+                ))}
+              </div>
+            )}
+            {makers.length > 1 && (
+              <select
+                className="api-category-select"
+                aria-label="Catégorie"
+                value={maker}
+                onChange={(event) => setMaker(event.target.value)}
+              >
+                <option value="all">Toutes les catégories</option>
+                {makers.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            )}
             <input
               className="api-catalog-search"
               placeholder="Rechercher un modèle…"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
+            <button
+              type="button"
+              className="api-refresh-btn"
+              title="Actualiser le catalogue"
+              aria-label="Actualiser le catalogue"
+              disabled={busy === 'refresh'}
+              onClick={refreshCatalog}
+            >
+              {busy === 'refresh' ? '…' : '↻'}
+            </button>
             {saved === 'models' && (
               <span className="api-saved">Enregistré ✓</span>
             )}
@@ -362,23 +520,51 @@ export function ApiProvidersPanel() {
           )}
           {!catalogLoading && filtered.length > 0 && (
             <ul className="api-catalog-list">
-              {filtered.map((model) => (
-                <li key={model.id} className="api-catalog-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={enabled.has(model.id)}
-                      onChange={() => toggleModel(model.id)}
-                    />
-                    <span className="api-model-id">{model.id}</span>
-                    {model.name && model.name !== model.id && (
-                      <span className="api-model-name">{model.name}</span>
-                    )}
-                  </label>
-                </li>
-              ))}
+              {filtered.map((model) => {
+                const price = priceStr(model);
+                return (
+                  <li key={model.id} className="api-catalog-row">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={enabled.has(model.id)}
+                        onChange={() => toggleModel(model.id)}
+                      />
+                      <span className="api-model-id">{model.id}</span>
+                      {model.name && model.name !== model.id && (
+                        <span className="api-model-name">{model.name}</span>
+                      )}
+                    </label>
+                    <span className="api-model-meta">
+                      {price && (
+                        <span className="api-model-price">{price}</span>
+                      )}
+                      <span
+                        className="api-model-info"
+                        title={modelTooltip(model)}
+                      >
+                        i
+                      </span>
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
+        </div>
+      )}
+
+      {hasPendingKeys && (
+        <div className="api-save-all-row">
+          <button
+            type="button"
+            className="api-save-all"
+            disabled={busy === 'all'}
+            onClick={saveAllKeys}
+          >
+            {busy === 'all' ? 'Sauvegarde…' : 'Tout sauvegarder'}
+          </button>
+          {saved === 'all' && <span className="api-saved">Enregistré ✓</span>}
         </div>
       )}
 

@@ -3337,3 +3337,116 @@ textarea::placeholder {
     transition: none;
   }
 }
+
+/* ---- Panneau API et Modèles enrichi (portage logique cetas-lite) ---- */
+.provider-tab-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.api-catalog-head {
+  flex-wrap: wrap;
+}
+.api-kind-seg {
+  display: inline-flex;
+  border: 1px solid var(--nd-border, #2a2a30);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.api-kind-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+.api-kind-btn + .api-kind-btn {
+  border-left: 1px solid var(--nd-border, #2a2a30);
+}
+.api-kind-btn.active {
+  background: var(--nd-accent, #22c55e);
+  color: #fff;
+  font-weight: 600;
+}
+.api-category-select {
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+.api-refresh-btn {
+  background: transparent;
+  border: 1px solid var(--nd-border, #2a2a30);
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 10px;
+  line-height: 1.4;
+}
+.api-refresh-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+.api-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.api-catalog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.api-catalog-row label {
+  flex: 1;
+  min-width: 0;
+}
+.api-catalog-row .api-model-name {
+  margin-left: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-model-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.api-model-price {
+  font-size: 12px;
+  color: var(--nd-muted, #9ca3af);
+  white-space: nowrap;
+}
+.api-model-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--nd-muted, #9ca3af);
+  color: var(--nd-muted, #9ca3af);
+  font-size: 10px;
+  font-style: italic;
+  cursor: help;
+  flex-shrink: 0;
+}
+.api-save-all-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.api-save-all {
+  background: var(--nd-accent, #22c55e);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+}
+.api-save-all:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

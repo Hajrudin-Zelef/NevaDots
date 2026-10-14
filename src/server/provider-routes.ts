@@ -5,6 +5,101 @@ import type { CatalogModel, CreditEntry } from '../shared/models.js';
 
 const CREDIT_TIMEOUT_MS = 8000;
 
+const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
+const OPENROUTER_CACHE_TTL_MS = 3_600_000; // 1 h, like cetas-lite's orCache
+
+let openRouterCache: { at: number; models: CatalogModel[] } | null = null;
+
+/** Manufacturer label from a model id prefix (`meta-llama/llama-4` -> `Meta`). */
+function makerLabel(id: string): string {
+  const prefix = id.split('/')[0]?.trim() || id;
+  const known: Record<string, string> = {
+    'meta-llama': 'Meta',
+    openai: 'OpenAI',
+    anthropic: 'Anthropic',
+    google: 'Google',
+    mistralai: 'Mistral',
+    deepseek: 'DeepSeek',
+    qwen: 'Qwen',
+    xai: 'xAI',
+    cohere: 'Cohere',
+    perplexity: 'Perplexity',
+    liquid: 'Liquid',
+    nvidia: 'NVIDIA',
+    tngtech: 'TNG',
+    nousresearch: 'NousResearch',
+  };
+  const hit = known[prefix.toLowerCase()];
+  if (hit) return hit;
+  return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return typeof n === 'number' && Number.isFinite(n) ? n : undefined;
+}
+
+interface OpenRouterModelEntry {
+  id?: unknown;
+  name?: unknown;
+  description?: unknown;
+  context_length?: unknown;
+  pricing?: { prompt?: unknown; completion?: unknown };
+  architecture?: { input_modalities?: unknown; output_modalities?: unknown };
+}
+
+/**
+ * Public OpenRouter catalog (no API key needed), projected to CatalogModel
+ * with pricing, modality, context length and description. Cached in memory
+ * for OPENROUTER_CACHE_TTL_MS; `refresh` bypasses the cache.
+ */
+async function fetchOpenRouterCatalog(
+  refresh: boolean,
+): Promise<CatalogModel[]> {
+  if (
+    !refresh &&
+    openRouterCache &&
+    Date.now() - openRouterCache.at < OPENROUTER_CACHE_TTL_MS
+  )
+    return openRouterCache.models;
+  const response = await fetch(OPENROUTER_MODELS_URL, {
+    signal: AbortSignal.timeout(25_000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload = (await response.json()) as { data?: unknown };
+  const data = Array.isArray(payload.data) ? payload.data : [];
+  const models: CatalogModel[] = [];
+  for (const raw of data) {
+    const entry = raw as OpenRouterModelEntry;
+    if (typeof entry?.id !== 'string' || !entry.id) continue;
+    const arch = entry.architecture ?? {};
+    const inMod = Array.isArray(arch.input_modalities)
+      ? arch.input_modalities
+      : [];
+    const outMod = Array.isArray(arch.output_modalities)
+      ? arch.output_modalities
+      : [];
+    const modalities = [...inMod, ...outMod].map(String);
+    const prompt = toFiniteNumber(entry.pricing?.prompt);
+    const completion = toFiniteNumber(entry.pricing?.completion);
+    models.push({
+      id: entry.id,
+      name: typeof entry.name === 'string' ? entry.name : undefined,
+      description:
+        typeof entry.description === 'string' ? entry.description : undefined,
+      contextLength: toFiniteNumber(entry.context_length),
+      promptPer1M: prompt === undefined ? undefined : prompt * 1_000_000,
+      completionPer1M:
+        completion === undefined ? undefined : completion * 1_000_000,
+      isImage: modalities.includes('image') ? true : undefined,
+      maker: makerLabel(entry.id),
+    });
+  }
+  if (!models.length) throw new Error('Empty model list');
+  openRouterCache = { at: Date.now(), models };
+  return models;
+}
+
 /** Normalizes an OpenAI-compatible `/models` payload into a model list. */
 function parseModels(payload: unknown): CatalogModel[] {
   const data =
@@ -62,12 +157,30 @@ export function providerRoutes(platform: Platform) {
     return c.json({ providers: registry.view() });
   });
 
-  // Live model catalog from the provider's OpenAI-compatible `/models`, with
-  // the registry's stored/default list as a fallback.
+  // Live model catalog. OpenRouter prefers its public catalog (no key needed,
+  // enriched with pricing / modality / context); other providers use their
+  // OpenAI-compatible `/models` when a key is set, else the stored list.
+  // `?refresh=1` bypasses the OpenRouter cache.
   app.get('/catalog/:id', async (c) => {
     const provider = registry?.get(c.req.param('id'));
     if (!provider) return c.json({ error: 'Unknown provider.' }, 404);
-    const fallback = provider.models.map((id) => ({ id }));
+    const refresh = c.req.query('refresh') === '1';
+    const fallback: CatalogModel[] = provider.models.map((id) => ({
+      id,
+      maker: makerLabel(id),
+    }));
+    if (provider.id === 'openrouter') {
+      try {
+        const models = await fetchOpenRouterCatalog(refresh);
+        return c.json({
+          provider: provider.id,
+          models,
+          source: 'live' as const,
+        });
+      } catch {
+        /* fall through to the keyed/static path below */
+      }
+    }
     if (!provider.apiKey)
       return c.json({
         provider: provider.id,
@@ -83,7 +196,10 @@ export function providerRoutes(platform: Platform) {
         },
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const models = parseModels(await response.json());
+      const models = parseModels(await response.json()).map((model) => ({
+        ...model,
+        maker: makerLabel(model.id),
+      }));
       if (!models.length) throw new Error('Empty model list');
       return c.json({
         provider: provider.id,

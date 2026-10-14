@@ -22,6 +22,18 @@ export interface ModelsResponse {
 export interface CatalogModel {
   id: string;
   name?: string;
+  /** Prompt price in USD per 1M tokens, when known (OpenRouter catalog). */
+  promptPer1M?: number;
+  /** Completion price in USD per 1M tokens, when known (OpenRouter catalog). */
+  completionPer1M?: number;
+  /** True when the model handles image input/output. */
+  isImage?: boolean;
+  /** Context window in tokens, when known. */
+  contextLength?: number;
+  /** Short model description, when known. */
+  description?: string;
+  /** Manufacturer label derived from the model id. */
+  maker?: string;
 }
 
 export interface CatalogResponse {
