@@ -133,7 +133,9 @@ export function ActivityPanel({
     if (busy) return;
     setBusy(true);
     try {
-      await api(`/dots/${encodeURIComponent(dot.id)}/avatar`, 'PUT', { avatar });
+      await api(`/dots/${encodeURIComponent(dot.id)}/avatar`, 'PUT', {
+        avatar,
+      });
     } finally {
       setBusy(false);
     }
@@ -143,255 +145,269 @@ export function ActivityPanel({
   return (
     <>
       <aside className="muse-overlay" aria-label={`Assistant ${dot.name}`}>
-      <div className="muse-panel">
-        <button
-          type="button"
-          className="muse-close"
-          aria-label="Fermer"
-          onClick={onClose}
-        >
-          <X size={16} />
-        </button>
-        <header className="muse-head">
-          <Mascot
-            identity={dot.id}
-            name={dot.name}
-            avatar={dot.avatar}
-            state={running ? 'working' : paused ? 'paused' : 'idle'}
-          />
-          <h2 className="muse-name">{dot.name}</h2>
-          <span className={`muse-status ${running ? 'busy' : ''}`}>
-            <span className="muse-status-dot" />
-            {statusText(running, paused)}
-          </span>
-        </header>
-        <nav className="muse-tabs" role="tablist">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              aria-label={label}
-              className={tab === id ? 'active' : ''}
-              onClick={() => setTab(id)}
-            >
-              <Icon size={16} />
-            </button>
-          ))}
-        </nav>
+        <div className="muse-panel">
+          <button
+            type="button"
+            className="muse-close"
+            aria-label="Fermer"
+            onClick={onClose}
+          >
+            <X size={16} />
+          </button>
+          <header className="muse-head">
+            <Mascot
+              identity={dot.id}
+              name={dot.name}
+              avatar={dot.avatar}
+              state={running ? 'working' : paused ? 'paused' : 'idle'}
+            />
+            <h2 className="muse-name">{dot.name}</h2>
+            <span className={`muse-status ${running ? 'busy' : ''}`}>
+              <span className="muse-status-dot" />
+              {statusText(running, paused)}
+            </span>
+          </header>
+          <nav className="muse-tabs" role="tablist">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                aria-label={label}
+                className={tab === id ? 'active' : ''}
+                onClick={() => setTab(id)}
+              >
+                <Icon size={16} />
+              </button>
+            ))}
+          </nav>
 
-        <div className="muse-body">
-          {tab === 'activity' && (
-            <>
-              {!conversations.length && (
-                <p className="muse-empty">
-                  Les conversations de {dot.name} apparaîtront ici, groupées par
-                  jour.
-                </p>
-              )}
-              {groups.map((group) => (
-                <section className="muse-day" key={group.label}>
-                  <h3 className="muse-day-title">{group.label}</h3>
-                  {group.items.map((conversation) => {
-                    const doing = conversation.id === currentThreadId && running;
-                    const owner = dots.find((item) => item.id === conversation.dotId);
-                    return (
-                      <article className="muse-card" key={conversation.id}>
-                        <button
-                          type="button"
-                          className="muse-card-head"
-                          onClick={() => setDetail(conversation)}
-                          title={`Voir le détail — ${conversation.title}`}
-                        >
-                          <span className="muse-card-icon">
-                            <Mascot
-                              identity={conversation.dotId}
-                              name={owner?.name}
-                              avatar={owner?.avatar}
-                              small
-                              decorative
-                            />
-                          </span>
-                          <span className="muse-card-text">
-                            <span className="muse-card-title">
-                              {conversation.title}
-                            </span>
-                            <span className="muse-card-sub">
-                              {doing
-                                ? 'en cours…'
-                                : conversation.summary || 'Conversation'}
-                            </span>
-                          </span>
-                          <span className="muse-card-time">
-                            {timeOfDay(
-                              conversation.updatedAt ?? conversation.createdAt,
-                            )}
-                          </span>
-                          <span className={`muse-card-badge ${doing ? 'busy' : ''}`}>
-                            {doing ? (
-                              <Loader2 size={13} className="spin" />
-                            ) : (
-                              <Check size={13} />
-                            )}
-                          </span>
-                        </button>
-                      </article>
-                    );
-                  })}
-                </section>
-              ))}
-            </>
-          )}
-
-          {tab === 'security' && (
-            <section className="muse-section">
-              <h3>Ordinateur de {dot.name}</h3>
-              {computerError && (
-                <p className="muse-error" role="alert">
-                  {computerError}
-                </p>
-              )}
-              {computer ? (
-                <>
-                  <p className="muse-note">
-                    État : {computer.state.replaceAll('_', ' ')}
-                    {computer.control?.holder === 'human'
-                      ? ' · vous avez le contrôle'
-                      : ''}
+          <div className="muse-body">
+            {tab === 'activity' && (
+              <>
+                {!conversations.length && (
+                  <p className="muse-empty">
+                    Les conversations de {dot.name} apparaîtront ici, groupées
+                    par jour.
                   </p>
-                  {(
-                    [
-                      ['enabled', 'Activer cet ordinateur'],
-                      ['browser', 'Navigateur'],
-                      ['files', 'Fichiers'],
-                      ['shell', 'Terminal'],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <label className="muse-check" key={key}>
-                      <input
-                        type="checkbox"
-                        checked={computer.permissions[key]}
-                        disabled={busy}
-                        onChange={(event) =>
-                          void patchComputer({ [key]: event.target.checked })
-                        }
-                      />
-                      {label}
-                    </label>
-                  ))}
-                  {onOpenComputer && (
+                )}
+                {groups.map((group) => (
+                  <section className="muse-day" key={group.label}>
+                    <h3 className="muse-day-title">{group.label}</h3>
+                    {group.items.map((conversation) => {
+                      const doing =
+                        conversation.id === currentThreadId && running;
+                      const owner = dots.find(
+                        (item) => item.id === conversation.dotId,
+                      );
+                      return (
+                        <article className="muse-card" key={conversation.id}>
+                          <button
+                            type="button"
+                            className="muse-card-head"
+                            onClick={() => setDetail(conversation)}
+                            title={`Voir le détail — ${conversation.title}`}
+                          >
+                            <span className="muse-card-icon">
+                              <Mascot
+                                identity={conversation.dotId}
+                                name={owner?.name}
+                                avatar={owner?.avatar}
+                                small
+                                decorative
+                              />
+                            </span>
+                            <span className="muse-card-text">
+                              <span className="muse-card-title">
+                                {conversation.title}
+                              </span>
+                              <span className="muse-card-sub">
+                                {doing
+                                  ? 'en cours…'
+                                  : conversation.summary || 'Conversation'}
+                              </span>
+                            </span>
+                            <span className="muse-card-time">
+                              {timeOfDay(
+                                conversation.updatedAt ??
+                                  conversation.createdAt,
+                              )}
+                            </span>
+                            <span
+                              className={`muse-card-badge ${doing ? 'busy' : ''}`}
+                            >
+                              {doing ? (
+                                <Loader2 size={13} className="spin" />
+                              ) : (
+                                <Check size={13} />
+                              )}
+                            </span>
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </section>
+                ))}
+              </>
+            )}
+
+            {tab === 'security' && (
+              <section className="muse-section">
+                <h3>Ordinateur de {dot.name}</h3>
+                {computerError && (
+                  <p className="muse-error" role="alert">
+                    {computerError}
+                  </p>
+                )}
+                {computer ? (
+                  <>
+                    <p className="muse-note">
+                      État : {computer.state.replaceAll('_', ' ')}
+                      {computer.control?.holder === 'human'
+                        ? ' · vous avez le contrôle'
+                        : ''}
+                    </p>
+                    {(
+                      [
+                        ['enabled', 'Activer cet ordinateur'],
+                        ['browser', 'Navigateur'],
+                        ['files', 'Fichiers'],
+                        ['shell', 'Terminal'],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label className="muse-check" key={key}>
+                        <input
+                          type="checkbox"
+                          checked={computer.permissions[key]}
+                          disabled={busy}
+                          onChange={(event) =>
+                            void patchComputer({ [key]: event.target.checked })
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    {onOpenComputer && (
+                      <button
+                        type="button"
+                        className="muse-link"
+                        onClick={onOpenComputer}
+                      >
+                        <Monitor size={14} /> Ouvrir l’ordinateur
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  !computerError && <p className="muse-note">Chargement…</p>
+                )}
+                <h3>Général</h3>
+                <label className="muse-check">
+                  <input
+                    type="checkbox"
+                    checked={settings.researchAllowed}
+                    disabled={busy}
+                    onChange={(event) =>
+                      void patchSettings({
+                        researchAllowed: event.target.checked,
+                      })
+                    }
+                  />
+                  Recherche sur pages publiques
+                </label>
+                <label className="muse-check">
+                  <input
+                    type="checkbox"
+                    checked={settings.memoryAllowed}
+                    disabled={busy}
+                    onChange={(event) =>
+                      void patchSettings({
+                        memoryAllowed: event.target.checked,
+                      })
+                    }
+                  />
+                  Utiliser les mémoires
+                </label>
+              </section>
+            )}
+
+            {tab === 'tasks' && (
+              <section className="muse-section">
+                <h3>Tâches planifiées</h3>
+                {tasks.length ? (
+                  <ul className="muse-task-list">
+                    {tasks.map((task) => (
+                      <li key={task.id}>
+                        <span className={`muse-task-state ${task.status}`}>
+                          {task.status}
+                        </span>
+                        <span className="muse-task-text">{task.prompt}</span>
+                        <span className="muse-task-time">
+                          {task.nextRunAt
+                            ? timeOfDay(task.nextRunAt)
+                            : task.intervalSeconds
+                              ? 'répétée'
+                              : 'une fois'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muse-note">Aucune tâche planifiée.</p>
+                )}
+                <button
+                  type="button"
+                  className="muse-link"
+                  onClick={onOpenTasks}
+                >
+                  <Clock size={14} /> Gérer les tâches
+                </button>
+              </section>
+            )}
+
+            {tab === 'profile' && (
+              <section className="muse-section">
+                <h3>Apparence</h3>
+                <div className="avatar-swatches">
+                  {AVATARS.map((avatar) => (
                     <button
                       type="button"
-                      className="muse-link"
-                      onClick={onOpenComputer}
+                      key={avatar}
+                      className={`avatar-swatch ${
+                        (dot.avatar ?? 'mint') === avatar ? 'active' : ''
+                      }`}
+                      aria-label={`Avatar ${avatar}`}
+                      disabled={busy}
+                      onClick={() => void setAvatar(avatar)}
                     >
-                      <Monitor size={14} /> Ouvrir l’ordinateur
+                      <img
+                        src={avatarSrc(avatar) ?? undefined}
+                        alt=""
+                        width={34}
+                        height={34}
+                      />
                     </button>
-                  )}
-                </>
-              ) : (
-                !computerError && <p className="muse-note">Chargement…</p>
-              )}
-              <h3>Général</h3>
-              <label className="muse-check">
-                <input
-                  type="checkbox"
-                  checked={settings.researchAllowed}
-                  disabled={busy}
-                  onChange={(event) =>
-                    void patchSettings({ researchAllowed: event.target.checked })
-                  }
-                />
-                Recherche sur pages publiques
-              </label>
-              <label className="muse-check">
-                <input
-                  type="checkbox"
-                  checked={settings.memoryAllowed}
-                  disabled={busy}
-                  onChange={(event) =>
-                    void patchSettings({ memoryAllowed: event.target.checked })
-                  }
-                />
-                Utiliser les mémoires
-              </label>
-            </section>
-          )}
-
-          {tab === 'tasks' && (
-            <section className="muse-section">
-              <h3>Tâches planifiées</h3>
-              {tasks.length ? (
-                <ul className="muse-task-list">
-                  {tasks.map((task) => (
-                    <li key={task.id}>
-                      <span className={`muse-task-state ${task.status}`}>
-                        {task.status}
-                      </span>
-                      <span className="muse-task-text">{task.prompt}</span>
-                      <span className="muse-task-time">
-                        {task.nextRunAt
-                          ? timeOfDay(task.nextRunAt)
-                          : task.intervalSeconds
-                            ? 'répétée'
-                            : 'une fois'}
-                      </span>
-                    </li>
                   ))}
-                </ul>
-              ) : (
-                <p className="muse-note">Aucune tâche planifiée.</p>
-              )}
-              <button type="button" className="muse-link" onClick={onOpenTasks}>
-                <Clock size={14} /> Gérer les tâches
-              </button>
-            </section>
-          )}
-
-          {tab === 'profile' && (
-            <section className="muse-section">
-              <h3>Apparence</h3>
-              <div className="avatar-swatches">
-                {AVATARS.map((avatar) => (
-                  <button
-                    type="button"
-                    key={avatar}
-                    className={`avatar-swatch ${
-                      (dot.avatar ?? 'blue') === avatar ? 'active' : ''
-                    }`}
-                    aria-label={`Avatar ${avatar}`}
-                    disabled={busy}
-                    onClick={() => void setAvatar(avatar)}
-                  >
-                    <img
-                      src={avatarSrc(avatar) ?? undefined}
-                      alt=""
-                      width={34}
-                      height={34}
-                    />
-                  </button>
-                ))}
-              </div>
-              <h3>Modèle</h3>
-              <p className="muse-note">{dot.model ?? 'Défaut du serveur'}</p>
-              <p className="muse-note">
-                Réflexion :{' '}
-                {dot.reasoningEffort && dot.reasoningEffort !== 'none'
-                  ? dot.reasoningEffort
-                  : 'désactivée'}
-              </p>
-              <button
-                type="button"
-                className="muse-link"
-                onClick={onOpenSettings}
-              >
-                <Fingerprint size={14} /> Ouvrir les paramètres
-              </button>
-            </section>
-          )}
+                </div>
+                <h3>Modèle</h3>
+                <p className="muse-note">{dot.model ?? 'Défaut du serveur'}</p>
+                <p className="muse-note">
+                  Réflexion :{' '}
+                  {dot.reasoningEffort && dot.reasoningEffort !== 'none'
+                    ? dot.reasoningEffort
+                    : 'désactivée'}
+                </p>
+                <button
+                  type="button"
+                  className="muse-link"
+                  onClick={onOpenSettings}
+                >
+                  <Fingerprint size={14} /> Ouvrir les paramètres
+                </button>
+              </section>
+            )}
+          </div>
         </div>
-      </div>
       </aside>
       {detail && (
         <ActivityDetailModal

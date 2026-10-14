@@ -6,40 +6,32 @@
  * imports this file with a `.js` suffix (node16 build); client code may omit it.
  *
  * Assets are grouped by family under `public/dots/` (served at `/dots/<path>`):
- *   classic/  the original 6 still PNG avatars
- *   robot/    the green (`robot`) and blue (`robot-blue`) animated robots
+ *   classic/  the remaining still PNG avatars (mint, orange, purple)
  *   sam/      NevaDots Dot "Sam" (animated, full set of state aliases)
  *   leo/      NevaDots Dot "Leo" (still base for now; clips to come)
  *   aline/    NevaDots Dot "Aline" (still base for now; clips to come)
+ *
+ * The former `blue`/`pink`/`green` PNGs and the `robot`/`robot-blue` animated
+ * robots were retired (archived in the confidential OffLineFork area). Any Dot
+ * still pointing at them falls back to an identity-derived kept avatar (see
+ * `Mascot.tsx`).
  */
 export const AVATAR_IDS = [
-  'blue',
-  'pink',
-  'green',
+  'sam',
+  'aline',
+  'leo',
   'mint',
   'orange',
   'purple',
-  'robot',
-  'robot-blue',
-  'sam',
-  'leo',
-  'aline',
 ] as const;
 
 export type AvatarId = (typeof AVATAR_IDS)[number];
 
 /** id → file under `public/dots/` (served at `/dots/<file>`). */
 export const AVATAR_FILES: Record<AvatarId, string> = {
-  blue: 'classic/blue.png',
-  pink: 'classic/pink.png',
-  green: 'classic/green.png',
   mint: 'classic/mint.png',
   orange: 'classic/orange.png',
   purple: 'classic/purple.png',
-  robot: 'robot/robot.webp',
-  // Blue robot has no idle clip yet; its resting pose doubles as the base.
-  'robot-blue': 'robot/robot-blue-complete.webp',
-  // NevaDots Dots. Sam ships a full animated set; Leo/Aline are still bases.
   sam: 'sam/idle.webp',
   leo: 'leo/idle.png',
   aline: 'aline/idle.png',
@@ -59,31 +51,6 @@ export function avatarSrc(id: string | null | undefined): string | null {
 export const AVATAR_STATE_FILES: Partial<
   Record<AvatarId, Record<string, string>>
 > = {
-  robot: {
-    listening: 'robot/robot-listening.webp',
-    thinking: 'robot/robot-thinking.webp',
-    analyzing: 'robot/robot-analyzing.webp',
-    searching: 'robot/robot-searching.webp',
-    working: 'robot/robot-working.webp',
-    writing: 'robot/robot-writing.webp',
-    complete: 'robot/robot-complete.webp',
-    error: 'robot/robot-error.webp',
-    paused: 'robot/robot-paused.webp',
-  },
-  // LEO's blue robot only ships a subset of clips; the missing states alias the
-  // nearest available blue pose so the color never flicks to another avatar.
-  // `listening` is a temporary alias until the real clip is re-exported.
-  'robot-blue': {
-    listening: 'robot/robot-blue-thinking.webp',
-    thinking: 'robot/robot-blue-thinking.webp',
-    analyzing: 'robot/robot-blue-thinking.webp',
-    searching: 'robot/robot-blue-searching.webp',
-    writing: 'robot/robot-blue-writing.webp',
-    working: 'robot/robot-blue-writing.webp',
-    complete: 'robot/robot-blue-complete.webp',
-    error: 'robot/robot-blue-error.webp',
-    paused: 'robot/robot-blue-complete.webp',
-  },
   // Sam ships four clips (idle/listening/thinking/writing); the remaining
   // states alias the nearest one. `complete` reuses the idle pose, over which
   // the client draws a green "Valider" badge (see AVATAR_VALIDATE_OVERLAY).

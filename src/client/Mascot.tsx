@@ -6,7 +6,7 @@ import {
   hasValidateOverlay,
 } from '../shared/avatars';
 
-const characters = ['blue', 'pink', 'green'] as const;
+const characters = ['mint', 'orange', 'purple'] as const;
 export const AVATARS = AVATAR_IDS;
 export type Avatar = (typeof AVATARS)[number];
 
