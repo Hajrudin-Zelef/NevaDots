@@ -3143,11 +3143,6 @@ textarea::placeholder {
 .api-panel-intro {
   margin: 0;
 }
-.api-default-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 .api-default-controls {
   display: flex;
   align-items: center;
@@ -3234,11 +3229,11 @@ textarea::placeholder {
   font-size: 15px;
   padding: 2px 6px;
 }
-.api-catalog-head {
+.api-catalog-tools {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 4px;
+  flex-wrap: wrap;
 }
 .api-catalog-search {
   flex: 1;
@@ -3275,22 +3270,25 @@ textarea::placeholder {
   font-size: 12px;
   margin-left: auto;
 }
-.api-credits {
-  border-top: 1px solid var(--nd-border, #2a2a30);
-  padding-top: 10px;
-}
-.api-credits ul {
+.api-credits-list {
   list-style: none;
-  margin: 6px 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
-.api-credits li {
+.api-credits-list li {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 13px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--nd-border-light, #f0f0f0);
+}
+.api-credits-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 .api-credit-value {
   color: var(--nd-muted, #9ca3af);
@@ -3340,11 +3338,16 @@ textarea::placeholder {
 
 /* ---- Panneau API et Modèles enrichi (portage logique cetas-lite) ---- */
 .provider-tab-icon {
-  font-size: 14px;
-  line-height: 1;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
 }
-.api-catalog-head {
-  flex-wrap: wrap;
+.provider-tab-icon svg {
+  width: 100%;
+  height: 100%;
 }
 .api-kind-seg {
   display: inline-flex;
@@ -3391,31 +3394,35 @@ textarea::placeholder {
   cursor: default;
 }
 .api-catalog-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 110px 120px 22px;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
-.api-catalog-row label {
-  flex: 1;
+.api-catalog-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+  cursor: pointer;
 }
-.api-catalog-row .api-model-name {
-  margin-left: 0;
+.api-model-id {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.api-model-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+.api-model-maker {
+  font-size: 12px;
+  color: var(--nd-muted, #9ca3af);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .api-model-price {
   font-size: 12px;
   color: var(--nd-muted, #9ca3af);
   white-space: nowrap;
+  text-align: right;
 }
 .api-model-info {
   display: inline-flex;
@@ -3449,6 +3456,41 @@ textarea::placeholder {
 .api-save-all:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* ---- Clean card system for settings (Meta-like) ---- */
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 760px;
+}
+.settings-card {
+  background: var(--nd-bg);
+  border: 1px solid var(--nd-border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-card > h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.settings-card > p {
+  margin: 0;
+}
+.settings-card .provider-tabs {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.api-save-all-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 /* ===========================================================================
@@ -3604,7 +3646,7 @@ textarea::placeholder {
     flex-wrap: nowrap;
     overflow-x: auto;
   }
-  .api-catalog-head {
+  .api-catalog-tools {
     flex-wrap: wrap;
   }
   .api-key-input {
