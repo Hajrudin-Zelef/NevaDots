@@ -1,8 +1,8 @@
 import { openPageLink } from './page-navigation';
 import {
   Fragment,
+  memo,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -47,19 +47,36 @@ const markdownComponents = {
   ),
 };
 
-// Typewriter follower: the displayed cursor trails arrivals by ~260 ms so bursts
-// (speculative decoding) flow instead of stuttering.
-const SMOOTH_TAU_MS = 260;
+// Time-based follower: the revealed cursor trails arrivals by ~150 ms so bursts
+// flow instead of stuttering. Rendering is plain text while streaming (cheap),
+// so this can run every frame without the old adaptive re-parse throttle.
+const SMOOTH_TAU_MS = 150;
 const MIN_CHARS_PER_FRAME = 0.4;
-// Adaptive re-parse cadence: never spend more than ~1/6 of the frame time parsing.
-// Keeps big blocks from O(n^2) re-parsing (the source of streaming jank).
-const MIN_RENDER_GAP_MS = 16;
-const MAX_RENDER_GAP_MS = 500;
+// A word stays an animated span for this long, then settles into plain text.
+const TOKEN_FADE_MS = 340;
+// Above this length, skip per-word spans (plain text) to stay smooth on weak
+// hardware and very long messages.
+const MAX_ANIMATED_CHARS = 6000;
 
 /**
- * Renders an assistant message. While `streaming`, text is revealed through a
- * time-based follower and Markdown is re-parsed at a cadence adapted to the last
- * parse cost. When the turn ends it renders the final text directly.
+ * Markdown for a settled message, memoized so a streaming token elsewhere does
+ * not re-parse the whole transcript's Markdown on every frame.
+ */
+const StaticMarkdown = memo(function StaticMarkdown({
+  content,
+}: {
+  content: string;
+}) {
+  return (
+    <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+  );
+});
+
+/**
+ * Renders an assistant message. While `streaming`, the text is revealed through
+ * a time-based follower and rendered as plain text (no Markdown re-parse); each
+ * freshly-revealed word fades in (accent → final colour). When the turn ends it
+ * renders the final Markdown.
  */
 export function StreamingMarkdown({
   content,
@@ -68,39 +85,34 @@ export function StreamingMarkdown({
   content: string;
   streaming: boolean;
 }) {
-  const [rendered, setRendered] = useState(content);
   const contentRef = useRef(content);
   const targetLenRef = useRef(content.length);
   const shownRef = useRef(content.length);
-  const lastShownRef = useRef(content.length);
-  const scheduledAt = useRef(0);
-  const renderCost = useRef(0);
+  const [view, setView] = useState(() => ({
+    shown: content.length,
+    settled: content.length,
+  }));
   contentRef.current = content;
   targetLenRef.current = content.length;
-
-  useLayoutEffect(() => {
-    if (scheduledAt.current)
-      renderCost.current = performance.now() - scheduledAt.current;
-  });
 
   useEffect(() => {
     if (!streaming) {
       shownRef.current = contentRef.current.length;
-      lastShownRef.current = contentRef.current.length;
-      setRendered(contentRef.current);
+      setView({
+        shown: contentRef.current.length,
+        settled: contentRef.current.length,
+      });
       return;
     }
     let frame = 0;
     let last = performance.now();
+    // (time, revealedLength) so `settled` can trail `shown` by TOKEN_FADE_MS.
+    const history: { t: number; len: number }[] = [];
     const loop = (now: number) => {
       const dt = Math.min(50, now - last);
       last = now;
       const target = targetLenRef.current;
-      if (target < shownRef.current) {
-        // New message or replay reset: snap.
-        shownRef.current = target;
-        lastShownRef.current = -1;
-      }
+      if (target < shownRef.current) shownRef.current = target;
       const remaining = target - shownRef.current;
       if (remaining > 0)
         shownRef.current = Math.min(
@@ -109,28 +121,54 @@ export function StreamingMarkdown({
             Math.max(MIN_CHARS_PER_FRAME, (remaining * dt) / SMOOTH_TAU_MS),
         );
       const shown = Math.floor(shownRef.current);
-      const gap = Math.min(
-        MAX_RENDER_GAP_MS,
-        Math.max(MIN_RENDER_GAP_MS, renderCost.current * 6),
+      history.push({ t: now, len: shown });
+      while (history.length > 2 && now - history[0].t > TOKEN_FADE_MS)
+        history.shift();
+      const settled = history[0].len;
+      setView((prev) =>
+        prev.shown === shown && prev.settled === settled
+          ? prev
+          : { shown, settled },
       );
-      if (shown !== lastShownRef.current && now - scheduledAt.current >= gap) {
-        lastShownRef.current = shown;
-        scheduledAt.current = now;
-        setRendered(contentRef.current.slice(0, shown));
-      }
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
   }, [streaming]);
 
+  if (!streaming)
+    return (
+      <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+    );
+
+  const shown = Math.min(view.shown, content.length);
+  // Snap the settled boundary down to a word boundary so animated spans are
+  // whole words (a word only leaves the animated tail once its fade is done).
+  let settled = Math.min(view.settled, shown);
+  const snap = content.lastIndexOf(' ', settled);
+  if (snap > 0 && snap < settled) settled = snap + 1;
+
+  const head = content.slice(0, settled);
+  const tail = content.slice(settled, shown);
+  const animate = content.length <= MAX_ANIMATED_CHARS;
+
+  let offset = settled;
   return (
-    <>
-      <ReactMarkdown components={markdownComponents}>
-        {streaming ? rendered : content}
-      </ReactMarkdown>
-      {streaming && <span className="stream-caret" aria-hidden="true" />}
-    </>
+    <span className="stream-text">
+      {head}
+      {animate &&
+        tail.split(/(\s+)/).map((token) => {
+          const key = offset;
+          offset += token.length;
+          return token === '' ? null : (
+            <span key={key} className="tok">
+              {token}
+            </span>
+          );
+        })}
+      {!animate && tail}
+      <span className="stream-caret" aria-hidden="true" />
+    </span>
   );
 }
 
@@ -201,15 +239,15 @@ export function ChatTranscript({
               {isScheduledTaskMessage(message) && (
                 <span className="scheduled-message-label">Scheduled</span>
               )}
-              {message.role === 'assistant' ? (
+              {message.role === 'assistant' &&
+              streaming &&
+              message.id === lastAssistantId ? (
                 <StreamingMarkdown
                   content={String(message.content)}
-                  streaming={streaming && message.id === lastAssistantId}
+                  streaming
                 />
               ) : (
-                <ReactMarkdown components={markdownComponents}>
-                  {String(message.content)}
-                </ReactMarkdown>
+                <StaticMarkdown content={String(message.content)} />
               )}
             </div>
           )}

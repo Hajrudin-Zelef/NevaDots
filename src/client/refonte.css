@@ -1902,6 +1902,41 @@ textarea::placeholder {
     animation: none;
   }
 }
+
+/* Streaming tokens: plain text while the answer streams, and each freshly
+   revealed word fades in — from the current palette accent to the final text
+   colour — with a soft glow (the "sheen"). Settled text is plain, so this is
+   cheap even on modest hardware. */
+.stream-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tok {
+  animation: tok-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes tok-in {
+  from {
+    opacity: 0;
+    color: var(--nd-accent, #22c55e);
+    text-shadow: 0 0 12px
+      color-mix(in srgb, var(--nd-accent, #22c55e) 60%, transparent);
+  }
+  60% {
+    text-shadow: 0 0 6px
+      color-mix(in srgb, var(--nd-accent, #22c55e) 30%, transparent);
+  }
+  to {
+    opacity: 1;
+    color: var(--nd-text, currentColor);
+    text-shadow: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tok {
+    animation: none;
+  }
+}
+
 .template-app .chat-bubble.user.pending {
   opacity: 0.5;
 }

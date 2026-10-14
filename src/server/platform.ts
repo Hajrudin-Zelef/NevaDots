@@ -2,7 +2,10 @@ import { ComputerService } from './computer-service.js';
 import { ConnectionService } from './connections.js';
 import { PageService } from './page-service.js';
 import { randomUUID } from 'node:crypto';
-import { CopilotRuntime, createCopilotHonoHandler } from '@copilotkit/runtime/v2';
+import {
+  CopilotRuntime,
+  createCopilotHonoHandler,
+} from '@copilotkit/runtime/v2';
 import type { BaseEvent, Message, RunAgentInput } from '@ag-ui/core';
 import { Store } from './store.js';
 import { WorkspaceStore } from './workspace.js';
@@ -78,7 +81,8 @@ export class Platform {
   }
   requireReady() {
     const missing = this.setup().missing;
-    if (missing.length) throw new Error(`Setup required: ${missing.join(', ')}.`);
+    if (missing.length)
+      throw new Error(`Setup required: ${missing.join(', ')}.`);
   }
   async start() {
     this.setupTelemetry.start();
@@ -151,7 +155,23 @@ export class Platform {
         { status: 403 },
       );
     }
-    return this.handler.fetch(request);
+    const response = await this.handler.fetch(request);
+    // The runtime answers with a Server-Sent Events stream. Reverse proxies
+    // (nginx) buffer proxied responses by default, which makes tokens arrive in
+    // bursts; `X-Accel-Buffering: no` turns that off for this response, and
+    // `no-transform` keeps intermediaries from recompressing/altering it.
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('text/event-stream')) {
+      const headers = new Headers(response.headers);
+      headers.set('X-Accel-Buffering', 'no');
+      headers.set('Cache-Control', 'no-cache, no-transform');
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
+    return response;
   }
   /**
    * Run a headless turn (scheduled tasks, voice compute) fully in-process
@@ -215,9 +235,8 @@ export class Platform {
       });
       signal.throwIfAborted();
       const finalMessages = this.runner.getThreadMessages(threadId);
-      const failure = events.find(
-        (event) => event.type === 'RUN_ERROR',
-      ) as { message?: string } | undefined;
+      const failure = events.find((event) => event.type === 'RUN_ERROR') as
+        { message?: string } | undefined;
       const text = currentTurnText(
         finalMessages,
         failure ? new Error(failure.message ?? 'The turn failed.') : undefined,
