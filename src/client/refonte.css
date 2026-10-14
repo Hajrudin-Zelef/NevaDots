@@ -1387,29 +1387,78 @@ textarea::placeholder {
 /* ============================================================
    Phase 6 — modale Paramètres à onglets (façon cetas-lite)
    ============================================================ */
-.settings-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 4px 0 14px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--nd-border);
+/* Sidebar of modules (vertical) instead of top tabs. */
+.modal.settings-modal {
+  max-width: 880px;
 }
-.settings-tab {
-  padding: 5px 10px;
+.settings-layout {
+  display: flex;
+  gap: 26px;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+.settings-nav {
+  width: 208px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 16px;
+  border-right: 1px solid var(--nd-border);
+  align-self: stretch;
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 9px;
   background: transparent;
   color: var(--nd-text-secondary);
-  font-size: 13px;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
-.settings-tab:hover {
+.settings-nav-item svg {
+  flex-shrink: 0;
+}
+.settings-nav-item:hover {
   background: var(--nd-bg-hover);
   color: var(--nd-text);
 }
-.settings-tab.active {
+.settings-nav-item.active {
   background: var(--accent-light);
   color: var(--nd-accent);
+  font-weight: 600;
+}
+.settings-body {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .settings-layout {
+    flex-direction: column;
+    gap: 14px;
+  }
+  .settings-nav {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 0 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--nd-border);
+  }
+  .settings-nav-item {
+    padding: 8px;
+  }
+  .settings-nav-item span {
+    display: none;
+  }
 }
 .settings-list {
   display: flex;

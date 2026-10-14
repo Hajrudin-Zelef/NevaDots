@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import {
+  Activity,
+  Bot,
+  Info,
+  Palette,
+  Plug,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react';
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
 import { api } from './api';
 import { AVATARS } from './Mascot';
@@ -161,7 +169,7 @@ export function WorkspaceDialog({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <section
-        className="modal"
+        className={`modal ${dialog.type === 'settings' ? 'settings-modal' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
@@ -492,30 +500,37 @@ export function WorkspaceDialog({
             </>
           )}
           {dialog.type === 'settings' && (
-            <div className="settings-tabs" role="tablist">
-              {(
-                [
-                  ['appearance', 'Apparence'],
-                  ['preferences', 'Réglages'],
-                  ['dots', 'Dots & Espaces'],
-                  ['connections', 'Connexions'],
-                  ['health', 'Santé'],
-                  ['about', 'À propos'],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  className={`settings-tab ${settingsTab === id ? 'active' : ''}`}
-                  aria-selected={settingsTab === id}
-                  onClick={() => setSettingsTab(id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
+            <div className="settings-layout">
+              <nav
+                className="settings-nav"
+                role="tablist"
+                aria-orientation="vertical"
+                aria-label="Modules des paramètres"
+              >
+                {(
+                  [
+                    ['appearance', 'Apparence', Palette],
+                    ['preferences', 'Réglages', SlidersHorizontal],
+                    ['dots', 'Dots & Espaces', Bot],
+                    ['connections', 'Connexions', Plug],
+                    ['health', 'Santé', Activity],
+                    ['about', 'À propos', Info],
+                  ] as const
+                ).map(([id, label, Icon]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    className={`settings-nav-item ${settingsTab === id ? 'active' : ''}`}
+                    aria-selected={settingsTab === id}
+                    onClick={() => setSettingsTab(id)}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </nav>
+              <div className="settings-body">
           {dialog.type === 'settings' && settingsTab === 'appearance' && (
             <fieldset className="appearance-fields">
               <legend>Apparence</legend>
@@ -767,6 +782,9 @@ export function WorkspaceDialog({
               >
                 OpenDots (projet amont) ↗
               </a>
+            </div>
+          )}
+              </div>
             </div>
           )}
           {dialog.type === 'memory' && (
