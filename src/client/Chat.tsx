@@ -38,7 +38,7 @@ import {
 import { ChatTranscript, isInternalVoiceReceipt } from './ChatTranscript';
 import { ReasoningPanel } from './ReasoningPanel';
 import { ActivityPanel } from './ActivityPanel';
-import { ActivityBubbles } from './ActivityBubbles';
+import { ActivityTab } from './ActivityTab';
 import { InterventionStage } from './InterventionStage';
 import { deriveActivity } from '../shared/activity';
 import type { ReasoningRunStats } from '../server/reasoning.js';
@@ -914,10 +914,9 @@ export function Chat({
         onOpenTasks={() => onOpenTasks?.()}
       />
       {!railOpen && !reasonPanel && (
-        <ActivityBubbles
-          events={activity}
-          running={running}
+        <ActivityTab
           dot={dot}
+          running={running}
           onOpen={() => {
             onClosePane?.();
             onRailChange(true);

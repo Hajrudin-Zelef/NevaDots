@@ -3295,3 +3295,45 @@ textarea::placeholder {
 .api-credit-value {
   color: var(--nd-muted, #9ca3af);
 }
+
+/* --- Collapsed activity rail: avatar-only tab, top centre ----------------- */
+.chat-column {
+  position: relative;
+}
+.activity-tab {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 16;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--nd-border, #e7e5e0);
+  border-radius: 999px;
+  background: var(--nd-bg, #fdfcfb);
+  box-shadow: 0 4px 14px color-mix(in srgb, #000 10%, transparent);
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.activity-tab:hover {
+  transform: translateX(-50%) translateY(-1px);
+  box-shadow: 0 6px 18px color-mix(in srgb, #000 15%, transparent);
+}
+.activity-tab .mascot {
+  width: 30px;
+  height: 30px;
+}
+.activity-tab.running {
+  border-color: color-mix(in srgb, var(--nd-accent, #22c55e) 45%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-tab {
+    transition: none;
+  }
+}
