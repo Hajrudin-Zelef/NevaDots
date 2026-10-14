@@ -10,6 +10,7 @@ import {
 } from '../shared/learning.js';
 import { getReasoningStats } from './reasoning.js';
 import { AVATAR_IDS } from '../shared/avatars.js';
+import { defaultProvider, findProvider, providersView } from './providers.js';
 const dotSchema = z
   .object({
     name: z.string().trim().min(1).max(40),
@@ -51,16 +52,40 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       calls: platform.workspace.calls(),
     }),
   );
-  app.get('/models', (c) =>
-    c.json({
-      default: platform.config.model ?? null,
-      models: platform.config.models?.length
-        ? platform.config.models
-        : platform.config.model
-          ? [platform.config.model]
-          : [],
-    }),
-  );
+  app.get('/models', (c) => {
+    const registry = platform.config.providerRegistry;
+    if (registry)
+      return c.json({
+        default: registry.effectiveDefault(),
+        providers: registry.view(),
+      });
+    const providers = platform.config.providers;
+    if (!providers?.length)
+      return c.json({
+        default: platform.config.model
+          ? { provider: 'default', model: platform.config.model }
+          : null,
+        providers: [
+          {
+            id: 'default',
+            label: 'Modèle',
+            configured: !!platform.config.apiKey,
+            models: platform.config.models?.length
+              ? platform.config.models
+              : platform.config.model
+                ? [platform.config.model]
+                : [],
+          },
+        ],
+      });
+    const fallback = defaultProvider(providers);
+    return c.json({
+      default: fallback
+        ? { provider: fallback.id, model: platform.config.model ?? null }
+        : null,
+      providers: providersView(providers),
+    });
+  });
   // Stats captured while a provider streamed reasoning deltas.
   app.get('/reasoning-stats', (c) => {
     const messageId = c.req.query('messageId')?.trim();
@@ -236,18 +261,42 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   });
   app.put('/dots/:id/model', async (c) => {
     const data = z
-      .object({ model: z.string().trim().min(1).max(120).nullable() })
+      .object({
+        provider: z.string().trim().min(1).max(40).nullable().optional(),
+        model: z.string().trim().min(1).max(120).nullable().optional(),
+      })
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!data.success)
       return c.json({ error: 'Invalid model selection.' }, 400);
-    const allowed = platform.config.models ?? [];
-    if (data.data.model && allowed.length && !allowed.includes(data.data.model))
-      return c.json({ error: 'Unknown model.' }, 400);
     if (!platform.workspace.dot(c.req.param('id')))
       return c.json({ error: 'Dot not found.' }, 404);
+    // Clearing the model also clears the provider (back to the default).
+    if (!data.data.model)
+      return c.json(
+        platform.workspace.setDotModel(c.req.param('id'), null, null),
+      );
+    const providers = platform.config.providers;
+    if (providers?.length) {
+      const provider =
+        findProvider(providers, data.data.provider) ??
+        defaultProvider(providers);
+      if (!provider) return c.json({ error: 'Unknown provider.' }, 400);
+      if (provider.models.length && !provider.models.includes(data.data.model))
+        return c.json({ error: 'Unknown model.' }, 400);
+      return c.json(
+        platform.workspace.setDotModel(
+          c.req.param('id'),
+          provider.id,
+          data.data.model,
+        ),
+      );
+    }
+    const allowed = platform.config.models ?? [];
+    if (allowed.length && !allowed.includes(data.data.model))
+      return c.json({ error: 'Unknown model.' }, 400);
     return c.json(
-      platform.workspace.setDotModel(c.req.param('id'), data.data.model),
+      platform.workspace.setDotModel(c.req.param('id'), null, data.data.model),
     );
   });
   app.put('/dots/:id/reasoning', async (c) => {

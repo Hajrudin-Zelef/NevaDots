@@ -34,6 +34,7 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
+import { modelKey, parseModelKey, type ModelsResponse } from '../shared/models';
 import { api, ApiError, authHeaders, authToken, setToken } from './api';
 import { trackSetupStep } from './setup-telemetry';
 import {
@@ -221,10 +222,10 @@ export function App() {
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string>();
   const [pendingVoice, setPendingVoice] = useState(false);
-  const [modelOptions, setModelOptions] = useState<{
-    default: string | null;
-    models: string[];
-  }>({ default: null, models: [] });
+  const [modelOptions, setModelOptions] = useState<ModelsResponse>({
+    default: null,
+    providers: [],
+  });
   const [reasoningBusy, setReasoningBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
@@ -261,13 +262,18 @@ export function App() {
   }, [refresh]);
   useEffect(() => {
     let active = true;
-    void api<{ default: string | null; models: string[] }>('/models')
-      .then((value) => {
-        if (active) setModelOptions(value);
-      })
-      .catch(() => {});
+    const load = () =>
+      void api<ModelsResponse>('/models')
+        .then((value) => {
+          if (active) setModelOptions(value);
+        })
+        .catch(() => {});
+    load();
+    const onChange = () => load();
+    window.addEventListener('models-changed', onChange);
     return () => {
       active = false;
+      window.removeEventListener('models-changed', onChange);
     };
   }, []);
   useEffect(() => {
@@ -315,8 +321,12 @@ export function App() {
   const dot =
     workspace?.dots.find((item) => item.id === selectedDot) ??
     workspace?.dots[0];
-  const selectedModel =
-    dot?.model ?? modelOptions.default ?? metrics?.model ?? '';
+  const modelValue =
+    dot?.provider && dot?.model ? modelKey(dot.provider, dot.model) : '';
+  const defaultModelLabel = modelOptions.default
+    ? (modelOptions.default.model ?? modelOptions.default.provider)
+    : (metrics?.model ?? '');
+  const selectedModel = dot?.model ?? defaultModelLabel;
   const reasoningEffort = dot?.reasoningEffort ?? '';
   const reasoningLabel =
     reasoningEffort === 'none'
@@ -1113,19 +1123,21 @@ export function App() {
                         >
                           <Mic size={17} />
                         </button>
-                        {modelOptions.models.length > 0 && (
+                        {modelOptions.providers.length > 0 && (
                           <select
                             className="welcome-model-select"
                             aria-label="Modèle pour ce Dot"
                             title="Modèle pour ce Dot"
-                            value={selectedModel}
+                            value={modelValue}
                             onChange={async (event) => {
-                              const model = event.target.value;
+                              const parsed = parseModelKey(event.target.value);
                               setError('');
                               try {
-                                await api(`/dots/${dot.id}/model`, 'PUT', {
-                                  model: model || null,
-                                });
+                                await api(
+                                  `/dots/${dot.id}/model`,
+                                  'PUT',
+                                  parsed ?? { model: null },
+                                );
                                 await refresh();
                               } catch (cause) {
                                 setError(
@@ -1137,14 +1149,26 @@ export function App() {
                             }}
                           >
                             <option value="">
-                              {modelOptions.default
-                                ? `Défaut · ${modelOptions.default}`
+                              {defaultModelLabel
+                                ? `Défaut · ${defaultModelLabel}`
                                 : 'Défaut'}
                             </option>
-                            {modelOptions.models.map((model) => (
-                              <option key={model} value={model}>
-                                {model}
-                              </option>
+                            {modelOptions.providers.map((provider) => (
+                              <optgroup
+                                key={provider.id}
+                                label={`${provider.label}${
+                                  provider.configured ? '' : ' (non configuré)'
+                                }`}
+                              >
+                                {provider.models.map((model) => (
+                                  <option
+                                    key={model}
+                                    value={modelKey(provider.id, model)}
+                                  >
+                                    {model}
+                                  </option>
+                                ))}
+                              </optgroup>
                             ))}
                           </select>
                         )}

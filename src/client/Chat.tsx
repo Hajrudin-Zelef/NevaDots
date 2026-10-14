@@ -50,6 +50,7 @@ import type {
   Settings,
   Task,
 } from '../shared/types';
+import { modelKey, parseModelKey, type ModelsResponse } from '../shared/models';
 import { Mascot } from './Mascot';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
@@ -343,23 +344,33 @@ export function Chat({
     return undefined;
   };
   // --- End reasoning panel ----------------------------------------------------
-  const [models, setModels] = useState<{
-    default: string | null;
-    models: string[];
-  }>({ default: null, models: [] });
+  const [models, setModels] = useState<ModelsResponse>({
+    default: null,
+    providers: [],
+  });
   const [modelError, setModelError] = useState('');
   useEffect(() => {
     let active = true;
-    void api<{ default: string | null; models: string[] }>('/models')
-      .then((value) => {
-        if (active) setModels(value);
-      })
-      .catch(() => {});
+    const load = () =>
+      void api<ModelsResponse>('/models')
+        .then((value) => {
+          if (active) setModels(value);
+        })
+        .catch(() => {});
+    load();
+    const onChange = () => load();
+    window.addEventListener('models-changed', onChange);
     return () => {
       active = false;
+      window.removeEventListener('models-changed', onChange);
     };
   }, []);
-  const selectedModel = dot.model ?? models.default ?? '';
+  const modelValue =
+    dot.provider && dot.model ? modelKey(dot.provider, dot.model) : '';
+  const defaultModelLabel = models.default
+    ? (models.default.model ?? models.default.provider)
+    : '';
+  const selectedModel = dot.model ?? defaultModelLabel;
   const reasoningEffort = dot.reasoningEffort ?? '';
   const reasoningLabel =
     reasoningEffort === 'none'
@@ -1090,19 +1101,21 @@ export function Chat({
             >
               <Link2 size={17} />
             </button>
-            {models.models.length > 0 && (
+            {models.providers.length > 0 && (
               <select
                 className="model-select"
                 aria-label="Model for this Dot"
                 title="Modèle pour ce Dot"
-                value={selectedModel}
+                value={modelValue}
                 onChange={async (e) => {
-                  const value = e.target.value;
+                  const parsed = parseModelKey(e.target.value);
                   setModelError('');
                   try {
-                    await api(`/dots/${dot.id}/model`, 'PUT', {
-                      model: value || null,
-                    });
+                    await api(
+                      `/dots/${dot.id}/model`,
+                      'PUT',
+                      parsed ?? { model: null },
+                    );
                     onSaved();
                   } catch (err) {
                     setModelError(
@@ -1114,12 +1127,23 @@ export function Chat({
                 }}
               >
                 <option value="">
-                  {models.default ? `Défaut (${models.default})` : 'Défaut'}
+                  {defaultModelLabel
+                    ? `Défaut (${defaultModelLabel})`
+                    : 'Défaut'}
                 </option>
-                {models.models.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
+                {models.providers.map((provider) => (
+                  <optgroup
+                    key={provider.id}
+                    label={`${provider.label}${
+                      provider.configured ? '' : ' (non configuré)'
+                    }`}
+                  >
+                    {provider.models.map((id) => (
+                      <option key={id} value={modelKey(provider.id, id)}>
+                        {id}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             )}

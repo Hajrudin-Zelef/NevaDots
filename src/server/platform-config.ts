@@ -1,16 +1,22 @@
 import type { WebConfig } from './parallel.js';
+import type { ProviderConfig, ProviderRegistry } from './providers.js';
 import type { SetupStatus } from '../shared/types.js';
 
 export interface PlatformConfig extends WebConfig {
   /** SQLite file shared by the stores and the durable transcript runner. */
   databasePath?: string;
+  /** Default model for the default provider. */
   model?: string;
-  /** Selectable model ids; falls back to [model] when unset. */
+  /** Selectable model ids of the default provider; falls back to [model]. */
   models?: string[];
   /** Model context window in tokens, used for automatic compaction. */
   contextWindow?: number;
   apiKey?: string;
   baseUrl: string;
+  /** Model providers the agent can use (OpenCode, OpenRouter, DeepSeek…). */
+  providers?: ProviderConfig[];
+  /** Mutable registry backing `providers`; owns keys, models and the default. */
+  providerRegistry?: ProviderRegistry;
   computerSupervisorUrl?: string;
   computerSupervisorToken?: string;
   computerToken?: string;

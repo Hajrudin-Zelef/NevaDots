@@ -10,6 +10,7 @@ import { configured, type Config } from './research.js';
 import type { Platform } from './platform.js';
 import { VoiceService } from './voice.js';
 import { workspaceRoutes } from './workspace-routes.js';
+import { providerRoutes } from './provider-routes.js';
 import { systemMetrics } from './metrics.js';
 const interval = z.number().int().min(60).max(31_536_000).nullable();
 export interface AppOptions {
@@ -101,6 +102,7 @@ export function createApp({
     );
   const voice = platform ? new VoiceService(platform) : undefined;
   if (platform && voice) app.route('/api', workspaceRoutes(platform, voice));
+  if (platform) app.route('/api', providerRoutes(platform));
   app.get('/api/state', (c) =>
     c.json({
       settings: store.settings(),

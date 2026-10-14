@@ -25,10 +25,12 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS task_threads(taskId TEXT PRIMARY KEY, threadId TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS calls(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, status TEXT NOT NULL, transcript TEXT NOT NULL, error TEXT);
       CREATE TABLE IF NOT EXISTS captures(threadId TEXT PRIMARY KEY, value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS thread_activity(threadId TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS thread_activity(threadId TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS app_config(key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
     for (const [table, column, definition] of [
       ['dots', 'learningContainerId', 'TEXT'],
       ['dots', 'skillDeliveryEnabled', 'INTEGER NOT NULL DEFAULT 0'],
+      ['dots', 'provider', 'TEXT'],
       ['dots', 'model', 'TEXT'],
       ['dots', 'reasoningEffort', 'TEXT'],
       ['dots', 'avatar', 'TEXT'],
@@ -86,6 +88,29 @@ export class WorkspaceStore {
   close() {
     this.db.close();
   }
+  configGet(key: string): string | undefined {
+    const row = this.db
+      .prepare('SELECT value FROM app_config WHERE key=?')
+      .get(key) as { value: string } | undefined;
+    return row?.value;
+  }
+  configSet(key: string, value: string) {
+    this.db
+      .prepare(
+        'INSERT INTO app_config(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+      )
+      .run(key, value);
+  }
+  configDelete(key: string) {
+    this.db.prepare('DELETE FROM app_config WHERE key=?').run(key);
+  }
+  configList(prefix: string): { key: string; value: string }[] {
+    return this.db
+      .prepare(
+        'SELECT key, value FROM app_config WHERE key LIKE ? ORDER BY key',
+      )
+      .all(`${prefix}%`) as unknown as { key: string; value: string }[];
+  }
   spaces(): Space[] {
     return this.db
       .prepare('SELECT * FROM spaces ORDER BY createdAt')
@@ -118,6 +143,7 @@ export class WorkspaceStore {
         researchAllowed: !!row.researchAllowed,
         memoryAllowed: !!row.memoryAllowed,
         skillDeliveryEnabled: !!row.skillDeliveryEnabled,
+        provider: row.provider == null ? null : String(row.provider),
         model: row.model == null ? null : String(row.model),
         reasoningEffort:
           row.reasoningEffort == null ? null : String(row.reasoningEffort),
@@ -127,9 +153,11 @@ export class WorkspaceStore {
   dot(id: string) {
     return this.dots().find((dot) => dot.id === id);
   }
-  setDotModel(id: string, model: string | null): Dot {
+  setDotModel(id: string, provider: string | null, model: string | null): Dot {
     if (!this.dot(id)) throw new Error('Dot not found.');
-    this.db.prepare('UPDATE dots SET model=? WHERE id=?').run(model, id);
+    this.db
+      .prepare('UPDATE dots SET provider=?, model=? WHERE id=?')
+      .run(provider, model, id);
     return this.dot(id)!;
   }
   setDotReasoning(id: string, effort: string | null): Dot {

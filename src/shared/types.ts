@@ -87,6 +87,11 @@ export interface Dot {
   createdAt: number;
   learningContainerId?: string | null;
   skillDeliveryEnabled?: boolean;
+  /**
+   * Per-Dot provider id (see the server provider registry); null/undefined
+   * uses the server default provider.
+   */
+  provider?: string | null;
   /** Per-Dot model override; null/undefined uses the global default. */
   model?: string | null;
   /**

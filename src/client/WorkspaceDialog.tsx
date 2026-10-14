@@ -3,16 +3,19 @@ import {
   Activity,
   Bot,
   Info,
+  KeyRound,
   Palette,
   Plug,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
+import type { ModelsResponse } from '../shared/models';
 import { api } from './api';
 import { AVATARS } from './Mascot';
 import { avatarSrc, isProtectedAvatar } from '../shared/avatars';
 import { ConnectionsSection } from './ConnectionsSection';
+import { ApiProvidersPanel } from './ApiProvidersPanel';
 import {
   PALETTES,
   palettePreference,
@@ -37,7 +40,13 @@ interface SystemMetrics {
 }
 
 type SettingsTab =
-  'appearance' | 'preferences' | 'dots' | 'connections' | 'health' | 'about';
+  | 'appearance'
+  | 'api'
+  | 'preferences'
+  | 'dots'
+  | 'connections'
+  | 'health'
+  | 'about';
 
 export function WorkspaceDialog({
   dialog,
@@ -97,10 +106,10 @@ export function WorkspaceDialog({
   const [theme, setTheme] = useState(themePreference);
   const [palette, setPalette] = useState(palettePreference);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
-  const [models, setModels] = useState<{
-    default: string | null;
-    models: string[];
-  }>({ default: null, models: [] });
+  const [models, setModels] = useState<ModelsResponse>({
+    default: null,
+    providers: [],
+  });
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [connectionDot, setConnectionDot] = useState(
     workspace.dots[0]?.id ?? '',
@@ -108,7 +117,7 @@ export function WorkspaceDialog({
   useEffect(() => {
     if (dialog.type !== 'settings') return;
     let active = true;
-    void api<{ default: string | null; models: string[] }>('/models')
+    void api<ModelsResponse>('/models')
       .then((value) => {
         if (active) setModels(value);
       })
@@ -519,6 +528,7 @@ export function WorkspaceDialog({
                 {(
                   [
                     ['appearance', 'Apparence', Palette],
+                    ['api', 'API et Modèles', KeyRound],
                     ['preferences', 'Réglages', SlidersHorizontal],
                     ['dots', 'Dots & Espaces', Bot],
                     ['connections', 'Connexions', Plug],
@@ -601,6 +611,9 @@ export function WorkspaceDialog({
                     <p className="muted">Couleur d’accent.</p>
                   </fieldset>
                 )}
+                {dialog.type === 'settings' && settingsTab === 'api' && (
+                  <ApiProvidersPanel />
+                )}
                 {dialog.type === 'settings' &&
                   settingsTab === 'preferences' && (
                     <>
@@ -634,29 +647,43 @@ export function WorkspaceDialog({
                       </label>
                       <div className="config-note">
                         <strong>Modèles</strong>
-                        <p>
-                          Modèle par défaut :{' '}
-                          <code>
-                            {models.default ??
-                              metrics?.model ??
-                              'non configuré'}
-                          </code>
-                        </p>
-                        {models.models.length > 0 && (
-                          <p>
-                            Disponibles :{' '}
-                            {models.models.map((id, index) => (
-                              <span key={id}>
-                                {index > 0 && ', '}
-                                <code>{id}</code>
-                              </span>
+                        {models.providers.length > 0 ? (
+                          <>
+                            <p>
+                              Fournisseurs : chaque Dot peut choisir un
+                              fournisseur et un modèle depuis le sélecteur du
+                              composeur.
+                            </p>
+                            {models.providers.map((provider) => (
+                              <p key={provider.id}>
+                                <code>{provider.label}</code> —{' '}
+                                {provider.configured
+                                  ? 'clé configurée'
+                                  : 'clé absente'}
+                                {provider.models.length > 0 && (
+                                  <> · {provider.models.join(', ')}</>
+                                )}
+                              </p>
                             ))}
+                            <p>
+                              Par défaut :{' '}
+                              <code>
+                                {models.default?.model ??
+                                  metrics?.model ??
+                                  'non configuré'}
+                              </code>
+                            </p>
+                          </>
+                        ) : (
+                          <p>
+                            Modèle par défaut :{' '}
+                            <code>{metrics?.model ?? 'non configuré'}</code>
                           </p>
                         )}
                         <p>
-                          Le modèle global et les clés se règlent dans{' '}
-                          <code>.env</code> (<code>OPENAI_MODEL</code>,{' '}
-                          <code>OPENAI_MODELS</code>).
+                          Les clés se règlent dans <code>.env</code> (
+                          <code>OPENAI_*</code>, <code>OPENROUTER_*</code>,{' '}
+                          <code>DEEPSEEK_*</code>).
                         </p>
                       </div>
                     </>

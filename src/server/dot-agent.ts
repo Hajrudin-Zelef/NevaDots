@@ -6,22 +6,14 @@ import { ConnectionService } from './connections.js';
 import { connectionTools } from './connection-tools.js';
 import { connectionActionTool } from '../shared/connection-types.js';
 import { pageAccess, pageTools } from './page-tools.js';
-import {
-  cachePage,
-  grepPage,
-  slicePage,
-  summarizePage,
-} from './page-cache.js';
+import { cachePage, grepPage, slicePage, summarizePage } from './page-cache.js';
 import {
   archiveResult,
   hasArchives,
   recallArchived,
   searchArchived,
 } from './tool-archive.js';
-import {
-  compactMessages,
-  type ChatMessage,
-} from './context-compaction.js';
+import { compactMessages, type ChatMessage } from './context-compaction.js';
 import { classifyModelError } from './model-errors.js';
 import { AbstractAgent } from '@ag-ui/client';
 import { type BaseEvent, type RunAgentInput, EventType } from '@ag-ui/core';
@@ -39,6 +31,7 @@ import { z } from 'zod';
 import { Store } from './store.js';
 import { WorkspaceStore } from './workspace.js';
 import type { PlatformConfig } from './platform-config.js';
+import { defaultProvider, findProvider } from './providers.js';
 import { browserResponse } from './research.js';
 import { answerObserver, type SetupTelemetry } from './setup-telemetry.js';
 import {
@@ -125,8 +118,31 @@ export class DotAgent extends AbstractAgent {
             'Slack conversation',
           );
         this.workspace.requireThread(input.threadId, dot.id);
-        const model = dot.model ?? this.config.model;
-        if (!this.config.apiKey || !model) {
+        // Resolve the Dot's provider (falling back to the server default) and
+        // use its endpoint + key. `dot.model` may override the provider default.
+        const fallbackDefault =
+          this.config.providerRegistry?.effectiveDefault();
+        const explicitProvider = findProvider(
+          this.config.providers,
+          dot.provider,
+        );
+        const provider =
+          explicitProvider ??
+          findProvider(this.config.providers, fallbackDefault?.provider) ??
+          defaultProvider(this.config.providers);
+        const apiKey = provider?.apiKey ?? this.config.apiKey;
+        const baseUrl =
+          provider?.baseUrl ??
+          this.config.baseUrl ??
+          'https://api.openai.com/v1';
+        const model =
+          dot.model ??
+          (explicitProvider
+            ? explicitProvider.models[0]
+            : fallbackDefault?.model) ??
+          this.config.model ??
+          provider?.models[0];
+        if (!apiKey || !model) {
           configurationFailure = true;
           this.setupTelemetry?.capture({
             kind: 'setup_failed',
@@ -349,7 +365,9 @@ export class DotAgent extends AbstractAgent {
                 check();
                 const entry = recallArchived(id);
                 if (!entry)
-                  throw new Error('Unknown or expired archive id. Read it again instead.');
+                  throw new Error(
+                    'Unknown or expired archive id. Read it again instead.',
+                  );
                 return {
                   id: entry.id,
                   label: entry.label,
@@ -474,7 +492,7 @@ export class DotAgent extends AbstractAgent {
           },
         };
         const previousFetch = globalThis.fetch;
-        const chatCompletionsUrl = this.config.baseUrl
+        const chatCompletionsUrl = baseUrl
           .replace(/\/$/, '')
           .concat('/chat/completions');
         const isChatCompletions = (url: string) =>
@@ -504,14 +522,18 @@ export class DotAgent extends AbstractAgent {
                 .text()
                 .catch(() => '');
               throw new Error(
-                `${response.status} ${body}`.replace(/\s+/g, ' ').trim().slice(0, 600),
+                `${response.status} ${body}`
+                  .replace(/\s+/g, ' ')
+                  .trim()
+                  .slice(0, 600),
               );
             }
             return response;
           } catch (requestError) {
             const aborted =
               Boolean(init?.signal?.aborted) ||
-              (requestError instanceof Error && requestError.name === 'AbortError');
+              (requestError instanceof Error &&
+                requestError.name === 'AbortError');
             if (!isChatCompletions(url) || aborted) throw requestError;
             throw new Error(classifyModelError(requestError), {
               cause: requestError,
@@ -520,12 +542,13 @@ export class DotAgent extends AbstractAgent {
         }) as typeof fetch;
         const wrappedFetch = globalThis.fetch;
         restoreFetch = () => {
-          if (globalThis.fetch === wrappedFetch) globalThis.fetch = previousFetch;
+          if (globalThis.fetch === wrappedFetch)
+            globalThis.fetch = previousFetch;
         };
         // --- End reasoning capture ---------------------------------------------
         const adapter = openaiCompatibleText(model, {
-          apiKey: this.config.apiKey,
-          baseURL: this.config.baseUrl ?? 'https://api.openai.com/v1',
+          apiKey,
+          baseURL: baseUrl,
           api: 'chat-completions',
           maxRetries: 1,
         });
@@ -546,8 +569,8 @@ export class DotAgent extends AbstractAgent {
               {
                 threadId: input.threadId,
                 model,
-                apiKey: this.config.apiKey ?? '',
-                baseUrl: this.config.baseUrl,
+                apiKey: apiKey ?? '',
+                baseUrl,
                 contextWindow: this.config.contextWindow ?? 128000,
                 fetchImpl: previousFetch,
                 signal: ctx.abortSignal,

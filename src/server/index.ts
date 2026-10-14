@@ -12,6 +12,8 @@ import { createApp } from './app.js';
 import { resolveAppOrigins } from './app-origin.js';
 import { WorkspaceStore } from './workspace.js';
 import { Platform } from './platform.js';
+import { ProviderRegistry } from './providers.js';
+import { resolveSecretKey } from './secrets.js';
 import { attachComputerStream } from './computer-stream.js';
 import type { PlatformConfig } from './platform-config.js';
 const host = process.env.HOST ?? '127.0.0.1';
@@ -30,6 +32,11 @@ const workspace = new WorkspaceStore(
   database,
   process.env.OWNER_ID ?? 'opendots-owner',
 );
+const providerRegistry = new ProviderRegistry(
+  workspace,
+  resolveSecretKey(workspace),
+  process.env,
+);
 const config: PlatformConfig = {
   databasePath: database,
   apiKey: process.env.OPENAI_API_KEY,
@@ -39,6 +46,8 @@ const config: PlatformConfig = {
     .map((value) => value.trim())
     .filter(Boolean),
   baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+  providers: providerRegistry.list(),
+  providerRegistry,
   contextWindow: process.env.OPENAI_CONTEXT_WINDOW
     ? Number(process.env.OPENAI_CONTEXT_WINDOW)
     : undefined,
