@@ -311,10 +311,16 @@ export function Chat({
     if (translating || !reasonPanelText.trim()) return;
     setTranslating(true);
     setTranslateError('');
-    void api<{ translation: string }>('/translate', 'POST', {
-      text: reasonPanelText.slice(0, 12000),
-      targetLang: 'fr',
-    })
+    // Fetch the DeepThink Global language first; the server falls back to
+    // its persisted setting when targetLang is omitted.
+    void api<{ settings: { lang: string } }>('/deepthink')
+      .catch(() => ({ settings: { lang: 'fr' } }))
+      .then(({ settings }) =>
+        api<{ translation: string }>('/translate', 'POST', {
+          text: reasonPanelText.slice(0, 12000),
+          targetLang: settings.lang,
+        }),
+      )
       .then((result) => {
         setTranslation(result.translation);
         setShowTranslation(true);

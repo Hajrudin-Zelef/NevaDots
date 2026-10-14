@@ -3583,3 +3583,33 @@ textarea::placeholder {
     gap: 6px;
   }
 }
+
+/* ---- DeepThink: segmented pills ---- */
+.seg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.seg-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--nd-border, #eaeaea);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nd-text-secondary, #888);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.seg-btn:hover {
+  background: var(--nd-bg-hover, #f0f0f0);
+  color: var(--nd-text, #1a1a1a);
+}
+.seg-btn.active {
+  background: var(--nd-accent, #22c55e);
+  border-color: var(--nd-accent, #22c55e);
+  color: #fff;
+  font-weight: 600;
+}

@@ -5,6 +5,7 @@ import {
   Cpu,
   Info,
   KeyRound,
+  Languages,
   Palette,
   Plug,
   SlidersHorizontal,
@@ -18,6 +19,8 @@ import { avatarSrc, isProtectedAvatar } from '../shared/avatars';
 import { ConnectionsSection } from './ConnectionsSection';
 import { ApiProvidersPanel } from './ApiProvidersPanel';
 import { ModelSelectorPanel } from './ModelSelectorPanel';
+
+import { DeepThinkPanel } from './DeepThinkPanel';
 import {
   PALETTES,
   palettePreference,
@@ -45,6 +48,7 @@ type SettingsTab =
   | 'appearance'
   | 'api'
   | 'models'
+  | 'deepthink'
   | 'preferences'
   | 'dots'
   | 'connections'
@@ -533,6 +537,8 @@ export function WorkspaceDialog({
                     ['appearance', 'Apparence', Palette],
                     ['api', 'API et Modèles', KeyRound],
                     ['models', 'Sélecteur de modèles', Cpu],
+
+                    ['deepthink', 'DeepThink', Languages],
                     ['preferences', 'Réglages', SlidersHorizontal],
                     ['dots', 'Dots & Espaces', Bot],
                     ['connections', 'Connexions', Plug],
@@ -621,6 +627,9 @@ export function WorkspaceDialog({
                 {dialog.type === 'settings' && settingsTab === 'models' && (
                   <ModelSelectorPanel />
                 )}
+                {dialog.type === 'settings' && settingsTab === 'deepthink' && (
+                  <DeepThinkPanel />
+                )}{' '}
                 {dialog.type === 'settings' &&
                   settingsTab === 'preferences' && (
                     <>
