@@ -4,6 +4,8 @@ import { reportChannelFailure, safeFailure } from './slack-channel.js';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { compress } from 'hono/compress';
+import { getCookie } from 'hono/cookie';
+import { timingSafeEqual } from 'node:crypto';
 import { Store } from './store.js';
 import { Runner } from './runner.js';
 import { createApp } from './app.js';
@@ -106,9 +108,35 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.get('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
+// Avatar art (/dots) is the owner's private property: it is gated behind the
+// owner token (sent as a cookie so <img> can carry it) and refuses cross-site
+// embeds, so it can neither be loaded by a stranger nor hotlinked elsewhere.
+app.use('/dots/*', async (c, next) => {
+  c.header('Cross-Origin-Resource-Policy', 'same-origin');
+  if (c.req.header('sec-fetch-site') === 'cross-site') return c.body(null, 403);
+  const referer = c.req.header('referer');
+  if (referer) {
+    try {
+      if (new URL(referer).origin !== new URL(c.req.url).origin)
+        return c.body(null, 403);
+    } catch {
+      return c.body(null, 403);
+    }
+  }
+  if (ownerToken) {
+    const supplied =
+      getCookie(c, 'opendots-auth') ??
+      c.req.header('authorization')?.replace(/^Bearer /, '') ??
+      '';
+    const expected = Buffer.from(ownerToken);
+    const got = Buffer.from(supplied);
+    if (expected.length !== got.length || !timingSafeEqual(expected, got))
+      return c.body(null, 401);
+  }
+  await next();
+});
 // Cache policy: hashed assets are immutable; avatar art (public/dots) is
-// cache-busted by a version query in the URL (see AVATAR_ASSET_VERSION), so a
-// short max-age keeps it responsive to redeploys without a manual rename; the
+// private and cache-busted by a version query (see AVATAR_ASSET_VERSION); the
 // SPA shell must never be cached, otherwise a stale index.html keeps
 // referencing old asset hashes and the browser serves the previous UI after a
 // deploy.
@@ -119,7 +147,7 @@ app.use('/*', async (c, next) => {
     path.startsWith('/assets/')
       ? 'public, max-age=31536000, immutable'
       : path.startsWith('/dots/')
-        ? 'public, max-age=300'
+        ? 'private, max-age=300'
         : path.startsWith('/fonts/')
           ? 'public, max-age=604800'
           : 'no-store',

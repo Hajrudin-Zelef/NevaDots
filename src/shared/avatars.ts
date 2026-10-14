@@ -107,6 +107,18 @@ export function hasValidateOverlay(id: string | null | undefined): boolean {
   return !!id && (AVATAR_VALIDATE_OVERLAY as readonly string[]).includes(id);
 }
 
+/**
+ * NevaDots avatars are the owner's private art: the client blocks the browser
+ * context menu ("Save image as…") and drag on them. The static classics
+ * (mint/orange/purple) stay unhindered.
+ */
+export const PROTECTED_AVATARS: readonly AvatarId[] = ['leo', 'sam', 'aline'];
+
+/** Whether an avatar is protected against right-click / drag. */
+export function isProtectedAvatar(id: string | null | undefined): boolean {
+  return !!id && (PROTECTED_AVATARS as readonly string[]).includes(id);
+}
+
 /** Every clip URL declared for an avatar state (one per variant). */
 export function avatarStateCandidates(
   id: string | null | undefined,

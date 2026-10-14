@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Mascot, AVATARS } from './Mascot';
-import { avatarSrc } from '../shared/avatars';
+import { avatarSrc, isProtectedAvatar } from '../shared/avatars';
 import { api } from './api';
 import type { ActivityEvent } from '../shared/activity';
 import { groupByDay, timeOfDay } from './day-groups';
@@ -369,25 +369,41 @@ export function ActivityPanel({
               <section className="muse-section">
                 <h3>Apparence</h3>
                 <div className="avatar-swatches">
-                  {AVATARS.map((avatar) => (
-                    <button
-                      type="button"
-                      key={avatar}
-                      className={`avatar-swatch ${
-                        (dot.avatar ?? 'leo') === avatar ? 'active' : ''
-                      }`}
-                      aria-label={`Avatar ${avatar}`}
-                      disabled={busy}
-                      onClick={() => void setAvatar(avatar)}
-                    >
-                      <img
-                        src={avatarSrc(avatar) ?? undefined}
-                        alt=""
-                        width={34}
-                        height={34}
-                      />
-                    </button>
-                  ))}
+                  {AVATARS.map((avatar) => {
+                    const reserved =
+                      avatar === 'leo' &&
+                      dots.some(
+                        (other) =>
+                          other.id !== dot.id && other.avatar === 'leo',
+                      );
+                    const protect = isProtectedAvatar(avatar);
+                    return (
+                      <button
+                        type="button"
+                        key={avatar}
+                        className={`avatar-swatch ${
+                          (dot.avatar ?? 'leo') === avatar ? 'active' : ''
+                        } ${protect ? 'protected-avatar' : ''}`}
+                        aria-label={`Avatar ${avatar}`}
+                        title={reserved ? 'Avatar réservé' : avatar}
+                        disabled={busy || reserved}
+                        onClick={() => void setAvatar(avatar)}
+                        onContextMenu={
+                          protect
+                            ? (event) => event.preventDefault()
+                            : undefined
+                        }
+                      >
+                        <img
+                          src={avatarSrc(avatar) ?? undefined}
+                          alt=""
+                          width={34}
+                          height={34}
+                          draggable={protect ? false : undefined}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
                 <h3>Modèle</h3>
                 <p className="muse-note">{dot.model ?? 'Défaut du serveur'}</p>

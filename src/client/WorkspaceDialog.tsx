@@ -11,7 +11,7 @@ import {
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
 import { api } from './api';
 import { AVATARS } from './Mascot';
-import { avatarSrc } from '../shared/avatars';
+import { avatarSrc, isProtectedAvatar } from '../shared/avatars';
 import { ConnectionsSection } from './ConnectionsSection';
 import {
   PALETTES,
@@ -296,23 +296,30 @@ export function WorkspaceDialog({
             <fieldset className="avatar-picker">
               <legend>Avatar</legend>
               <div className="avatar-swatches">
-                {AVATARS.map((id) => (
-                  <button
-                    type="button"
-                    key={id}
-                    className={`avatar-swatch ${avatar === id ? 'active' : ''}`}
-                    aria-label={id}
-                    title={id}
-                    onClick={() => setAvatar(avatar === id ? null : id)}
-                  >
-                    <img
-                      src={avatarSrc(id) ?? undefined}
-                      alt=""
-                      width={44}
-                      height={44}
-                    />
-                  </button>
-                ))}
+                {AVATARS.map((id) => {
+                  const protect = isProtectedAvatar(id);
+                  return (
+                    <button
+                      type="button"
+                      key={id}
+                      className={`avatar-swatch ${avatar === id ? 'active' : ''} ${protect ? 'protected-avatar' : ''}`}
+                      aria-label={id}
+                      title={id}
+                      onClick={() => setAvatar(avatar === id ? null : id)}
+                      onContextMenu={
+                        protect ? (event) => event.preventDefault() : undefined
+                      }
+                    >
+                      <img
+                        src={avatarSrc(id) ?? undefined}
+                        alt=""
+                        width={44}
+                        height={44}
+                        draggable={protect ? false : undefined}
+                      />
+                    </button>
+                  );
+                })}
               </div>
               <p className="muted">
                 Cliquez pour choisir, re-cliquez pour revenir au défaut.
@@ -462,7 +469,9 @@ export function WorkspaceDialog({
                 }
               >
                 <option value="repeat">Répéter</option>
-                <option value="once">Une seule fois, à une heure précise</option>
+                <option value="once">
+                  Une seule fois, à une heure précise
+                </option>
               </select>
               {scheduleMode === 'once' ? (
                 <>
@@ -531,259 +540,279 @@ export function WorkspaceDialog({
                 ))}
               </nav>
               <div className="settings-body">
-          {dialog.type === 'settings' && settingsTab === 'appearance' && (
-            <fieldset className="appearance-fields">
-              <legend>Apparence</legend>
-              <div className="segmented" role="radiogroup">
-                {(
-                  ['system', 'light', 'dark', 'hard_dark'] as ThemePreference[]
-                ).map((option) => (
-                  <label key={option}>
-                    <input
-                      type="radio"
-                      name="theme"
-                      value={option}
-                      checked={theme === option}
-                      onChange={() => {
-                        setTheme(option);
-                        setThemePreference(option);
-                      }}
-                    />
-                    <span>
-                      {option
-                        .split('_')
-                        .map((part) => part[0].toUpperCase() + part.slice(1))
-                        .join(' ')}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <p className="muted">
-                Mémorisé dans ce navigateur · Système suit l’appareil.
-              </p>
-              <div
-                className="palette-swatches"
-                role="radiogroup"
-                aria-label="Couleur d’accent"
-              >
-                {PALETTES.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`palette-swatch ${palette === item.id ? 'active' : ''}`}
-                    style={{ background: item.color }}
-                    title={item.label}
-                    aria-label={item.label}
-                    aria-pressed={palette === item.id}
-                    onClick={() => {
-                      setPalette(item.id);
-                      setPalettePreference(item.id);
-                    }}
-                  />
-                ))}
-              </div>
-              <p className="muted">Couleur d’accent.</p>
-            </fieldset>
-          )}
-          {dialog.type === 'settings' && settingsTab === 'preferences' && (
-            <>
-              <label className="permission-row">
-                <input
-                  type="checkbox"
-                  checked={research}
-                  onChange={(e) => setResearch(e.target.checked)}
-                />
-                <span>
-                  <strong>Recherche sur pages publiques</strong>
-                  <small>
-                    Autorise le navigateur serveur en lecture seule. Les
-                    réglages globaux restent prioritaires.
-                  </small>
-                </span>
-              </label>
-              <label className="permission-row">
-                <input
-                  type="checkbox"
-                  checked={memory}
-                  onChange={(e) => setMemory(e.target.checked)}
-                />
-                <span>
-                  <strong>Utiliser les mémoires</strong>
-                  <small>
-                    Inclut vos préférences dans les nouveaux tours. Changer ce
-                    réglage arrête le travail en cours.
-                  </small>
-                </span>
-              </label>
-              <div className="config-note">
-                <strong>Modèles</strong>
-                <p>
-                  Modèle par défaut :{' '}
-                  <code>
-                    {models.default ?? metrics?.model ?? 'non configuré'}
-                  </code>
-                </p>
-                {models.models.length > 0 && (
-                  <p>
-                    Disponibles :{' '}
-                    {models.models.map((id, index) => (
-                      <span key={id}>
-                        {index > 0 && ', '}
-                        <code>{id}</code>
-                      </span>
-                    ))}
-                  </p>
+                {dialog.type === 'settings' && settingsTab === 'appearance' && (
+                  <fieldset className="appearance-fields">
+                    <legend>Apparence</legend>
+                    <div className="segmented" role="radiogroup">
+                      {(
+                        [
+                          'system',
+                          'light',
+                          'dark',
+                          'hard_dark',
+                        ] as ThemePreference[]
+                      ).map((option) => (
+                        <label key={option}>
+                          <input
+                            type="radio"
+                            name="theme"
+                            value={option}
+                            checked={theme === option}
+                            onChange={() => {
+                              setTheme(option);
+                              setThemePreference(option);
+                            }}
+                          />
+                          <span>
+                            {option
+                              .split('_')
+                              .map(
+                                (part) => part[0].toUpperCase() + part.slice(1),
+                              )
+                              .join(' ')}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="muted">
+                      Mémorisé dans ce navigateur · Système suit l’appareil.
+                    </p>
+                    <div
+                      className="palette-swatches"
+                      role="radiogroup"
+                      aria-label="Couleur d’accent"
+                    >
+                      {PALETTES.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`palette-swatch ${palette === item.id ? 'active' : ''}`}
+                          style={{ background: item.color }}
+                          title={item.label}
+                          aria-label={item.label}
+                          aria-pressed={palette === item.id}
+                          onClick={() => {
+                            setPalette(item.id);
+                            setPalettePreference(item.id);
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <p className="muted">Couleur d’accent.</p>
+                  </fieldset>
                 )}
-                <p>
-                  Le modèle global et les clés se règlent dans <code>.env</code>{' '}
-                  (<code>OPENAI_MODEL</code>, <code>OPENAI_MODELS</code>).
-                </p>
-              </div>
-            </>
-          )}
-          {dialog.type === 'settings' && settingsTab === 'dots' && (
-            <div className="settings-list">
-              <div className="settings-list-head">
-                <strong>Dots</strong>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() =>
-                    onOpenDialog({
-                      type: 'dot',
-                      spaceId: workspace.spaces[0]?.id ?? '',
-                    })
-                  }
-                >
-                  Nouveau
-                </button>
-              </div>
-              {workspace.dots.map((item) => (
-                <div className="settings-list-row" key={item.id}>
-                  <span>{item.name}</span>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() =>
-                      onOpenDialog({
-                        type: 'dot',
-                        dot: item,
-                        spaceId: item.spaceId,
-                      })
-                    }
-                  >
-                    Modifier
-                  </button>
-                </div>
-              ))}
-              <div className="settings-list-head">
-                <strong>Espaces</strong>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => onOpenDialog({ type: 'space' })}
-                >
-                  Nouveau
-                </button>
-              </div>
-              {workspace.spaces.map((item) => (
-                <div className="settings-list-row" key={item.id}>
-                  <span>{item.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {dialog.type === 'settings' && settingsTab === 'connections' && (
-            <div className="settings-connections">
-              {workspace.dots.length > 1 && (
-                <>
-                  <label className="field-label" htmlFor="connection-dot">
-                    Dot
-                  </label>
-                  <select
-                    id="connection-dot"
-                    value={connectionDot}
-                    onChange={(e) => setConnectionDot(e.target.value)}
-                  >
+                {dialog.type === 'settings' &&
+                  settingsTab === 'preferences' && (
+                    <>
+                      <label className="permission-row">
+                        <input
+                          type="checkbox"
+                          checked={research}
+                          onChange={(e) => setResearch(e.target.checked)}
+                        />
+                        <span>
+                          <strong>Recherche sur pages publiques</strong>
+                          <small>
+                            Autorise le navigateur serveur en lecture seule. Les
+                            réglages globaux restent prioritaires.
+                          </small>
+                        </span>
+                      </label>
+                      <label className="permission-row">
+                        <input
+                          type="checkbox"
+                          checked={memory}
+                          onChange={(e) => setMemory(e.target.checked)}
+                        />
+                        <span>
+                          <strong>Utiliser les mémoires</strong>
+                          <small>
+                            Inclut vos préférences dans les nouveaux tours.
+                            Changer ce réglage arrête le travail en cours.
+                          </small>
+                        </span>
+                      </label>
+                      <div className="config-note">
+                        <strong>Modèles</strong>
+                        <p>
+                          Modèle par défaut :{' '}
+                          <code>
+                            {models.default ??
+                              metrics?.model ??
+                              'non configuré'}
+                          </code>
+                        </p>
+                        {models.models.length > 0 && (
+                          <p>
+                            Disponibles :{' '}
+                            {models.models.map((id, index) => (
+                              <span key={id}>
+                                {index > 0 && ', '}
+                                <code>{id}</code>
+                              </span>
+                            ))}
+                          </p>
+                        )}
+                        <p>
+                          Le modèle global et les clés se règlent dans{' '}
+                          <code>.env</code> (<code>OPENAI_MODEL</code>,{' '}
+                          <code>OPENAI_MODELS</code>).
+                        </p>
+                      </div>
+                    </>
+                  )}
+                {dialog.type === 'settings' && settingsTab === 'dots' && (
+                  <div className="settings-list">
+                    <div className="settings-list-head">
+                      <strong>Dots</strong>
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() =>
+                          onOpenDialog({
+                            type: 'dot',
+                            spaceId: workspace.spaces[0]?.id ?? '',
+                          })
+                        }
+                      >
+                        Nouveau
+                      </button>
+                    </div>
                     {workspace.dots.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
+                      <div className="settings-list-row" key={item.id}>
+                        <span>{item.name}</span>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() =>
+                            onOpenDialog({
+                              type: 'dot',
+                              dot: item,
+                              spaceId: item.spaceId,
+                            })
+                          }
+                        >
+                          Modifier
+                        </button>
+                      </div>
                     ))}
-                  </select>
-                </>
-              )}
-              {connectionDot ? (
-                <ConnectionsSection dotId={connectionDot} />
-              ) : (
-                <p className="muted">
-                  Créez un Dot pour gérer des services MCP.
-                </p>
-              )}
-            </div>
-          )}
-          {dialog.type === 'settings' && settingsTab === 'health' && (
-            <div className="config-note">
-              <strong>État du service</strong>
-              <ul className="settings-flags">
-                <li>Transcriptions : locales (auto-hébergées)</li>
-                <li>
-                  Modèle : {workspace.setup.model ? 'configuré' : 'absent'}
-                </li>
-                <li>
-                  Navigateur : {workspace.setup.browser ? 'actif' : 'inactif'}
-                </li>
-                <li>
-                  Voix : {workspace.setup.voice ? 'configurée' : 'à configurer'}
-                </li>
-                <li>Slack : {workspace.setup.slack.replaceAll('_', ' ')}</li>
-              </ul>
-              {metrics && (
-                <p>
-                  Hôte · CPU {Math.round(metrics.cpu ?? 0)}% · RAM{' '}
-                  {Math.round(metrics.mem ?? 0)}% · Disque{' '}
-                  {Math.round(metrics.disk ?? 0)}% · en service depuis{' '}
-                  {Math.floor(metrics.uptime / 3600)} h
-                </p>
-              )}
-              <p>
-                {workspace.setup.missing.length ? (
-                  <>
-                    À ajouter dans <code>.env</code> puis redémarrer :{' '}
-                    {workspace.setup.missing.map((name, index) => (
-                      <span key={name}>
-                        {index > 0 && ', '}
-                        <code>{name}</code>
-                      </span>
+                    <div className="settings-list-head">
+                      <strong>Espaces</strong>
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => onOpenDialog({ type: 'space' })}
+                      >
+                        Nouveau
+                      </button>
+                    </div>
+                    {workspace.spaces.map((item) => (
+                      <div className="settings-list-row" key={item.id}>
+                        <span>{item.name}</span>
+                      </div>
                     ))}
-                  </>
-                ) : (
-                  'Configuration présente.'
+                  </div>
                 )}
-              </p>
-            </div>
-          )}
-          {dialog.type === 'settings' && settingsTab === 'about' && (
-            <div className="config-note">
-              <strong>NevaDots v0.1.0</strong>
-              <p>
-                Assistant personnel auto-hébergé (Dots, Spaces, Computers,
-                Intelligence). Fork d’OpenDots (CopilotKit), interface inspirée
-                de Cetas Lite.
-              </p>
-              <p>
-                Données stockées localement dans le conteneur. Thème, palettes
-                et préférences restent dans ce navigateur.
-              </p>
-              <a
-                href="https://github.com/CopilotKit/OpenDots"
-                target="_blank"
-                rel="noreferrer"
-              >
-                OpenDots (projet amont) ↗
-              </a>
-            </div>
-          )}
+                {dialog.type === 'settings' &&
+                  settingsTab === 'connections' && (
+                    <div className="settings-connections">
+                      {workspace.dots.length > 1 && (
+                        <>
+                          <label
+                            className="field-label"
+                            htmlFor="connection-dot"
+                          >
+                            Dot
+                          </label>
+                          <select
+                            id="connection-dot"
+                            value={connectionDot}
+                            onChange={(e) => setConnectionDot(e.target.value)}
+                          >
+                            {workspace.dots.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+                      {connectionDot ? (
+                        <ConnectionsSection dotId={connectionDot} />
+                      ) : (
+                        <p className="muted">
+                          Créez un Dot pour gérer des services MCP.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                {dialog.type === 'settings' && settingsTab === 'health' && (
+                  <div className="config-note">
+                    <strong>État du service</strong>
+                    <ul className="settings-flags">
+                      <li>Transcriptions : locales (auto-hébergées)</li>
+                      <li>
+                        Modèle :{' '}
+                        {workspace.setup.model ? 'configuré' : 'absent'}
+                      </li>
+                      <li>
+                        Navigateur :{' '}
+                        {workspace.setup.browser ? 'actif' : 'inactif'}
+                      </li>
+                      <li>
+                        Voix :{' '}
+                        {workspace.setup.voice ? 'configurée' : 'à configurer'}
+                      </li>
+                      <li>
+                        Slack : {workspace.setup.slack.replaceAll('_', ' ')}
+                      </li>
+                    </ul>
+                    {metrics && (
+                      <p>
+                        Hôte · CPU {Math.round(metrics.cpu ?? 0)}% · RAM{' '}
+                        {Math.round(metrics.mem ?? 0)}% · Disque{' '}
+                        {Math.round(metrics.disk ?? 0)}% · en service depuis{' '}
+                        {Math.floor(metrics.uptime / 3600)} h
+                      </p>
+                    )}
+                    <p>
+                      {workspace.setup.missing.length ? (
+                        <>
+                          À ajouter dans <code>.env</code> puis redémarrer :{' '}
+                          {workspace.setup.missing.map((name, index) => (
+                            <span key={name}>
+                              {index > 0 && ', '}
+                              <code>{name}</code>
+                            </span>
+                          ))}
+                        </>
+                      ) : (
+                        'Configuration présente.'
+                      )}
+                    </p>
+                  </div>
+                )}
+                {dialog.type === 'settings' && settingsTab === 'about' && (
+                  <div className="config-note">
+                    <strong>NevaDots v0.1.0</strong>
+                    <p>
+                      Assistant personnel auto-hébergé (Dots, Spaces, Computers,
+                      Intelligence). Fork d’OpenDots (CopilotKit), interface
+                      inspirée de Cetas Lite.
+                    </p>
+                    <p>
+                      Données stockées localement dans le conteneur. Thème,
+                      palettes et préférences restent dans ce navigateur.
+                    </p>
+                    <a
+                      href="https://github.com/CopilotKit/OpenDots"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      OpenDots (projet amont) ↗
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -6,6 +6,7 @@ import {
   avatarStateCandidates,
   avatarStateFiles,
   hasValidateOverlay,
+  isProtectedAvatar,
 } from '../shared/avatars';
 
 export const AVATARS = AVATAR_IDS;
@@ -71,6 +72,8 @@ export function Mascot({
   // Animated avatars ship their own motion; the synthetic CSS keyframe loops
   // (dot-idle/dot-think/...) are for still avatars only.
   const hasClips = avatarStateFiles(character).length > 0;
+  // NevaDots avatars are owner-private: block right-click and drag on them.
+  const protect = isProtectedAvatar(character);
 
   // On each state entry pick one of the state's clip variants at random (some
   // avatars ship interchangeable variants), avoiding an immediate repeat so
@@ -262,8 +265,10 @@ export function Mascot({
 
   return (
     <span
-      className={`mascot ${state} ${small ? 'small' : ''} ${live ? 'live' : ''} ${hasClips ? 'has-clips' : ''}`}
+      className={`mascot ${state} ${small ? 'small' : ''} ${live ? 'live' : ''} ${hasClips ? 'has-clips' : ''} ${protect ? 'protected-avatar' : ''}`}
       ref={rootRef}
+      onContextMenu={protect ? (event) => event.preventDefault() : undefined}
+      onDragStart={protect ? (event) => event.preventDefault() : undefined}
     >
       <svg width="0" height="0" aria-hidden="true" focusable="false">
         <filter id="dot-goo">

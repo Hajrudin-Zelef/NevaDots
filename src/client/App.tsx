@@ -34,7 +34,7 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
-import { api, ApiError, authHeaders, setToken } from './api';
+import { api, ApiError, authHeaders, authToken, setToken } from './api';
 import { trackSetupStep } from './setup-telemetry';
 import {
   applyCaptureResult,
@@ -460,7 +460,9 @@ export function App() {
   if (needsAuth)
     return (
       <main className="unlock">
-        <Mascot />
+        {/* The Dot avatar is owner-private (gated on /dots), so the locked
+            screen shows the public logo instead of the mascot. */}
+        <img className="unlock-logo" src="/logo.png" alt="" />
         <h1>Your own little corner.</h1>
         <p>
           Enter the owner access token configured on this template’s server.
@@ -503,7 +505,11 @@ export function App() {
   if (!state || !workspace || !dot)
     return (
       <main className="unlock">
-        <Mascot state="working" />
+        {authToken() ? (
+          <Mascot state="working" />
+        ) : (
+          <img className="unlock-logo" src="/logo.png" alt="" />
+        )}
         <h1>Finding your dots…</h1>
         {error && (
           <>

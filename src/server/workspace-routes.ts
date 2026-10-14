@@ -75,12 +75,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     const parsed = z
       .object({
         text: z.string().trim().min(1).max(12000),
-        targetLang: z
-          .string()
-          .trim()
-          .min(2)
-          .max(8)
-          .default('fr'),
+        targetLang: z.string().trim().min(2).max(8).default('fr'),
       })
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
@@ -244,7 +239,8 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       .object({ model: z.string().trim().min(1).max(120).nullable() })
       .strict()
       .safeParse(await c.req.json().catch(() => null));
-    if (!data.success) return c.json({ error: 'Invalid model selection.' }, 400);
+    if (!data.success)
+      return c.json({ error: 'Invalid model selection.' }, 400);
     const allowed = platform.config.models ?? [];
     if (data.data.model && allowed.length && !allowed.includes(data.data.model))
       return c.json({ error: 'Unknown model.' }, 400);
@@ -266,10 +262,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     if (!platform.workspace.dot(c.req.param('id')))
       return c.json({ error: 'Dot not found.' }, 404);
     return c.json(
-      platform.workspace.setDotReasoning(
-        c.req.param('id'),
-        data.data.effort,
-      ),
+      platform.workspace.setDotReasoning(c.req.param('id'), data.data.effort),
     );
   });
   app.put('/dots/:id/avatar', async (c) => {
@@ -282,6 +275,15 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     if (!data.success) return c.json({ error: 'Invalid avatar.' }, 400);
     if (!platform.workspace.dot(c.req.param('id')))
       return c.json({ error: 'Dot not found.' }, 404);
+    // The main avatar ('leo') belongs to one Dot only: a Dot cannot take it
+    // while another already wears it.
+    if (
+      data.data.avatar === 'leo' &&
+      platform.workspace
+        .dots()
+        .some((dot) => dot.avatar === 'leo' && dot.id !== c.req.param('id'))
+    )
+      return c.json({ error: 'This avatar is already taken.' }, 409);
     return c.json(
       platform.workspace.setDotAvatar(c.req.param('id'), data.data.avatar),
     );

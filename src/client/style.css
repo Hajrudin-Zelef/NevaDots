@@ -1454,6 +1454,12 @@ h3 {
   margin: 10vh auto;
   padding: 25px;
 }
+.unlock-logo {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  margin-bottom: 8px;
+}
 .unlock h1 {
   font-size: 29px;
 }
@@ -3766,6 +3772,16 @@ h3 {
 .dot-layers[data-active='a'] > .dot-body:nth-child(1),
 .dot-layers[data-active='b'] > .dot-body:nth-child(2) {
   opacity: 1;
+}
+/* NevaDots avatars are owner-private: no right-click menu, no drag, no
+   long-press callout (the static classics stay unhindered). */
+.mascot.protected-avatar,
+.mascot.protected-avatar .dot-body,
+.avatar-swatch.protected-avatar,
+.avatar-swatch.protected-avatar img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .dot-layers > .dot-body {

@@ -4,11 +4,13 @@ import {
   AVATAR_FILES,
   AVATAR_IDS,
   DEFAULT_AVATAR,
+  PROTECTED_AVATARS,
   avatarSrc,
   avatarStateCandidates,
   avatarStateFiles,
   avatarStateSrc,
   hasValidateOverlay,
+  isProtectedAvatar,
 } from '../src/shared/avatars';
 
 /** Expected cache-busted URL for a file under public/dots. */
@@ -123,6 +125,19 @@ it('flags which avatars draw the completion "Valider" badge', () => {
   expect(hasValidateOverlay('aline')).toBe(true);
   expect(hasValidateOverlay('mint')).toBe(false);
   expect(hasValidateOverlay(null)).toBe(false);
+});
+
+it('protects only the NevaDots avatars against right-click / drag', () => {
+  expect(PROTECTED_AVATARS).toEqual(['leo', 'sam', 'aline']);
+  expect(isProtectedAvatar('leo')).toBe(true);
+  expect(isProtectedAvatar('sam')).toBe(true);
+  expect(isProtectedAvatar('aline')).toBe(true);
+  // static classics stay unhindered
+  expect(isProtectedAvatar('mint')).toBe(false);
+  expect(isProtectedAvatar('orange')).toBe(false);
+  expect(isProtectedAvatar('purple')).toBe(false);
+  expect(isProtectedAvatar(null)).toBe(false);
+  expect(isProtectedAvatar(undefined)).toBe(false);
 });
 
 it('lists every state clip of an avatar for preloading', () => {
