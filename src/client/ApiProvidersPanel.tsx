@@ -8,7 +8,6 @@ import type {
   ProviderModels,
 } from '../shared/models';
 
-type DefaultRef = { provider: string; model: string | null };
 type KindFilter = 'all' | 'text' | 'image';
 
 /** Notifies the composers to re-fetch `/models` after a provider change. */
@@ -99,7 +98,6 @@ const KIND_LABELS: Record<KindFilter, string> = {
 
 export function ApiProvidersPanel() {
   const [providers, setProviders] = useState<ProviderModels[]>([]);
-  const [defaultRef, setDefaultRef] = useState<DefaultRef | null>(null);
   const [active, setActive] = useState('');
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -152,7 +150,6 @@ export function ApiProvidersPanel() {
       .then((value) => {
         if (!on) return;
         setProviders(value.providers);
-        setDefaultRef(value.default);
         setActive((prev) => prev || value.providers[0]?.id || '');
       })
       .catch((cause) =>
@@ -306,25 +303,6 @@ export function ApiProvidersPanel() {
     void loadCatalog(active, true, () => true).finally(() => setBusy(''));
   };
 
-  const changeDefault = async (next: DefaultRef) => {
-    setDefaultRef(next);
-    try {
-      const result = await api<{ default: DefaultRef }>(
-        '/model-default',
-        'PUT',
-        next,
-      );
-      setDefaultRef(result.default);
-      flash('default');
-      notifyModelsChanged();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Défaut refusé.');
-    }
-  };
-
-  const defaultProvider = providers.find(
-    (item) => item.id === defaultRef?.provider,
-  );
   const models = catalog?.models ?? [];
   const makers = [...new Set(models.map((m) => m.maker).filter(Boolean))].sort(
     (a, b) => a!.localeCompare(b!, 'fr'),
@@ -353,49 +331,6 @@ export function ApiProvidersPanel() {
         dans le sélecteur du composeur. Les clés sont chiffrées côté serveur et
         ne sont jamais renvoyées au navigateur.
       </p>
-
-      <section className="settings-card" aria-label="Modèle par défaut">
-        <h3>Modèle par défaut</h3>
-        <div className="api-default-controls">
-          <select
-            id="api-default-provider"
-            value={defaultRef?.provider ?? ''}
-            onChange={(event) =>
-              void changeDefault({ provider: event.target.value, model: null })
-            }
-          >
-            {providers.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Modèle par défaut"
-            value={defaultRef?.model ?? ''}
-            onChange={(event) =>
-              void changeDefault({
-                provider: defaultRef?.provider ?? '',
-                model: event.target.value || null,
-              })
-            }
-          >
-            <option value="">
-              {defaultProvider?.models[0]
-                ? `Défaut · ${defaultProvider.models[0]}`
-                : 'Défaut du fournisseur'}
-            </option>
-            {(defaultProvider?.models ?? []).map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
-          {saved === 'default' && (
-            <span className="api-saved">Enregistré ✓</span>
-          )}
-        </div>
-      </section>
 
       <section className="settings-card" aria-label="Fournisseur">
         <div className="provider-tabs" role="tablist">
