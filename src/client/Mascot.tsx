@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { AVATAR_IDS, avatarSrc, avatarStateSrc } from '../shared/avatars';
+import {
+  AVATAR_IDS,
+  avatarSrc,
+  avatarStateSrc,
+  hasValidateOverlay,
+} from '../shared/avatars';
 
 const characters = ['blue', 'pink', 'green'] as const;
 export const AVATARS = AVATAR_IDS;
@@ -159,7 +164,11 @@ export function Mascot({
       let bob = Math.sin(now / 1400) * 3;
       let tiltT = 0;
       if (mode === 'listening') bob = Math.sin(now / 700) * 2.2;
-      else if (mode === 'working' || mode === 'thinking' || mode === 'searching')
+      else if (
+        mode === 'working' ||
+        mode === 'thinking' ||
+        mode === 'searching'
+      )
         tiltT = 0.035 * Math.sin(now / 900);
       else if (mode === 'writing') bob = -Math.abs(Math.sin(now / 320)) * 3.5;
       else if (mode === 'complete') bob = Math.sin(now / 220) * 4;
@@ -173,8 +182,7 @@ export function Mascot({
       step(S.tilt, dt);
       const tx = S.lookX.x * 6 * gain;
       const ty = (bob + S.hop.x + S.lookY.x * 3) * gain;
-      const tilt =
-        (S.lookX.x * 0.06 + S.tilt.x + S.lookX.v * 0.002) * gain;
+      const tilt = (S.lookX.x * 0.06 + S.tilt.x + S.lookX.v * 0.002) * gain;
       const sx = 1 + S.squash.x * 0.05 * gain;
       const sy = 1 - S.squash.x * 0.05 * gain;
       layers.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) rotate(${tilt.toFixed(4)}rad) scale(${sx.toFixed(3)}, ${sy.toFixed(3)})`;
@@ -198,7 +206,10 @@ export function Mascot({
     root.addEventListener('pointerdown', onDown);
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('resize', onResize);
-    window.addEventListener('scroll', onResize, { passive: true, capture: true });
+    window.addEventListener('scroll', onResize, {
+      passive: true,
+      capture: true,
+    });
     start();
     return () => {
       stop();
@@ -267,6 +278,25 @@ export function Mascot({
           height={512}
           draggable={false}
         />
+      )}
+      {live && state === 'complete' && hasValidateOverlay(character) && (
+        <span
+          className="dot-validate"
+          aria-hidden={decorative}
+          aria-label={decorative ? undefined : 'Tâche terminée — valider'}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d="M5 13l4 4L19 7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Valider
+        </span>
       )}
     </span>
   );
