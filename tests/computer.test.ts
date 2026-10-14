@@ -41,6 +41,12 @@ function fixture(deadline = 1000) {
         status: 'running',
         url: `http://opendots-computer-${id}:4100`,
       });
+    if (url.endsWith('/stop'))
+      return Response.json({
+        botId: id,
+        container: `opendots-computer-${id}`,
+        status: 'stopped',
+      });
     if (url.endsWith('/control'))
       return Response.json({
         holder: 'human',
@@ -208,9 +214,9 @@ it('cancels in-flight actions on revocation and bounds upstream deadlines', asyn
   const run = f.service.action(f.id, 'exec', { command: 'wait' }, 'agent');
   setTimeout(() => f.workspace.computers.patch(f.id, { shell: false }), 20);
   await expect(run).rejects.toThrow('cancelled or timed out');
-  await expect(f.service.action(f.id, 'read', {})).rejects.toThrow(
-    'cancelled or timed out',
-  );
+  // A browser action that hits our deadline is a wedged computer: the watchdog
+  // resets it once and retries, then rethrows the timeout when it still fails.
+  await expect(f.service.action(f.id, 'read', {})).rejects.toThrow(/timed out/);
   expect(
     f.workspace.computers.audit(f.id).every((a) => a.outcome === 'failed'),
   ).toBe(true);
@@ -316,7 +322,11 @@ it('recovers from a snapshot-required conflict by snapshotting and retrying', as
       navigations += 1;
       if (navigations === 1)
         return Response.json(
-          { error: 'Take a new snapshot.', stale: true, snapshotRequired: true },
+          {
+            error: 'Take a new snapshot.',
+            stale: true,
+            snapshotRequired: true,
+          },
           { status: 409 },
         );
       return Response.json({ url: 'https://example.com/', title: 'Example' });
@@ -341,4 +351,33 @@ it('tells the agent to wait when the owner holds control', async () => {
   await expect(
     f.service.action(f.id, 'navigate', { url: 'https://example.com' }, 'agent'),
   ).rejects.toThrow(/owner currently has control/i);
+});
+
+it('recovers a wedged browser by resetting the computer and retrying once', async () => {
+  const f = fixture(200);
+  let screenshots = 0;
+  f.handle(async (url, init) => {
+    if (url.endsWith('/screenshot')) {
+      screenshots += 1;
+      // First call hangs past the deadline (a stuck Chromium relaunch); the
+      // abort rejects it so the service sees a timeout.
+      if (screenshots === 1)
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new Error('aborted')),
+            { once: true },
+          );
+        });
+      return Response.json({ base64: 'ok' });
+    }
+    return Response.json({ text: 'result' });
+  });
+  await expect(
+    f.service.action(f.id, 'screenshot', {}, 'agent'),
+  ).resolves.toEqual({ base64: 'ok' });
+  expect(screenshots).toBe(2);
+  expect(f.calls.some((call) => call.url.endsWith('/stop'))).toBe(true);
+  expect(f.calls.some((call) => call.url.endsWith('/ensure'))).toBe(true);
+  expect(f.workspace.computers.audit(f.id)[0].outcome).toBe('succeeded');
 });

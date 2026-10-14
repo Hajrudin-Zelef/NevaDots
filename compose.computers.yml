@@ -25,6 +25,9 @@ services:
       COMPUTER_NAMESPACE: ${COMPUTER_NAMESPACE:-opendots}
       COMPUTER_IMAGE: opendots-computer:b6932d3
       COMPUTER_BROWSER_MODE: headless
+      # 0 keeps each Dot's Chromium resident (fast, no idle-close relaunch hang).
+      # Set a millisecond value to reclaim idle browsers instead (e.g. 21600000 = 6h).
+      COMPUTER_BROWSER_IDLE_MS: ${COMPUTER_BROWSER_IDLE_MS:-0}
       COMPUTER_NETWORK: ''
       COMPUTER_MEMORY_BYTES: ${COMPUTER_MEMORY_BYTES:-2147483648}
       COMPUTER_RUNTIME: ${COMPUTER_RUNTIME:-}

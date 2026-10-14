@@ -21,11 +21,28 @@ export class ComputerHttpError extends Error {
   }
 }
 /**
+ * Our own deadline elapsed while waiting on a computer. Distinct from a caller
+ * cancellation so `action` can tell "the upstream is wedged" apart from "the
+ * request went away", and only reset on the former.
+ */
+export class ComputerTimeoutError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'ComputerTimeoutError';
+  }
+}
+/**
  * Browser mutations that carry no element ref, so they are safe to retry after
  * taking a fresh snapshot. Click/type carry a ref bound to a snapshot id and
  * must not be replayed blindly.
  */
 const REFLESS_BROWSER_MUTATIONS = new Set(['navigate', 'key', 'scroll']);
+/**
+ * How long to wait on a single action once its computer is running. Above the
+ * computer's own `NAVIGATION_TIMEOUT_MS` (30s) so a slow page cannot trip it,
+ * but well under the supervisor deadline so a wedged browser is recovered fast.
+ */
+const ACTION_DEADLINE_MS = 45_000;
 function snapshotRequired(payload: unknown): boolean {
   return (
     !!payload &&
@@ -98,9 +115,10 @@ export class ComputerService {
     body: unknown | undefined,
     signal?: AbortSignal,
     dotId?: string,
+    deadlineMs = this.deadlineMs,
   ): Promise<unknown> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.deadlineMs);
+    const timeout = setTimeout(() => controller.abort(), deadlineMs);
     const combined = signal
       ? AbortSignal.any([signal, controller.signal])
       : controller.signal;
@@ -171,6 +189,11 @@ export class ComputerService {
         if (secret) text = text.split(secret).join('[redacted]');
       return JSON.parse(text);
     } catch (error) {
+      // Our own deadline fired (not the caller's signal): the upstream is wedged.
+      if (controller.signal.aborted)
+        throw new ComputerTimeoutError('Computer request timed out.', {
+          cause: error,
+        });
       if (combined.aborted)
         throw new Error('Computer request was cancelled or timed out.', {
           cause: error,
@@ -376,6 +399,18 @@ export class ComputerService {
     });
     return this.status(id);
   }
+  /**
+   * Stop and re-ensure a Dot's computer. Used to recover from a wedged browser
+   * (see `action`): the container is recreated with the same volumes and the
+   * published port changes, so callers must re-resolve the endpoint.
+   */
+  private async reset(id: string, signal?: AbortSignal) {
+    await this.supervisor(`/computers/${id}/stop`, {}, signal);
+    this.endpoint(
+      id,
+      await this.supervisor(`/computers/${id}/ensure`, {}, signal),
+    );
+  }
   async action(
     id: string,
     action: ComputerAction,
@@ -420,47 +455,70 @@ export class ComputerService {
           ['read', 'screenshot'].includes(action) ? undefined : parsed,
           activeSignal,
           id,
+          Math.min(ACTION_DEADLINE_MS, this.deadlineMs),
         );
         this.allowed(id, kind, actor);
         return result;
       };
-      try {
-        let result: unknown;
-        try {
-          result = await perform();
-        } catch (error) {
-          // After a restart or a control handback the browser requires a fresh
-          // snapshot before the next mutation. Take one (a snapshot is not a
-          // mutation) and retry once. Click/type carry a ref bound to a
-          // snapshot id, so only ref-less mutations are retried.
-          if (
-            error instanceof ComputerHttpError &&
-            error.status === 409 &&
-            snapshotRequired(error.payload) &&
-            REFLESS_BROWSER_MUTATIONS.has(action)
-          ) {
-            const url = await this.running(id, activeSignal);
-            await this.json(
-              `${url}/snapshot`,
-              this.token(id),
-              {},
-              activeSignal,
-              id,
-            );
-            result = await perform();
-          } else if (
-            error instanceof ComputerHttpError &&
-            error.status === 409 &&
-            humanHasControl(error.payload)
-          ) {
-            throw new Error(
-              "The owner currently has control of this Dot's computer. Release it from the Computer panel to let the agent act.",
-              { cause: error },
-            );
-          } else {
+      // Each branch retries at most once so a persistent failure cannot loop.
+      const runWithRecovery = async () => {
+        let snapshotRetried = false;
+        let resetRetried = false;
+        for (;;) {
+          try {
+            return await perform();
+          } catch (error) {
+            // After a restart or a control handback the browser requires a fresh
+            // snapshot before the next mutation. Take one (a snapshot is not a
+            // mutation) and retry once. Click/type carry a ref bound to a
+            // snapshot id, so only ref-less mutations are retried.
+            if (
+              error instanceof ComputerHttpError &&
+              error.status === 409 &&
+              snapshotRequired(error.payload) &&
+              REFLESS_BROWSER_MUTATIONS.has(action) &&
+              !snapshotRetried
+            ) {
+              snapshotRetried = true;
+              const url = await this.running(id, activeSignal);
+              await this.json(
+                `${url}/snapshot`,
+                this.token(id),
+                {},
+                activeSignal,
+                id,
+              );
+              continue;
+            }
+            if (
+              error instanceof ComputerHttpError &&
+              error.status === 409 &&
+              humanHasControl(error.payload)
+            ) {
+              throw new Error(
+                "The owner currently has control of this Dot's computer. Release it from the Computer panel to let the agent act.",
+                { cause: error },
+              );
+            }
+            // A browser action that hit our deadline (not a caller cancellation)
+            // means the browser is wedged — e.g. a stuck relaunch after the idle
+            // sweep closed it. Reset the computer and try once more.
+            if (
+              error instanceof ComputerTimeoutError &&
+              kind === 'browser' &&
+              !activeSignal.aborted &&
+              !resetRetried
+            ) {
+              resetRetried = true;
+              await this.reset(id, activeSignal);
+              continue;
+            }
             throw error;
           }
         }
+      };
+      try {
+        const result = await runWithRecovery();
         if (action === 'exec' && result && typeof result === 'object') {
           const copy = { ...result } as Record<string, unknown>;
           delete copy.command;
