@@ -374,7 +374,7 @@ export function ActivityPanel({
                       type="button"
                       key={avatar}
                       className={`avatar-swatch ${
-                        (dot.avatar ?? 'mint') === avatar ? 'active' : ''
+                        (dot.avatar ?? 'leo') === avatar ? 'active' : ''
                       }`}
                       aria-label={`Avatar ${avatar}`}
                       disabled={busy}

@@ -689,7 +689,6 @@ export function App() {
                   onClick={() => chooseDot(item)}
                 >
                   <Mascot
-                    identity={item.id}
                     name={item.name}
                     avatar={item.avatar}
                     small
@@ -928,7 +927,6 @@ export function App() {
                   <div className="welcome-hero">
                     <Mascot
                       avatar={dot?.avatar}
-                      identity={dot?.id}
                       name={dot?.name}
                       state={busy ? 'working' : 'idle'}
                     />

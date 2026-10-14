@@ -8,13 +8,12 @@
  * Assets are grouped by family under `public/dots/` (served at `/dots/<path>`):
  *   classic/  the remaining still PNG avatars (mint, orange, purple)
  *   sam/      NevaDots Dot "Sam" (animated, full set of state aliases)
- *   leo/      NevaDots Dot "Leo" (still base for now; clips to come)
+ *   leo/      NevaDots Dot "Leo" (animated; two variants for some states)
  *   aline/    NevaDots Dot "Aline" (still base for now; clips to come)
  *
  * The former `blue`/`pink`/`green` PNGs and the `robot`/`robot-blue` animated
  * robots were retired (archived in the confidential OffLineFork area). Any Dot
- * still pointing at them falls back to an identity-derived kept avatar (see
- * `Mascot.tsx`).
+ * still pointing at them falls back to the default avatar (see `Mascot.tsx`).
  */
 export const AVATAR_IDS = [
   'sam',
@@ -27,13 +26,16 @@ export const AVATAR_IDS = [
 
 export type AvatarId = (typeof AVATAR_IDS)[number];
 
+/** The avatar shown when a Dot has none (or an unknown/retired id). */
+export const DEFAULT_AVATAR: AvatarId = 'leo';
+
 /** id → file under `public/dots/` (served at `/dots/<file>`). */
 export const AVATAR_FILES: Record<AvatarId, string> = {
   mint: 'classic/mint.png',
   orange: 'classic/orange.png',
   purple: 'classic/purple.png',
   sam: 'sam/idle.webp',
-  leo: 'leo/idle.png',
+  leo: 'leo/idle.webp',
   aline: 'aline/idle.png',
 };
 
@@ -44,12 +46,13 @@ export function avatarSrc(id: string | null | undefined): string | null {
 }
 
 /**
- * Optional per-state animation clips, keyed by the app's mascot state. Only
- * avatars listed here switch clips; missing states fall back to the base file
- * (see `avatarStateSrc`). Files live under `public/dots/`.
+ * Optional per-state animation clips, keyed by the app's mascot state. A value
+ * is either one file or several interchangeable variants; the client picks one
+ * at random on each state entry (see `Mascot.tsx`). Missing states fall back to
+ * the base file (see `avatarStateCandidates`). Files live under `public/dots/`.
  */
 export const AVATAR_STATE_FILES: Partial<
-  Record<AvatarId, Record<string, string>>
+  Record<AvatarId, Record<string, string | string[]>>
 > = {
   // Sam ships four clips (idle/listening/thinking/writing); the remaining
   // states alias the nearest one. `complete` reuses the idle pose, over which
@@ -63,6 +66,17 @@ export const AVATAR_STATE_FILES: Partial<
     searching: 'sam/thinking.webp',
     working: 'sam/writing.webp',
     complete: 'sam/idle.webp',
+  },
+  // Leo ships two interchangeable variants for listening/thinking/writing; the
+  // client picks one at random per state entry so successive requests differ.
+  leo: {
+    listening: ['leo/listening-1.webp', 'leo/listening-2.webp'],
+    thinking: ['leo/thinking-1.webp', 'leo/thinking-2.webp'],
+    writing: ['leo/writing-1.webp', 'leo/writing-2.webp'],
+    analyzing: ['leo/thinking-1.webp', 'leo/thinking-2.webp'],
+    searching: ['leo/thinking-1.webp', 'leo/thinking-2.webp'],
+    working: ['leo/writing-1.webp', 'leo/writing-2.webp'],
+    complete: 'leo/idle.webp',
   },
 };
 
@@ -81,19 +95,31 @@ export function hasValidateOverlay(id: string | null | undefined): boolean {
   return !!id && (AVATAR_VALIDATE_OVERLAY as readonly string[]).includes(id);
 }
 
-/** URL of the state-specific clip, or `null` to fall back to the base avatar. */
+/** Every clip URL declared for an avatar state (one per variant). */
+export function avatarStateCandidates(
+  id: string | null | undefined,
+  state: string,
+): string[] {
+  if (!id) return [];
+  const file = AVATAR_STATE_FILES[id as AvatarId]?.[state];
+  if (!file) return [];
+  return (Array.isArray(file) ? file : [file]).map((f) => `/dots/${f}`);
+}
+
+/** First declared clip URL for a state, or `null` to fall back to the base. */
 export function avatarStateSrc(
   id: string | null | undefined,
   state: string,
 ): string | null {
-  if (!id) return null;
-  const file = AVATAR_STATE_FILES[id as AvatarId]?.[state];
-  return file ? `/dots/${file}` : null;
+  return avatarStateCandidates(id, state)[0] ?? null;
 }
 
 /** Every state-clip URL declared for an avatar (for idle-time preloading). */
 export function avatarStateFiles(id: string | null | undefined): string[] {
   if (!id) return [];
   const map = AVATAR_STATE_FILES[id as AvatarId];
-  return map ? Object.values(map).map((file) => `/dots/${file}`) : [];
+  if (!map) return [];
+  return Object.values(map)
+    .flatMap((file) => (Array.isArray(file) ? file : [file]))
+    .map((file) => `/dots/${file}`);
 }

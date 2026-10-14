@@ -1,27 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   AVATAR_IDS,
+  DEFAULT_AVATAR,
   avatarSrc,
-  avatarStateSrc,
+  avatarStateCandidates,
   hasValidateOverlay,
 } from '../shared/avatars';
 
-const characters = ['mint', 'orange', 'purple'] as const;
 export const AVATARS = AVATAR_IDS;
 export type Avatar = (typeof AVATARS)[number];
 
-/** Stable identity keeps each specialist recognizable across views and reloads. */
-function characterFor(identity?: string) {
-  if (!identity) return characters[0];
-  let hash = 0;
-  for (const character of identity)
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  return characters[hash % characters.length];
-}
-
-function avatarFile(avatar: string | null | undefined, identity?: string) {
+/** The avatar id to render: the Dot's own, or the default when unset/unknown. */
+function avatarFile(avatar: string | null | undefined) {
   if (avatar && (AVATARS as readonly string[]).includes(avatar)) return avatar;
-  return characterFor(identity);
+  return DEFAULT_AVATAR;
 }
 
 const clamp = (value: number, min: number, max: number) =>
@@ -52,7 +44,6 @@ const step = (s: Spring, dt: number) => {
 export function Mascot({
   state = 'idle',
   small = false,
-  identity,
   name = 'Dot',
   decorative = false,
   avatar,
@@ -60,6 +51,7 @@ export function Mascot({
 }: {
   state?: string;
   small?: boolean;
+  /** Accepted for call-site compatibility; no longer affects the avatar. */
   identity?: string;
   name?: string;
   decorative?: boolean;
@@ -73,9 +65,30 @@ export function Mascot({
   stateRef.current = state;
   const live = animate ?? !small;
 
-  const character = avatarFile(avatar, identity);
+  const character = avatarFile(avatar);
   const baseSrc = avatarSrc(character) ?? `/dots/${character}.png`;
-  const wanted = (live && avatarStateSrc(character, state)) || baseSrc;
+
+  // On each state entry pick one of the state's clip variants at random (some
+  // avatars ship interchangeable variants), avoiding an immediate repeat so
+  // successive requests visibly differ. Stable while the state is unchanged.
+  const [variant, setVariant] = useState<string | null>(null);
+  const lastVariant = useRef<string | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    const list = avatarStateCandidates(character, state);
+    if (!list.length) {
+      setVariant(null);
+      return;
+    }
+    const pool =
+      list.length > 1 && lastVariant.current
+        ? list.filter((src) => src !== lastVariant.current)
+        : list;
+    const pick = pool[Math.floor(Math.random() * pool.length)] ?? list[0];
+    lastVariant.current = pick;
+    setVariant(pick);
+  }, [character, state, live]);
+  const wanted = (live && variant) || baseSrc;
 
   // One visible layer at rest; a second layer only exists during the short
   // crossfade. Two always-mounted copies of the same animated WebP drift out

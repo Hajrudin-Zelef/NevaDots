@@ -383,7 +383,9 @@ export function Chat({
       onSaved();
     } catch (err) {
       setModelError(
-        err instanceof Error ? err.message : 'Réglage de réflexion indisponible.',
+        err instanceof Error
+          ? err.message
+          : 'Réglage de réflexion indisponible.',
       );
     } finally {
       setReasoningBusy(false);
@@ -913,7 +915,6 @@ export function Chat({
       )}
       <div className="chat-token-bar">
         <Mascot
-          identity={dot.id}
           name={dot.name}
           avatar={dot.avatar}
           small
