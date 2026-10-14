@@ -3761,7 +3761,7 @@ h3 {
   height: 100%;
   object-fit: contain;
   opacity: 0;
-  transition: opacity 0.5s ease;
+  transition: opacity 0.65s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .dot-layers[data-active='a'] > .dot-body:nth-child(1),
 .dot-layers[data-active='b'] > .dot-body:nth-child(2) {
@@ -3805,14 +3805,27 @@ h3 {
   color: #8c7bff;
   animation-duration: 1.1s;
 }
-.blob:nth-child(1) { animation-delay: 0s; }
-.blob:nth-child(2) { animation-delay: -0.87s; }
-.blob:nth-child(3) { animation-delay: -1.73s; }
+.blob:nth-child(1) {
+  animation-delay: 0s;
+}
+.blob:nth-child(2) {
+  animation-delay: -0.87s;
+}
+.blob:nth-child(3) {
+  animation-delay: -1.73s;
+}
 
 @keyframes blob-orbit {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33%      { transform: translate(22%, -16%) scale(1.25); }
-  66%      { transform: translate(-18%, 20%) scale(0.85); }
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(22%, -16%) scale(1.25);
+  }
+  66% {
+    transform: translate(-18%, 20%) scale(0.85);
+  }
 }
 .template-app .dot-nav > .mascot.small {
   width: 30px;
@@ -4715,4 +4728,15 @@ h3 {
   .mascot.error .dot-body {
     animation: none !important;
   }
+}
+
+/* Animated avatars already carry their own motion. The synthetic keyframe
+   loops above (and the orbiting metaball blobs) would stack mechanical,
+   obviously-looping motion on top, so drop them and let the clip read as a
+   continuous video. */
+.mascot.has-clips .dot-body {
+  animation: none !important;
+}
+.mascot.has-clips .blob-group {
+  display: none;
 }

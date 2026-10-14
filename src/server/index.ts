@@ -107,9 +107,11 @@ app.use('*', async (c, next) => {
 });
 app.get('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
 // Cache policy: hashed assets are immutable; avatar art (public/dots) is
-// stable enough to cache for a day (renamed when the drawing changes); the SPA
-// shell must never be cached, otherwise a stale index.html keeps referencing
-// old asset hashes and the browser serves the previous UI after a deploy.
+// cache-busted by a version query in the URL (see AVATAR_ASSET_VERSION), so a
+// short max-age keeps it responsive to redeploys without a manual rename; the
+// SPA shell must never be cached, otherwise a stale index.html keeps
+// referencing old asset hashes and the browser serves the previous UI after a
+// deploy.
 app.use('/*', async (c, next) => {
   const path = new URL(c.req.url).pathname;
   c.header(
@@ -117,7 +119,7 @@ app.use('/*', async (c, next) => {
     path.startsWith('/assets/')
       ? 'public, max-age=31536000, immutable'
       : path.startsWith('/dots/')
-        ? 'public, max-age=86400'
+        ? 'public, max-age=300'
         : path.startsWith('/fonts/')
           ? 'public, max-age=604800'
           : 'no-store',

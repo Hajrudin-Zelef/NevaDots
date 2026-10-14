@@ -4,6 +4,7 @@ import {
   DEFAULT_AVATAR,
   avatarSrc,
   avatarStateCandidates,
+  avatarStateFiles,
   hasValidateOverlay,
 } from '../shared/avatars';
 
@@ -67,6 +68,9 @@ export function Mascot({
 
   const character = avatarFile(avatar);
   const baseSrc = avatarSrc(character) ?? `/dots/${character}.png`;
+  // Animated avatars ship their own motion; the synthetic CSS keyframe loops
+  // (dot-idle/dot-think/...) are for still avatars only.
+  const hasClips = avatarStateFiles(character).length > 0;
 
   // On each state entry pick one of the state's clip variants at random (some
   // avatars ship interchangeable variants), avoiding an immediate repeat so
@@ -90,36 +94,53 @@ export function Mascot({
   }, [character, state, live]);
   const wanted = (live && variant) || baseSrc;
 
-  // One visible layer at rest; a second layer only exists during the short
-  // crossfade. Two always-mounted copies of the same animated WebP drift out
-  // of sync (double image / ghosting) and double the decode cost.
-  const [shown, setShown] = useState(baseSrc);
-  const [incoming, setIncoming] = useState<string | null>(null);
+  // Two persistent layers. A switch loads the incoming clip into the hidden
+  // layer and lets it start animating there before dissolving to it, so a
+  // change never shows a frozen first frame and the clip is never restarted
+  // mid-fade (the previous one-shot swap did both).
+  const [slots, setSlots] = useState<[string, string]>([baseSrc, baseSrc]);
+  const [active, setActive] = useState<0 | 1>(0);
   const activeSrc = useRef(baseSrc);
+  const activeRef = useRef<0 | 1>(0);
   const fadeTimer = useRef<number | undefined>(undefined);
+  const fadeGen = useRef(0);
   const alt = decorative ? '' : `${name} is ${stateRef.current}`;
 
-  // Crossfade to the state clip once it is decoded (never shows a blank frame).
+  // Reset the layers when the underlying avatar changes.
   useEffect(() => {
+    activeSrc.current = baseSrc;
+    activeRef.current = 0;
+    setActive(0);
+    setSlots([baseSrc, baseSrc]);
+  }, [baseSrc]);
+
+  // Dissolve to the wanted clip once it is decoded.
+  useEffect(() => {
+    const gen = ++fadeGen.current;
+    window.clearTimeout(fadeTimer.current);
     if (!live || wanted === activeSrc.current) return;
     const next = wanted;
     const img = new Image();
-    let cancelled = false;
     const commit = () => {
-      if (cancelled || next === activeSrc.current) return;
-      setIncoming(next);
-      window.clearTimeout(fadeTimer.current);
+      if (gen !== fadeGen.current || next === activeSrc.current) return;
+      const hidden: 0 | 1 = activeRef.current === 0 ? 1 : 0;
+      setSlots((prev) => {
+        const copy: [string, string] = [prev[0], prev[1]];
+        copy[hidden] = next;
+        return copy;
+      });
+      // Let the hidden clip run a beat, then dissolve to it.
       fadeTimer.current = window.setTimeout(() => {
+        if (gen !== fadeGen.current) return;
         activeSrc.current = next;
-        setShown(next);
-        setIncoming(null);
-      }, 360);
+        activeRef.current = hidden;
+        setActive(hidden);
+      }, 120);
     };
     img.onload = commit;
     img.onerror = commit;
     img.src = next;
     return () => {
-      cancelled = true;
       img.onload = null;
       img.onerror = null;
     };
@@ -174,17 +195,21 @@ export function Mascot({
         lx = clamp((pointer.x - center.x) / 420, -1, 1);
         ly = clamp((pointer.y - center.y) / 420, -1, 1);
       }
-      let bob = Math.sin(now / 1400) * 3;
+      // Clipped avatars move through their own animation, so only the
+      // interactive lean/hop applies; still avatars keep the synthetic bob.
+      let bob = hasClips ? 0 : Math.sin(now / 1400) * 3;
       let tiltT = 0;
-      if (mode === 'listening') bob = Math.sin(now / 700) * 2.2;
-      else if (
-        mode === 'working' ||
-        mode === 'thinking' ||
-        mode === 'searching'
-      )
-        tiltT = 0.035 * Math.sin(now / 900);
-      else if (mode === 'writing') bob = -Math.abs(Math.sin(now / 320)) * 3.5;
-      else if (mode === 'complete') bob = Math.sin(now / 220) * 4;
+      if (!hasClips) {
+        if (mode === 'listening') bob = Math.sin(now / 700) * 2.2;
+        else if (
+          mode === 'working' ||
+          mode === 'thinking' ||
+          mode === 'searching'
+        )
+          tiltT = 0.035 * Math.sin(now / 900);
+        else if (mode === 'writing') bob = -Math.abs(Math.sin(now / 320)) * 3.5;
+        else if (mode === 'complete') bob = Math.sin(now / 220) * 4;
+      }
       S.lookX.t = lx;
       S.lookY.t = ly;
       S.tilt.t = tiltT;
@@ -233,11 +258,11 @@ export function Mascot({
       window.removeEventListener('scroll', onResize, { capture: true });
       layers.style.transform = '';
     };
-  }, [live]);
+  }, [live, hasClips]);
 
   return (
     <span
-      className={`mascot ${state} ${small ? 'small' : ''} ${live ? 'live' : ''}`}
+      className={`mascot ${state} ${small ? 'small' : ''} ${live ? 'live' : ''} ${hasClips ? 'has-clips' : ''}`}
       ref={rootRef}
     >
       <svg width="0" height="0" aria-hidden="true" focusable="false">
@@ -260,27 +285,25 @@ export function Mascot({
         <span
           className="dot-layers"
           ref={layersRef}
-          data-active={incoming ? 'b' : 'a'}
+          data-active={active === 0 ? 'a' : 'b'}
           aria-hidden={decorative}
         >
           <img
             className="dot-body"
-            src={shown}
-            alt={alt}
+            src={slots[0]}
+            alt={active === 0 ? alt : ''}
             width={512}
             height={512}
             draggable={false}
           />
-          {incoming && (
-            <img
-              className="dot-body"
-              src={incoming}
-              alt=""
-              width={512}
-              height={512}
-              draggable={false}
-            />
-          )}
+          <img
+            className="dot-body"
+            src={slots[1]}
+            alt={active === 1 ? alt : ''}
+            width={512}
+            height={512}
+            draggable={false}
+          />
         </span>
       ) : (
         <img

@@ -29,6 +29,18 @@ export type AvatarId = (typeof AVATAR_IDS)[number];
 /** The avatar shown when a Dot has none (or an unknown/retired id). */
 export const DEFAULT_AVATAR: AvatarId = 'leo';
 
+/**
+ * Bump this whenever a file under `public/dots/` changes. Avatar URLs carry it
+ * as a query so the browser (which caches `/dots/` for a day) fetches the new
+ * art instead of a stale copy.
+ */
+export const AVATAR_ASSET_VERSION = '2';
+
+/** URL of a file under `public/dots/`, cache-busted. */
+function dotUrl(file: string): string {
+  return `/dots/${file}?v=${AVATAR_ASSET_VERSION}`;
+}
+
 /** id → file under `public/dots/` (served at `/dots/<file>`). */
 export const AVATAR_FILES: Record<AvatarId, string> = {
   mint: 'classic/mint.png',
@@ -42,7 +54,7 @@ export const AVATAR_FILES: Record<AvatarId, string> = {
 /** Public URL for an avatar id, or `null` when the id is unknown. */
 export function avatarSrc(id: string | null | undefined): string | null {
   if (!id || !(id in AVATAR_FILES)) return null;
-  return `/dots/${AVATAR_FILES[id as AvatarId]}`;
+  return dotUrl(AVATAR_FILES[id as AvatarId]);
 }
 
 /**
@@ -103,7 +115,7 @@ export function avatarStateCandidates(
   if (!id) return [];
   const file = AVATAR_STATE_FILES[id as AvatarId]?.[state];
   if (!file) return [];
-  return (Array.isArray(file) ? file : [file]).map((f) => `/dots/${f}`);
+  return (Array.isArray(file) ? file : [file]).map(dotUrl);
 }
 
 /** First declared clip URL for a state, or `null` to fall back to the base. */
@@ -121,5 +133,5 @@ export function avatarStateFiles(id: string | null | undefined): string[] {
   if (!map) return [];
   return Object.values(map)
     .flatMap((file) => (Array.isArray(file) ? file : [file]))
-    .map((file) => `/dots/${file}`);
+    .map(dotUrl);
 }
