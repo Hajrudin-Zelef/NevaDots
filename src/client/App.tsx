@@ -195,6 +195,15 @@ export function App() {
   const [dialog, setDialog] = useState<Dialog>();
   const [mobile, setMobile] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
+  // Leaving the compact range must close the off-canvas drawer, otherwise the
+  // scrim would linger over a docked layout.
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth > 1024) setMobile(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const [pane, setPane] = useState(false);
   // Muse-style activity rail: docked, open by default, persisted. It collapses
   // into the pop-pop avatar bubble while the browser pane is open.
@@ -841,7 +850,7 @@ export function App() {
             aria-expanded={mobile ? true : !navCollapsed}
             aria-controls="workspace-sidebar"
             onClick={() => {
-              if (window.matchMedia('(max-width: 700px)').matches) {
+              if (window.matchMedia('(max-width: 1024px)').matches) {
                 setMobile(!mobile);
               } else {
                 setNavCollapsed(!navCollapsed);
