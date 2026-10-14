@@ -575,6 +575,7 @@ export function ApiProvidersPanel() {
                     <label className="api-catalog-check">
                       <input
                         type="checkbox"
+                        className="api-catalog-box"
                         checked={enabled.has(model.id)}
                         onChange={() => toggleModel(model.id)}
                       />

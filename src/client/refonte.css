@@ -3395,23 +3395,32 @@ textarea::placeholder {
 }
 .api-catalog-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 110px 120px 22px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto 22px;
   align-items: center;
   gap: 10px;
 }
+/* The label wraps checkbox + id; display:contents makes both direct grid
+   items so every column stays aligned on all providers and screen sizes. */
 .api-catalog-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+  display: contents;
   cursor: pointer;
 }
+.api-catalog-box {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--nd-accent, #22c55e);
+}
 .api-model-id {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .api-model-maker {
+  min-width: 0;
+  max-width: 150px;
   font-size: 12px;
   color: var(--nd-muted, #9ca3af);
   overflow: hidden;
@@ -3493,196 +3502,43 @@ textarea::placeholder {
   gap: 10px;
 }
 
-/* ===========================================================================
-   Ultra responsive — couche finale (appliquée après tout le reste).
-   Paliers : >1024 bureau (sidebar + rail dockés) · 561–1024 compact (sidebar
-   et rail en tiroirs) · ≤560 mobile (plein écran).
-   =========================================================================== */
-
-/* Largeurs fluides (barre latérale et rail) */
-:root {
-  --nd-rail-w: clamp(320px, 30vw, 440px);
-  --nd-sidebar-w: clamp(216px, 19vw, 248px);
-}
-.template-app.app .sidebar {
-  width: var(--nd-sidebar-w);
-}
-.template-app.app .workspace {
-  width: calc(100% - var(--nd-sidebar-w));
-  margin-left: var(--nd-sidebar-w);
-}
-/* Le rail (Muse) s'aligne sous la barre du haut, pas 19px plus bas. */
-.template-app .muse-overlay {
-  top: 64px;
-}
-
-/* Tablette et bureau : rail docké (colonne réservée à droite) pour que le
-   composer reste entièrement accessible. */
-@media (min-width: 701px) {
-  .chat-workspace.rail {
-    padding-right: var(--nd-rail-w);
+/* ---- Catalog rows: two-line layout on small screens ----
+   Line 1: checkbox | model id (truncated) | info badge
+   Line 2: maker (muted, left) · price (muted, right)
+   Fixes cramped fixed-width columns (110px/120px) that crushed the id
+   and clipped the badge on narrow screens. Applies to all providers. */
+@media (max-width: 640px) {
+  .api-catalog-row {
+    grid-template-columns: auto minmax(0, 1fr) 22px;
+    row-gap: 4px;
+    padding: 10px 12px;
   }
-  .muse-overlay {
-    width: var(--nd-rail-w);
+  .api-catalog-box {
+    grid-row: 1 / 3;
+    align-self: start;
+    margin-top: 3px;
   }
-}
-
-/* Téléphone : rail en plein écran. */
-@media (max-width: 700px) {
-  .chat-workspace.rail {
-    padding-right: 0;
+  .api-model-id {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 13px;
   }
-  .muse-overlay {
-    top: 0;
-    width: 100vw;
-    box-shadow: none;
+  .api-model-maker {
+    grid-column: 2;
+    grid-row: 2;
+    max-width: 58%;
   }
-}
-
-/* Compact : barre latérale en tiroir. */
-@media (max-width: 1024px) {
-  .template-app.app .sidebar {
-    left: 0;
-    width: min(288px, 84vw);
-    transform: translateX(-100%);
-    visibility: hidden;
-    box-shadow: 8px 0 30px color-mix(in srgb, #000 12%, transparent);
+  .api-model-price {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .template-app.app .sidebar.open {
-    transform: translateX(0);
-    visibility: visible;
-  }
-  .template-app.app .workspace,
-  .template-app.app.nav-collapsed .workspace {
-    width: 100%;
-    margin-left: 0;
-  }
-  .template-app.app.nav-collapsed .sidebar {
-    width: min(288px, 84vw);
-  }
-  .template-app .nav-scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 25;
-    border: 0;
-    border-radius: 0;
-    background: color-mix(in srgb, #000 22%, transparent);
-  }
-  /* Le panneau navigateur (split) occupe toute la largeur. */
-  .chat-workspace.split > .result-pane {
-    flex: 1 1 auto;
-    width: 100%;
-    min-width: 0;
-  }
-  .chat-workspace.split .chat-column {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-}
-
-/* Fenêtres / paramètres plein écran sur petit écran. */
-@media (max-width: 760px) {
-  .modal-backdrop {
-    padding: 0;
-    align-items: stretch;
-  }
-  .modal,
-  .modal.settings-modal {
-    width: 100vw;
-    max-width: none;
-    height: 100dvh;
-    max-height: 100dvh;
-    border-radius: 0;
-    padding: 20px 16px 14px;
-  }
-  .settings-layout {
-    flex-direction: column;
-    gap: 14px;
-  }
-  .settings-nav {
-    width: 100%;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    gap: 6px;
-    padding: 0 0 10px;
-    border-right: 0;
-    border-bottom: 1px solid var(--nd-border);
-  }
-  .settings-nav-item {
-    white-space: nowrap;
-  }
-}
-
-/* Mobile : composer et panneaux qui ne débordent plus. */
-@media (max-width: 560px) {
-  .muse-overlay {
-    top: 0;
-    width: 100vw;
-  }
-  .template-app .welcome-composer-actions {
-    flex-wrap: wrap;
-    row-gap: 6px;
-  }
-  .template-app .welcome-model-select {
-    flex: 1 1 auto;
-    width: auto;
-    min-width: 116px;
-  }
-  .chat-compose-row {
-    flex-wrap: wrap;
-    row-gap: 6px;
-  }
-  .chat-compose-row .model-select {
-    min-width: 0;
-    max-width: 100%;
-  }
-  .template-app .chat-composer,
-  .chat-composer {
-    border-radius: 16px;
-  }
-  .provider-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-  .api-catalog-tools {
-    flex-wrap: wrap;
-  }
-  .api-key-input {
-    flex-wrap: wrap;
-  }
-  .api-default-controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
-
-/* Typographie fluide. */
-.template-app .welcome-hero h1 {
-  font-size: clamp(26px, 5.2vw, 44px);
-}
-.template-app .chat-welcome h1 {
-  font-size: clamp(20px, 3.6vw, 25px);
-}
-.muse-name {
-  font-size: clamp(18px, 3vw, 24px);
-}
-
-/* Cibles tactiles confortables. */
-@media (pointer: coarse) {
-  .settings-nav-item {
-    min-height: 44px;
-  }
-  .provider-tab {
-    min-height: 40px;
-  }
-  .api-kind-btn {
-    min-height: 36px;
-  }
-  .chat-compose-row .icon-button,
-  .welcome-composer-actions .icon-button {
-    min-width: 40px;
-    min-height: 40px;
+  .api-model-info {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    align-self: center;
   }
 }
