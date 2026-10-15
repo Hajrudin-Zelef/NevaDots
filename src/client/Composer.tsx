@@ -64,6 +64,10 @@ export interface ComposerProps {
   /** Stop button (chat, while running). */
   stopButton?: ReactNode;
 
+  // --- Attachments (Phase 2) ---
+  /** File cards row, rendered above the textarea. */
+  attachmentCards?: ReactNode;
+
   // --- Note under the composer ---
   note: ReactNode;
 }
@@ -107,6 +111,7 @@ export function Composer(props: ComposerProps) {
     reasoningDisabled,
     voiceButton,
     stopButton,
+    attachmentCards,
     note,
   } = props;
 
@@ -143,6 +148,7 @@ export function Composer(props: ComposerProps) {
       )}
       {menuOpen && menu}
       {promptMenuOpen && promptMenu}
+      {attachmentCards}
       <div className="chat-compose-row">
         <textarea
           aria-label={inputAriaLabel}

@@ -48,6 +48,9 @@ import type {
 import { modelKey, type ModelsResponse } from '../shared/models';
 import { Mascot } from './Mascot';
 import { Composer } from './Composer';
+import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
+import { useAttachments } from './useAttachments';
+import { buildMessageWithAttachments } from './attachments';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
 import { CallView } from './CallView';
@@ -142,6 +145,8 @@ export function Chat({
   }, [thread.id, contextAttempt]);
   const [draft, setDraft] = useState('');
   const [queued, setQueued] = useState<string[]>([]);
+  const attachments = useAttachments();
+  const attachmentBar = useRef<AttachmentBarHandle>(null);
   const [stageOpen, setStageOpen] = useState(false);
   const [notify, setNotify] = useState(
     () =>
@@ -1029,9 +1034,24 @@ export function Chat({
         inputAriaLabel="Message your Dot"
         canSubmitOnEnter={!!draft.trim() && loaded && contextReady && !paused}
         onSubmit={() => {
-          void send(`${source ? `From ${source}:\n\n` : ''}${draft}`);
+          void (async () => {
+            try {
+              const uploaded = await attachments.uploadAll();
+              const text = buildMessageWithAttachments(draft, uploaded);
+              attachments.clear();
+              void send(`${source ? `From ${source}:\n\n` : ''}${text}`);
+            } catch {
+              // L'erreur d'upload est déjà affichée via attachments.error.
+            }
+          })();
         }}
-        submitDisabled={!draft.trim() || !loaded || !contextReady || paused}
+        submitDisabled={
+          (!draft.trim() && !attachments.items.length) ||
+          attachments.uploading ||
+          !loaded ||
+          !contextReady ||
+          paused
+        }
         submitTitle={running ? 'Mettre en file' : 'Envoyer'}
         submitAriaLabel={running ? 'Queue message' : 'Send message'}
         sourceOpen={sourceOpen}
@@ -1053,6 +1073,8 @@ export function Chat({
             onSchedule={onSchedule}
             onComputer={onComputer}
             onCreateDot={onCreateDot}
+            onAddFiles={() => attachmentBar.current?.openFilesPicker()}
+            onAddFolder={() => attachmentBar.current?.openFolderPicker()}
             onClose={() => setComposerToolsOpen(false)}
           />
         }
@@ -1109,6 +1131,9 @@ export function Chat({
             {dot.name} · {selectedModel || 'défaut'}
             {paused ? ' · en pause' : ''}
           </>
+        }
+        attachmentCards={
+          <AttachmentBar ref={attachmentBar} attachments={attachments} />
         }
       />
       <InterventionStage

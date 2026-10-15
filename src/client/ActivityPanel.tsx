@@ -338,8 +338,19 @@ export function ActivityPanel({
                   <ul className="muse-task-list">
                     {tasks.map((task) => (
                       <li key={task.id}>
-                        <span className={`muse-task-state ${task.status}`}>
-                          {task.status}
+                        <span
+                          className={`muse-task-badge ${task.status}`}
+                          aria-label={`Statut : ${task.status}`}
+                        >
+                          {task.status === 'running' ? (
+                            <Loader2 size={14} className="spin" />
+                          ) : task.status === 'completed' ? (
+                            <Check size={14} />
+                          ) : (
+                            <span className={`muse-task-state ${task.status}`}>
+                              {task.status}
+                            </span>
+                          )}
                         </span>
                         <span className="muse-task-text">{task.prompt}</span>
                         <span className="muse-task-time">

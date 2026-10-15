@@ -1,5 +1,6 @@
 import { computerRoutes } from './computer-routes.js';
 import { connectionRoutes } from './connection-routes.js';
+import { attachmentRoutes } from './attachment-routes.js';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { timingSafeEqual } from 'node:crypto';
@@ -96,6 +97,7 @@ export function createApp({
     await next();
   });
   if (platform) app.route('/api', computerRoutes(platform.computers));
+  app.route('/api', attachmentRoutes());
   if (platform)
     app.route(
       '/api',

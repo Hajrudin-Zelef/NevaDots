@@ -1,4 +1,11 @@
-import { BookOpen, Clock3, Globe, Monitor, Plus } from 'lucide-react';
+import {
+  BookOpen,
+  Clock3,
+  FolderOpen,
+  Globe,
+  Monitor,
+  Plus,
+} from 'lucide-react';
 import type { Dot, Memory } from '../shared/types';
 
 /**
@@ -15,6 +22,8 @@ export function ComposerMenu({
   onSchedule,
   onComputer,
   onCreateDot,
+  onAddFiles,
+  onAddFolder,
   onClose,
 }: {
   dots: Dot[];
@@ -26,6 +35,8 @@ export function ComposerMenu({
   onSchedule?: () => void;
   onComputer?: () => void;
   onCreateDot?: () => void;
+  onAddFiles?: () => void;
+  onAddFolder?: () => void;
   onClose: () => void;
 }) {
   const run = (action: () => void) => () => {
@@ -37,6 +48,16 @@ export function ComposerMenu({
       <button type="button" onClick={run(onSource)}>
         <Globe size={15} /> Ajouter une page web
       </button>
+      {onAddFiles && (
+        <button type="button" onClick={run(onAddFiles)}>
+          <FolderOpen size={15} /> Ajouter des fichiers
+        </button>
+      )}
+      {onAddFolder && (
+        <button type="button" onClick={run(onAddFolder)}>
+          <FolderOpen size={15} /> Ajouter un dossier
+        </button>
+      )}
       {onSchedule && (
         <button type="button" onClick={run(onSchedule)}>
           <Clock3 size={15} /> Planifier une tâche

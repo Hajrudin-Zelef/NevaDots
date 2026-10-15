@@ -43,6 +43,9 @@ import { Mascot } from './Mascot';
 import { Chat } from './Chat';
 import { Composer } from './Composer';
 import { ComposerMenu } from './ComposerMenu';
+import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
+import { useAttachments } from './useAttachments';
+import { buildMessageWithAttachments } from './attachments';
 import { ThreadList } from './ThreadList';
 import { ResultPane } from './ResultPane';
 import { TaskRow } from './TaskPresentation';
@@ -224,6 +227,8 @@ export function App() {
   const [sourceOpen, setSourceOpen] = useState(false);
   const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
+  const attachments = useAttachments();
+  const attachmentBar = useRef<AttachmentBarHandle>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string>();
   const [pendingVoice, setPendingVoice] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelsResponse>({
@@ -1001,11 +1006,28 @@ export function App() {
                     inputAriaLabel="Démarrer une conversation"
                     canSubmitOnEnter={configured && !busy && !!prompt.trim()}
                     onSubmit={() => {
-                      void newConversation(
-                        `${promptSource.trim() ? `From ${promptSource.trim()}:\n\n` : ''}${prompt}`,
-                      );
+                      void (async () => {
+                        try {
+                          const uploaded = await attachments.uploadAll();
+                          const text = buildMessageWithAttachments(
+                            prompt,
+                            uploaded,
+                          );
+                          attachments.clear();
+                          await newConversation(
+                            `${promptSource.trim() ? `From ${promptSource.trim()}:\n\n` : ''}${text}`,
+                          );
+                        } catch {
+                          // L'erreur d'upload est déjà affichée via attachments.error.
+                        }
+                      })();
                     }}
-                    submitDisabled={!configured || busy || !prompt.trim()}
+                    submitDisabled={
+                      !configured ||
+                      busy ||
+                      attachments.uploading ||
+                      (!prompt.trim() && !attachments.items.length)
+                    }
                     submitTitle="Démarrer la conversation"
                     submitAriaLabel="Démarrer la conversation"
                     sourceOpen={sourceOpen}
@@ -1029,6 +1051,12 @@ export function App() {
                         onComputer={() => setPane(true)}
                         onCreateDot={() =>
                           setDialog({ type: 'dot', spaceId: dot.spaceId })
+                        }
+                        onAddFiles={() =>
+                          attachmentBar.current?.openFilesPicker()
+                        }
+                        onAddFolder={() =>
+                          attachmentBar.current?.openFolderPicker()
                         }
                         onClose={() => setComposerToolsOpen(false)}
                       />
@@ -1088,6 +1116,12 @@ export function App() {
                       <>
                         {dot.name} · {selectedModel || 'Modèle'}
                       </>
+                    }
+                    attachmentCards={
+                      <AttachmentBar
+                        ref={attachmentBar}
+                        attachments={attachments}
+                      />
                     }
                   />
                 </div>
