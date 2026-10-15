@@ -17,6 +17,7 @@ import { api } from './api';
 import { AVATARS } from './Mascot';
 import { avatarSrc, isProtectedAvatar } from '../shared/avatars';
 import { ConnectionsSection } from './ConnectionsSection';
+import { ExternalAccountsSection } from './ExternalAccountsSection';
 import { ApiProvidersPanel } from './ApiProvidersPanel';
 import { ModelSelectorPanel } from './ModelSelectorPanel';
 
@@ -759,6 +760,7 @@ export function WorkspaceDialog({
                 {dialog.type === 'settings' &&
                   settingsTab === 'connections' && (
                     <div className="settings-connections">
+                      <ExternalAccountsSection />
                       {workspace.dots.length > 1 && (
                         <>
                           <label

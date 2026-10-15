@@ -1,5 +1,6 @@
 import type { WebConfig } from './parallel.js';
 import type { ProviderConfig, ProviderRegistry } from './providers.js';
+import type { ExternalAccounts } from './external-accounts.js';
 import type { SetupStatus } from '../shared/types.js';
 
 export interface PlatformConfig extends WebConfig {
@@ -17,6 +18,8 @@ export interface PlatformConfig extends WebConfig {
   providers?: ProviderConfig[];
   /** Mutable registry backing `providers`; owns keys, models and the default. */
   providerRegistry?: ProviderRegistry;
+  /** External service accounts (GitHub…) with encrypted tokens. */
+  externalAccounts?: ExternalAccounts;
   computerSupervisorUrl?: string;
   computerSupervisorToken?: string;
   computerToken?: string;

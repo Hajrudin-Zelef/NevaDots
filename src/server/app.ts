@@ -11,6 +11,7 @@ import type { Platform } from './platform.js';
 import { VoiceService } from './voice.js';
 import { workspaceRoutes } from './workspace-routes.js';
 import { providerRoutes } from './provider-routes.js';
+import { externalAccountRoutes } from './external-accounts.js';
 import { systemMetrics } from './metrics.js';
 const interval = z.number().int().min(60).max(31_536_000).nullable();
 export interface AppOptions {
@@ -103,6 +104,8 @@ export function createApp({
   const voice = platform ? new VoiceService(platform) : undefined;
   if (platform && voice) app.route('/api', workspaceRoutes(platform, voice));
   if (platform) app.route('/api', providerRoutes(platform));
+  if (platform?.config.externalAccounts)
+    app.route('/api', externalAccountRoutes(platform.config.externalAccounts));
   app.get('/api/state', (c) =>
     c.json({
       settings: store.settings(),

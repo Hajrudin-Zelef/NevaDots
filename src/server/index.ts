@@ -13,6 +13,7 @@ import { resolveAppOrigins } from './app-origin.js';
 import { WorkspaceStore } from './workspace.js';
 import { Platform } from './platform.js';
 import { ProviderRegistry } from './providers.js';
+import { ExternalAccounts } from './external-accounts.js';
 import { resolveSecretKey } from './secrets.js';
 import { attachComputerStream } from './computer-stream.js';
 import type { PlatformConfig } from './platform-config.js';
@@ -48,6 +49,10 @@ const config: PlatformConfig = {
   baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
   providers: providerRegistry.list(),
   providerRegistry,
+  externalAccounts: new ExternalAccounts(
+    workspace,
+    resolveSecretKey(workspace),
+  ),
   contextWindow: process.env.OPENAI_CONTEXT_WINDOW
     ? Number(process.env.OPENAI_CONTEXT_WINDOW)
     : undefined,
