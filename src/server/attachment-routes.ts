@@ -18,6 +18,8 @@ export interface AttachmentMeta {
   createdAt: number;
   /** Timestamp du rattachement à un message envoyé (exclut du sweep orphelins). */
   attachedAt?: number;
+  /** Timestamp de consommation par un run modèle (images multimodales). */
+  consumedAt?: number;
 }
 
 const CODE_EXTENSIONS = new Set([
@@ -237,4 +239,62 @@ export async function cleanupOrphanAttachments(
     }
   }
   return removed;
+}
+
+/** Limite d'image envoyée au modèle (5 Mo, cohérent avec PREVIEW_LIMIT). */
+const IMAGE_MODEL_LIMIT = 5 * 1024 * 1024;
+/** Fenêtre de rattachement : l'image doit avoir été jointe récemment. */
+const IMAGE_CLAIM_WINDOW_MS = 10 * 60 * 1000;
+
+export interface ClaimedImage {
+  id: string;
+  mime: string;
+  base64: string;
+}
+
+/**
+ * Phase 5 (multimodal) : récupère les images rattachées à un message mais
+ * pas encore consommées par un run modèle, et les marque comme consommées.
+ * Les images > 5 Mo sont marquées consommées mais ignorées (trop lourdes
+ * pour l'input modèle).
+ */
+export async function claimUnconsumedImages(): Promise<ClaimedImage[]> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(ATTACHMENTS_DIR);
+  } catch {
+    return [];
+  }
+  const now = Date.now();
+  const claimed: ClaimedImage[] = [];
+  for (const entry of entries) {
+    const meta = await readMeta(entry);
+    if (
+      !meta ||
+      meta.category !== 'image' ||
+      !meta.attachedAt ||
+      meta.consumedAt
+    )
+      continue;
+    if (now - meta.attachedAt > IMAGE_CLAIM_WINDOW_MS) continue;
+    // Marque consommé dans tous les cas (même si trop lourde : pas de retry).
+    await fs
+      .writeFile(
+        join(attachmentDir(meta.id), 'meta.json'),
+        JSON.stringify({ ...meta, consumedAt: now }),
+      )
+      .catch(() => {});
+    if (meta.size > IMAGE_MODEL_LIMIT) continue;
+    try {
+      const data = await fs.readFile(join(attachmentDir(meta.id), 'file'));
+      claimed.push({
+        id: meta.id,
+        mime: meta.mime,
+        base64: data.toString('base64'),
+      });
+    } catch {
+      // Fichier illisible : ignoré.
+    }
+  }
+  return claimed;
 }

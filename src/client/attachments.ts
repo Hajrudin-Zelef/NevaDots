@@ -56,9 +56,7 @@ export function buildMessageWithAttachments(
           : file.textContent;
       blocks.push(`[Fichier : ${file.name}]\n\`\`\`\n${content}\n\`\`\``);
     } else if (file.category === 'image') {
-      blocks.push(
-        `[Image jointe : ${file.name} (${formatSize(file.size)}) — visible dans l'aperçu de l'interface]`,
-      );
+      blocks.push(`[Image jointe : ${file.name} (${formatSize(file.size)})]`);
     } else if (file.category === 'pdf') {
       blocks.push(
         `[PDF joint : ${file.name} (${formatSize(file.size)}) — aperçu disponible dans l'interface]`,
