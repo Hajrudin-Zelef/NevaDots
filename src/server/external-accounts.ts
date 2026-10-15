@@ -24,6 +24,11 @@ export interface ConnectorField {
   type: 'text' | 'password';
 }
 
+export interface ConnectorAuth {
+  headers: Record<string, string>;
+  query?: Record<string, string>;
+}
+
 export interface ConnectorDef {
   id: string;
   name: string;
@@ -31,6 +36,11 @@ export interface ConnectorDef {
   fields: ConnectorField[];
   /** Live validation; resolves with the display name on success. */
   validate(values: Record<string, string>): Promise<string>;
+  /** Base URL for agent-side API calls. Empty when the service exposes no
+   * plain HTTP API (MEGA, SFTP) — those cannot be used by the generic tool. */
+  apiBase: string;
+  /** Builds the auth material from stored credential fields. */
+  auth(values: Record<string, string>): ConnectorAuth;
 }
 
 type FetchOpts = {
@@ -97,6 +107,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'github',
     name: 'GitHub',
     desc: 'Dépôts : clone, commit, push pour l’agent.',
+    apiBase: 'https://api.github.com',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -122,6 +134,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'gitlab',
     name: 'GitLab',
     desc: 'Dépôts GitLab pour l’agent.',
+    apiBase: 'https://gitlab.com/api/v4',
+    auth: (v) => ({ headers: { 'PRIVATE-TOKEN': v.token.trim() } }),
     fields: [
       {
         key: 'token',
@@ -143,6 +157,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'slack',
     name: 'Slack',
     desc: 'Lecture et envoi de messages.',
+    apiBase: 'https://api.slack.com/api',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -169,6 +185,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'discord',
     name: 'Discord',
     desc: 'Lecture et envoi de messages.',
+    apiBase: 'https://discord.com/api/v10',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -187,6 +205,10 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'notion',
     name: 'Notion',
     desc: 'Pages et bases de données.',
+    apiBase: 'https://api.notion.com/v1',
+    auth: (v) => ({
+      headers: { ...bearer(v.token), 'Notion-Version': '2022-06-28' },
+    }),
     fields: [
       {
         key: 'token',
@@ -208,6 +230,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'linear',
     name: 'Linear',
     desc: 'Tickets et projets.',
+    apiBase: 'https://api.linear.app/graphql',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -230,6 +254,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'stripe',
     name: 'Stripe',
     desc: 'Paiements et factures.',
+    apiBase: 'https://api.stripe.com/v1',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -248,6 +274,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'dropbox',
     name: 'Dropbox',
     desc: 'Fichiers dans le cloud.',
+    apiBase: 'https://api.dropboxapi.com/2',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -270,6 +298,11 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'trello',
     name: 'Trello',
     desc: 'Tableaux et cartes.',
+    apiBase: 'https://api.trello.com/1',
+    auth: (v) => ({
+      headers: {},
+      query: { key: v.key.trim(), token: v.token.trim() },
+    }),
     fields: [
       {
         key: 'key',
@@ -297,6 +330,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'huggingface',
     name: 'Hugging Face',
     desc: 'Modèles et datasets.',
+    apiBase: 'https://huggingface.co/api',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       { key: 'token', label: 'Token', placeholder: 'hf_…', type: 'password' },
     ],
@@ -313,6 +348,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'gmail',
     name: 'Gmail',
     desc: 'Lecture et envoi d’e-mails.',
+    apiBase: 'https://gmail.googleapis.com/gmail/v1',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -334,6 +371,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'drive',
     name: 'Google Drive',
     desc: 'Fichiers dans le cloud Google.',
+    apiBase: 'https://www.googleapis.com/drive/v3',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -355,6 +394,8 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'onedrive',
     name: 'OneDrive',
     desc: 'Fichiers dans le cloud Microsoft.',
+    apiBase: 'https://graph.microsoft.com/v1.0',
+    auth: (v) => ({ headers: bearer(v.token) }),
     fields: [
       {
         key: 'token',
@@ -376,6 +417,10 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'mega',
     name: 'MEGA',
     desc: 'Stockage chiffré. Identifiants stockés chiffrés (validation live non disponible pour MEGA).',
+    apiBase: '',
+    auth: () => {
+      throw new Error('MEGA exposes no plain HTTP API.');
+    },
     fields: [
       {
         key: 'email',
@@ -399,6 +444,10 @@ const CONNECTOR_DEFS: ConnectorDef[] = [
     id: 'sftp',
     name: 'SFTP',
     desc: 'Serveur de fichiers distant. La connexion valide l’hôte et le port.',
+    apiBase: '',
+    auth: () => {
+      throw new Error('SFTP is not an HTTP service.');
+    },
     fields: [
       {
         key: 'host',
@@ -525,6 +574,22 @@ export class ExternalAccounts {
     } catch {
       return undefined;
     }
+  }
+
+  isConnected(id: string): boolean {
+    const stored = this.read(id);
+    return !!stored.fieldsCipher && !!stored.login;
+  }
+
+  def(id: string): ConnectorDef | undefined {
+    return CONNECTOR_DEFS.find((d) => d.id === id);
+  }
+
+  /** Connectors that are both connected and callable over HTTP. */
+  callableServices(): { id: string; name: string }[] {
+    return CONNECTOR_DEFS.filter(
+      (d) => d.apiBase && this.isConnected(d.id),
+    ).map((d) => ({ id: d.id, name: d.name }));
   }
 
   async connect(id: string, values: Record<string, string>): Promise<string> {
