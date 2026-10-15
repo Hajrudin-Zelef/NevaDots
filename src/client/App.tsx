@@ -4,14 +4,9 @@ import { SpaceWorkspace } from './SpaceWorkspace';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { CopilotKitProvider } from '@copilotkit/react-core/v2';
 import {
-  ArrowUp,
   ArrowUpRight,
   BookOpen,
-  Brain,
-  CircleHelp,
   Clock3,
-  Globe,
-  Link2,
   Mic,
   MessageCircle,
   Monitor,
@@ -34,7 +29,7 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
-import { modelKey, parseModelKey, type ModelsResponse } from '../shared/models';
+import { modelKey, type ModelsResponse } from '../shared/models';
 import { api, ApiError, authHeaders, authToken, setToken } from './api';
 import { trackSetupStep } from './setup-telemetry';
 import {
@@ -46,13 +41,13 @@ import {
 } from './poll-notice';
 import { Mascot } from './Mascot';
 import { Chat } from './Chat';
+import { Composer } from './Composer';
 import { ComposerMenu } from './ComposerMenu';
 import { ThreadList } from './ThreadList';
 import { ResultPane } from './ResultPane';
 import { TaskRow } from './TaskPresentation';
 import { TaskActions } from './TaskActions';
 import { WorkspaceDialog, type Dialog } from './WorkspaceDialog';
-import { submitComposerOnEnter } from './chat-composer';
 
 function describeFailure(error: unknown, fallback: string) {
   return {
@@ -949,38 +944,77 @@ export function App() {
                 />
               ) : (
                 <div className="new-conversation">
-                  <div className="welcome-hero">
+                  <div className="chat-transcript">
+                    <div className="welcome-hero">
+                      <Mascot
+                        avatar={dot.avatar}
+                        name={dot.name}
+                        state={busy ? 'working' : 'idle'}
+                      />
+                      <span className="welcome-halo" aria-hidden="true" />
+                      <h1>Par où commencer ?</h1>
+                    </div>
+                    {!configured && (
+                      <div className="setup-card">
+                        <span className="setup-icon">
+                          <Settings2 size={20} />
+                        </span>
+                        <div>
+                          <strong>Configurez votre Dot</strong>
+                          <p>
+                            Connectez un modèle et le service de conversation
+                            dans les paramètres pour commencer. Vos Spaces et
+                            vos Dots restent disponibles.
+                          </p>
+                          <button
+                            className="text-button"
+                            onClick={() => setDialog({ type: 'settings' })}
+                          >
+                            Ouvrir les paramètres <ArrowUpRight size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="chat-token-bar">
                     <Mascot
-                      avatar={dot?.avatar}
-                      name={dot?.name}
+                      name={dot.name}
+                      avatar={dot.avatar}
+                      small
+                      animate
+                      decorative
                       state={busy ? 'working' : 'idle'}
                     />
-                    <span className="welcome-halo" aria-hidden="true" />
-                    <h1>Par où commencer ?</h1>
+                    <span className="chat-token-info">
+                      ↑ 0 (entrée) · ↓ 0 (sortie) Tokens · Coût estimé : $0,0000
+                    </span>
                   </div>
-                  {!configured && (
-                    <div className="setup-card">
-                      <span className="setup-icon">
-                        <Settings2 size={20} />
-                      </span>
-                      <div>
-                        <strong>Configurez votre Dot</strong>
-                        <p>
-                          Connectez un modèle et le service de conversation dans
-                          les paramètres pour commencer. Vos Spaces et vos Dots
-                          restent disponibles.
-                        </p>
-                        <button
-                          className="text-button"
-                          onClick={() => setDialog({ type: 'settings' })}
-                        >
-                          Ouvrir les paramètres <ArrowUpRight size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  <div className="welcome-composer-area">
-                    {composerToolsOpen && (
+                  <Composer
+                    text={prompt}
+                    onTextChange={setPrompt}
+                    placeholder={
+                      configured
+                        ? `Demander à ${dot.name}`
+                        : 'Configurez un modèle pour commencer.'
+                    }
+                    inputDisabled={!configured}
+                    inputAriaLabel="Démarrer une conversation"
+                    canSubmitOnEnter={configured && !busy && !!prompt.trim()}
+                    onSubmit={() => {
+                      void newConversation(
+                        `${promptSource.trim() ? `From ${promptSource.trim()}:\n\n` : ''}${prompt}`,
+                      );
+                    }}
+                    submitDisabled={!configured || busy || !prompt.trim()}
+                    submitTitle="Démarrer la conversation"
+                    submitAriaLabel="Démarrer la conversation"
+                    sourceOpen={sourceOpen}
+                    onToggleSource={() => setSourceOpen((open) => !open)}
+                    source={promptSource}
+                    onSourceChange={setPromptSource}
+                    menuOpen={composerToolsOpen}
+                    onToggleMenu={() => setComposerToolsOpen((open) => !open)}
+                    menu={
                       <ComposerMenu
                         dots={workspace.dots}
                         activeDotId={dot.id}
@@ -998,8 +1032,13 @@ export function App() {
                         }
                         onClose={() => setComposerToolsOpen(false)}
                       />
-                    )}
-                    {promptMenuOpen && (
+                    }
+                    promptMenuOpen={promptMenuOpen}
+                    onTogglePromptMenu={() => {
+                      setComposerToolsOpen(false);
+                      setPromptMenuOpen((open) => !open);
+                    }}
+                    promptMenu={
                       <div className="welcome-prompt-menu">
                         {[
                           'Aide-moi à réfléchir à cette idée',
@@ -1018,201 +1057,39 @@ export function App() {
                           </button>
                         ))}
                       </div>
-                    )}
-                    <form
-                      className="welcome-composer"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void newConversation(
-                          `${promptSource.trim() ? `From ${promptSource.trim()}:\n\n` : ''}${prompt}`,
-                        );
-                      }}
-                    >
-                      {sourceOpen && (
-                        <div className="welcome-source-input">
-                          <Link2 size={15} />
-                          <input
-                            aria-label="URL de la page à consulter"
-                            type="url"
-                            value={promptSource}
-                            onChange={(event) =>
-                              setPromptSource(event.target.value)
-                            }
-                            placeholder="https://example.com/page"
-                          />
-                          <button
-                            type="button"
-                            className="icon-button"
-                            aria-label="Retirer la source"
-                            onClick={() => {
-                              setSourceOpen(false);
-                              setPromptSource('');
-                            }}
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      )}
-                      <textarea
-                        aria-label="Démarrer une conversation"
-                        placeholder={
-                          configured
-                            ? `Demander à ${dot.name}`
-                            : 'Configurez un modèle pour commencer.'
+                    }
+                    dotId={dot.id}
+                    modelValue={modelValue}
+                    modelOptions={modelOptions}
+                    defaultModelLabel={defaultModelLabel}
+                    onModelSaved={refresh}
+                    onModelError={setError}
+                    reasoningEffort={reasoningEffort}
+                    reasoningLabel={reasoningLabel}
+                    onCycleReasoning={cycleReasoning}
+                    reasoningDisabled={reasoningBusy}
+                    voiceButton={
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label="Démarrer une conversation vocale"
+                        title={
+                          workspace.setup.voice
+                            ? 'Démarrer une conversation vocale'
+                            : 'La voix nécessite une configuration serveur'
                         }
-                        value={prompt}
-                        rows={1}
-                        maxLength={4000}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        onKeyDown={(e) =>
-                          submitComposerOnEnter(
-                            e,
-                            configured && !busy && !!prompt.trim(),
-                          )
-                        }
-                        disabled={!configured}
-                      />
-                      <div className="welcome-composer-actions">
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label="Ouvrir les outils du composer"
-                          title="Ajouter"
-                          aria-expanded={composerToolsOpen}
-                          onClick={() => setComposerToolsOpen((open) => !open)}
-                        >
-                          <Plus size={18} />
-                        </button>
-                        <button
-                          type="button"
-                          className={`icon-button ${sourceOpen ? 'active' : ''}`}
-                          aria-label="Ajouter une page web"
-                          title="Ajouter une page web"
-                          aria-expanded={sourceOpen}
-                          onClick={() => setSourceOpen((open) => !open)}
-                        >
-                          <Globe size={17} />
-                        </button>
-                        <button
-                          type="button"
-                          className={`icon-button ${promptMenuOpen ? 'active' : ''}`}
-                          aria-label="Aide pour rédiger un prompt"
-                          title="Suggestions de prompts"
-                          aria-expanded={promptMenuOpen}
-                          onClick={() => {
-                            setComposerToolsOpen(false);
-                            setPromptMenuOpen((open) => !open);
-                          }}
-                        >
-                          <CircleHelp size={17} />
-                        </button>
-                        <button
-                          type="button"
-                          className="prompt-insert-button"
-                          onClick={() => {
-                            setComposerToolsOpen(false);
-                            setPromptMenuOpen((open) => !open);
-                          }}
-                        >
-                          Insérer un prompt
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label="Démarrer une conversation vocale"
-                          title={
-                            workspace.setup.voice
-                              ? 'Démarrer une conversation vocale'
-                              : 'La voix nécessite une configuration serveur'
-                          }
-                          disabled={
-                            !configured || !workspace.setup.voice || busy
-                          }
-                          onClick={() => void newConversation('')}
-                        >
-                          <Mic size={17} />
-                        </button>
-                        {modelOptions.providers.length > 0 && (
-                          <select
-                            className="welcome-model-select"
-                            aria-label="Modèle pour ce Dot"
-                            title="Modèle pour ce Dot"
-                            value={modelValue}
-                            onChange={async (event) => {
-                              const parsed = parseModelKey(event.target.value);
-                              setError('');
-                              try {
-                                await api(
-                                  `/dots/${dot.id}/model`,
-                                  'PUT',
-                                  parsed ?? { model: null },
-                                );
-                                await refresh();
-                              } catch (cause) {
-                                setError(
-                                  cause instanceof Error
-                                    ? cause.message
-                                    : 'Impossible de changer de modèle.',
-                                );
-                              }
-                            }}
-                          >
-                            <option value="">
-                              {defaultModelLabel
-                                ? `Défaut · ${defaultModelLabel}`
-                                : 'Défaut'}
-                            </option>
-                            {modelOptions.providers.map((provider) => (
-                              <optgroup
-                                key={provider.id}
-                                label={`${provider.label}${
-                                  provider.configured ? '' : ' (non configuré)'
-                                }`}
-                              >
-                                {provider.models.map((model) => (
-                                  <option
-                                    key={model}
-                                    value={modelKey(provider.id, model)}
-                                  >
-                                    {model}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                        )}
-                        <button
-                          type="button"
-                          className={`icon-button reasoning-button ${
-                            reasoningEffort && reasoningEffort !== 'none'
-                              ? 'active'
-                              : ''
-                          }`}
-                          aria-label={`Réflexion : ${reasoningLabel}`}
-                          title={`Réflexion : ${reasoningLabel} — cliquez pour changer`}
-                          onClick={() => void cycleReasoning()}
-                          disabled={reasoningBusy || !dot}
-                        >
-                          <Brain size={17} />
-                        </button>
-                        <span className="welcome-composer-spacer" />
-                        <button
-                          className="send-button"
-                          aria-label="Démarrer la conversation"
-                          disabled={!configured || busy || !prompt.trim()}
-                        >
-                          <ArrowUp size={19} />
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                  <div className="welcome-model-note">
-                    {dot.name} · {selectedModel || 'Modèle'}
-                  </div>
-                  <div className="welcome-token-bar">
-                    ↑ 0 (entrée) · ↓ 0 (sortie) Tokens&nbsp; · &nbsp;Coût estimé
-                    : &nbsp;$0.0000
-                  </div>
+                        disabled={!configured || !workspace.setup.voice || busy}
+                        onClick={() => void newConversation('')}
+                      >
+                        <Mic size={17} />
+                      </button>
+                    }
+                    note={
+                      <>
+                        {dot.name} · {selectedModel || 'Modèle'}
+                      </>
+                    }
+                  />
                 </div>
               )}
             </div>

@@ -1288,6 +1288,14 @@ textarea::placeholder {
   font-size: 14px;
   line-height: 1.8;
 }
+/* Phase 1 — chat unifié : même hero que l'écran nouveau-message. */
+.template-app .chat-welcome .mascot {
+  width: 132px;
+  height: 132px;
+  margin: 0 auto 6px;
+  position: relative;
+  z-index: 1;
+}
 .chat-token-bar {
   display: flex;
   align-items: center;

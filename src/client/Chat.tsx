@@ -19,17 +19,12 @@ import {
 import {
   Bell,
   BellOff,
-  Brain,
   FilePlus,
-  ArrowUp,
   Clock3,
-  Link2,
   Maximize2,
   Phone,
   PhoneOff,
-  Plus,
   Square,
-  X,
 } from 'lucide-react';
 import {
   ComputerToolCard,
@@ -50,12 +45,12 @@ import type {
   Settings,
   Task,
 } from '../shared/types';
-import { modelKey, parseModelKey, type ModelsResponse } from '../shared/models';
+import { modelKey, type ModelsResponse } from '../shared/models';
 import { Mascot } from './Mascot';
+import { Composer } from './Composer';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
 import { CallView } from './CallView';
-import { shouldSubmitComposerOnKeyDown } from './chat-composer';
 
 export function Chat({
   thread,
@@ -174,6 +169,7 @@ export function Chat({
   const [source, setSource] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
+  const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [running, setRunning] = useState(false);
@@ -815,6 +811,7 @@ export function Chat({
       <div className="chat-transcript" ref={transcript}>
         {!visible.length && (
           <div className="chat-welcome">
+            <Mascot avatar={dot.avatar} name={dot.name} state={mascotState} />
             <h1>Par où commencer ?</h1>
             <p>{dot.instructions}</p>
           </div>
@@ -1025,37 +1022,25 @@ export function Chat({
           ${session.cost.toFixed(4).replace('.', ',')}
         </span>
       </div>
-      <form
-        className="chat-composer"
-        onSubmit={(e) => {
-          e.preventDefault();
+      <Composer
+        text={draft}
+        onTextChange={setDraft}
+        placeholder={`Demander à ${dot.name}`}
+        inputAriaLabel="Message your Dot"
+        canSubmitOnEnter={!!draft.trim() && loaded && contextReady && !paused}
+        onSubmit={() => {
           void send(`${source ? `From ${source}:\n\n` : ''}${draft}`);
         }}
-      >
-        {sourceOpen && (
-          <div className="source-input">
-            <Link2 size={15} />
-            <input
-              aria-label="Source page URL"
-              type="url"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder="https://example.com/page"
-            />
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Remove source"
-              onClick={() => {
-                setSourceOpen(false);
-                setSource('');
-              }}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-        {composerToolsOpen && (
+        submitDisabled={!draft.trim() || !loaded || !contextReady || paused}
+        submitTitle={running ? 'Mettre en file' : 'Envoyer'}
+        submitAriaLabel={running ? 'Queue message' : 'Send message'}
+        sourceOpen={sourceOpen}
+        onToggleSource={() => setSourceOpen((open) => !open)}
+        source={source}
+        onSourceChange={setSource}
+        menuOpen={composerToolsOpen}
+        onToggleMenu={() => setComposerToolsOpen((open) => !open)}
+        menu={
           <ComposerMenu
             dots={dots ?? []}
             activeDotId={dot.id}
@@ -1070,126 +1055,62 @@ export function Chat({
             onCreateDot={onCreateDot}
             onClose={() => setComposerToolsOpen(false)}
           />
-        )}
-        <div className="chat-compose-row">
-          <textarea
-            aria-label="Message your Dot"
-            placeholder={`Demander à ${dot.name}`}
-            rows={1}
-            value={draft}
-            maxLength={4000}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (shouldSubmitComposerOnKeyDown(e)) {
-                e.preventDefault();
-                e.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
-          <div className="chat-compose-tools">
-            <button
-              type="button"
-              className={`icon-button ${composerToolsOpen ? 'active' : ''}`}
-              aria-label="Ouvrir les outils du composer"
-              title="Ajouter"
-              aria-expanded={composerToolsOpen}
-              onClick={() => setComposerToolsOpen((open) => !open)}
-            >
-              <Plus size={17} />
-            </button>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Add source page link"
-              title="Ajouter une page web"
-              onClick={() => setSourceOpen(!sourceOpen)}
-            >
-              <Link2 size={17} />
-            </button>
-            {models.providers.length > 0 && (
-              <select
-                className="model-select"
-                aria-label="Model for this Dot"
-                title="Modèle pour ce Dot"
-                value={modelValue}
-                onChange={async (e) => {
-                  const parsed = parseModelKey(e.target.value);
-                  setModelError('');
-                  try {
-                    await api(
-                      `/dots/${dot.id}/model`,
-                      'PUT',
-                      parsed ?? { model: null },
-                    );
-                    onSaved();
-                  } catch (err) {
-                    setModelError(
-                      err instanceof Error
-                        ? err.message
-                        : 'Could not change model.',
-                    );
-                  }
-                }}
-              >
-                <option value="">
-                  {defaultModelLabel
-                    ? `Défaut (${defaultModelLabel})`
-                    : 'Défaut'}
-                </option>
-                {models.providers.map((provider) => (
-                  <optgroup
-                    key={provider.id}
-                    label={`${provider.label}${
-                      provider.configured ? '' : ' (non configuré)'
-                    }`}
-                  >
-                    {provider.models.map((id) => (
-                      <option key={id} value={modelKey(provider.id, id)}>
-                        {id}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            )}
-            <button
-              type="button"
-              className={`icon-button reasoning-button ${
-                reasoningEffort && reasoningEffort !== 'none' ? 'active' : ''
-              }`}
-              aria-label={`Réflexion : ${reasoningLabel}`}
-              title={`Réflexion : ${reasoningLabel} — cliquez pour changer`}
-              onClick={() => void cycleReasoning()}
-              disabled={reasoningBusy}
-            >
-              <Brain size={17} />
-            </button>
-            {running && (
+        }
+        promptMenuOpen={promptMenuOpen}
+        onTogglePromptMenu={() => {
+          setComposerToolsOpen(false);
+          setPromptMenuOpen((open) => !open);
+        }}
+        promptMenu={
+          <div className="welcome-prompt-menu">
+            {[
+              'Aide-moi à réfléchir à cette idée',
+              'Fais une recherche sur cette page',
+              'Propose-moi un plan d’action',
+            ].map((suggestion) => (
               <button
                 type="button"
-                className="send-button stop"
-                aria-label="Stop response"
-                title="Arrêter la réponse"
-                onClick={() => copilotkit.stopAgent({ agent })}
+                key={suggestion}
+                onClick={() => {
+                  setDraft(suggestion);
+                  setPromptMenuOpen(false);
+                }}
               >
-                <Square size={16} />
+                {suggestion}
               </button>
-            )}
-            <button
-              className="send-button"
-              aria-label={running ? 'Queue message' : 'Send message'}
-              title={running ? 'Mettre en file' : 'Envoyer'}
-              disabled={!draft.trim() || !loaded || !contextReady || paused}
-            >
-              <ArrowUp size={19} />
-            </button>
+            ))}
           </div>
-        </div>
-        <div className="chat-compose-note">
-          {dot.name} · {selectedModel || 'défaut'}
-          {paused ? ' · en pause' : ''}
-        </div>
-      </form>
+        }
+        dotId={dot.id}
+        modelValue={modelValue}
+        modelOptions={models}
+        defaultModelLabel={defaultModelLabel}
+        onModelSaved={onSaved}
+        onModelError={setModelError}
+        reasoningEffort={reasoningEffort}
+        reasoningLabel={reasoningLabel}
+        onCycleReasoning={cycleReasoning}
+        reasoningDisabled={reasoningBusy}
+        stopButton={
+          running ? (
+            <button
+              type="button"
+              className="send-button stop"
+              aria-label="Stop response"
+              title="Arrêter la réponse"
+              onClick={() => copilotkit.stopAgent({ agent })}
+            >
+              <Square size={16} />
+            </button>
+          ) : undefined
+        }
+        note={
+          <>
+            {dot.name} · {selectedModel || 'défaut'}
+            {paused ? ' · en pause' : ''}
+          </>
+        }
+      />
       <InterventionStage
         open={stageOpen}
         onClose={() => setStageOpen(false)}
