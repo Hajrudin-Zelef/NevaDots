@@ -8,6 +8,7 @@ import './tokens.css';
 import './refonte.css';
 import './refonte-ocean.css';
 import './motion.css';
+import './premium.css';
 import './responsive.css';
 import { initRipple } from './ripple';
 import { watchSystemTheme } from './theme';

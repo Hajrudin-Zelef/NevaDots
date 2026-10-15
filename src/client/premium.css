@@ -1,0 +1,219 @@
+/* NevaDots — premium UI foundations (UI-1).
+   Additif : ce fichier ne modifie aucun fichier existant. Importé APRÈS
+   refonte.css / motion.css et AVANT responsive.css (cf. main.tsx).
+   Le thème sombre est généré au build par le plugin PostCSS dark-theme
+   (flip OKLab) : définir les couleurs claires ici, la variante sombre suit. */
+
+:root {
+  /* Rayons */
+  --p-radius-sm: 8px;
+  --p-radius-md: 12px;
+  --p-radius-lg: 16px;
+  --p-radius-pill: 999px;
+
+  /* Ombres */
+  --p-shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.05);
+  --p-shadow-pop: 0 8px 28px rgb(0 0 0 / 0.1);
+  --p-shadow-btn: 0 1px 2px rgb(34 197 94 / 0.4);
+
+  /* Vert premium (aligne sur --nd-accent, défaut vert) */
+  --p-green: #22c55e;
+  --p-green-dark: #16a34a;
+  --p-green-deep: #15803d;
+  --p-green-soft: #dcfce7;
+  --p-green-softer: #f0fdf4;
+
+  /* Texte */
+  --p-text-strong: #111111;
+  --p-text: #242424;
+  --p-text-muted: #6b7280;
+  --p-text-faint: #9ca3af;
+
+  /* Transitions premium (respectent prefers-reduced-motion via motion.css) */
+  --p-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --p-speed: 0.18s;
+}
+
+/* --- Carte premium --- */
+.p-card {
+  background: var(--nd-bg);
+  border: 1px solid var(--nd-border);
+  border-radius: var(--p-radius-md);
+  box-shadow: var(--p-shadow-card);
+  padding: 20px;
+}
+.p-card + .p-card {
+  margin-top: 16px;
+}
+.p-card h3,
+.p-card .p-card-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--p-text-strong);
+}
+.p-card .muted,
+.p-card small.muted {
+  color: var(--p-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* --- Bouton primaire premium (vert, pleine largeur) --- */
+.p-btn-primary {
+  display: block;
+  width: 100%;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: var(--p-radius-sm);
+  background: var(--p-green);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--p-shadow-btn);
+  transition:
+    background var(--p-speed) var(--p-ease),
+    transform var(--p-speed) var(--p-ease),
+    box-shadow var(--p-speed) var(--p-ease);
+}
+.p-btn-primary:hover:not(:disabled) {
+  background: var(--p-green-dark);
+  transform: translateY(-1px);
+}
+.p-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+.p-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* --- Segmented premium : pastille active verte --- */
+.segmented {
+  border-radius: var(--p-radius-sm);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.04);
+}
+.segmented span {
+  font-weight: 500;
+  transition:
+    background var(--p-speed) var(--p-ease),
+    color var(--p-speed) var(--p-ease);
+}
+.segmented input:checked + span {
+  background: var(--p-green);
+  color: #ffffff;
+  box-shadow: var(--p-shadow-btn);
+}
+.segmented input:focus-visible + span {
+  outline: 2px solid var(--p-green-dark);
+  outline-offset: 2px;
+}
+
+/* --- Pastilles de couleur d'accent --- */
+.p-color-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    transform var(--p-speed) var(--p-ease),
+    border-color var(--p-speed) var(--p-ease),
+    box-shadow var(--p-speed) var(--p-ease);
+}
+.p-color-dot:hover {
+  transform: scale(1.12);
+}
+.p-color-dot[aria-pressed='true'],
+.p-color-dot.selected {
+  border-color: var(--p-text-strong);
+  box-shadow:
+    0 0 0 2px var(--nd-bg),
+    0 0 0 4px var(--p-text-strong);
+}
+.p-color-dot:focus-visible {
+  outline: 2px solid var(--p-green-dark);
+  outline-offset: 2px;
+}
+
+/* --- Checkbox premium (verte) --- */
+.p-check {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 1.5px solid var(--nd-border);
+  border-radius: 6px;
+  background: var(--nd-bg);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition:
+    background var(--p-speed) var(--p-ease),
+    border-color var(--p-speed) var(--p-ease);
+}
+.p-check:checked {
+  background: var(--p-green);
+  border-color: var(--p-green);
+}
+.p-check:checked::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  border: solid #ffffff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+.p-check:focus-visible {
+  outline: 2px solid var(--p-green-dark);
+  outline-offset: 2px;
+}
+
+/* --- Champs premium --- */
+.p-input,
+.p-select,
+.p-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--nd-border);
+  border-radius: var(--p-radius-sm);
+  background: var(--nd-bg-input);
+  color: var(--nd-text);
+  font-size: 14px;
+  transition:
+    border-color var(--p-speed) var(--p-ease),
+    box-shadow var(--p-speed) var(--p-ease);
+}
+.p-input:hover,
+.p-select:hover,
+.p-textarea:hover {
+  border-color: var(--p-text-faint);
+}
+.p-input:focus,
+.p-select:focus,
+.p-textarea:focus {
+  outline: none;
+  border-color: var(--p-green);
+  box-shadow: 0 0 0 3px rgb(34 197 94 / 0.15);
+}
+
+/* --- Nav paramètres : pastille active verte (parité mockup) --- */
+.settings-nav-item.active {
+  background: var(--p-green-soft);
+  color: var(--p-green-deep);
+}
+
+/* --- Focus visible global (détail top 1 %) --- */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--p-green-dark);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
