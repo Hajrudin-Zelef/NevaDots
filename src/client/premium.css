@@ -514,8 +514,10 @@ a:focus-visible,
   font-weight: 600;
 }
 
-/* Onglets Brief / Navigateur du panneau résultat */
-.pane-tabs .selected {
+/* Onglets Brief / Navigateur du panneau résultat.
+   Préfixe .template-app requis : style.css définit .template-app .pane-tabs
+   .selected (spécificité 0,3,0) qui écraserait .pane-tabs .selected (0,2,0). */
+.template-app .pane-tabs .selected {
   background: var(--p-green-soft);
   color: var(--p-green-deep);
   font-weight: 600;
