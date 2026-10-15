@@ -489,7 +489,24 @@ export function ApiProvidersPanel() {
             )}
           </div>
           {catalogLoading && (
-            <p className="config-note">Chargement des modèles…</p>
+            <div
+              className="motion-skeleton-row"
+              role="status"
+              aria-label="Chargement des modèles…"
+            >
+              <div
+                className="motion-skeleton motion-skeleton-line"
+                style={{ width: '60%' }}
+              />
+              <div
+                className="motion-skeleton motion-skeleton-line"
+                style={{ width: '85%' }}
+              />
+              <div
+                className="motion-skeleton motion-skeleton-line"
+                style={{ width: '70%' }}
+              />
+            </div>
           )}
           {catalog?.error && (
             <p className="config-note">

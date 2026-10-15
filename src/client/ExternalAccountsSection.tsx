@@ -227,6 +227,7 @@ function Logo({ id }: { id: string }) {
  */
 export function ExternalAccountsSection() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [favs, setFavs] = useState<string[]>(loadFavs);
   const [names, setNames] = useState<Record<string, string>>(loadNames);
   const [formId, setFormId] = useState<string | null>(null);
@@ -243,12 +244,16 @@ export function ExternalAccountsSection() {
 
   const load = () => {
     void api<{ connectors: Connector[] }>('/external-accounts')
-      .then((value) => setConnectors(value.connectors))
-      .catch((cause) =>
+      .then((value) => {
+        setConnectors(value.connectors);
+        setLoaded(true);
+      })
+      .catch((cause) => {
+        setLoaded(true);
         setError(
           cause instanceof Error ? cause.message : 'Chargement impossible.',
-        ),
-      );
+        );
+      });
   };
   useEffect(() => {
     load();
@@ -571,7 +576,19 @@ export function ExternalAccountsSection() {
       )}
 
       <h4 className="external-section-title">Disponibles</h4>
-      <div className="external-grid">{available.map(renderCard)}</div>
+      {!loaded ? (
+        <div
+          className="external-grid"
+          role="status"
+          aria-label="Chargement des connecteurs…"
+        >
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="motion-skeleton motion-skeleton-card" />
+          ))}
+        </div>
+      ) : (
+        <div className="external-grid">{available.map(renderCard)}</div>
+      )}
 
       <div className="external-account">
         <div className="external-account-head">

@@ -280,3 +280,57 @@ html[data-motion='off'] .external-account:hover,
 html[data-motion='off'] .icon-button:hover:not(:disabled) {
   transform: none;
 }
+
+/* ---- Phase 3 : streaming & reasoning -------------------------------------- */
+/* .tok already runs on the signature curve (tok-in) — kept as is. */
+.reasoning-overlay {
+  animation: motion-fade var(--motion-fast) ease-out;
+}
+.reasoning-panel {
+  animation: motion-fade-rise var(--motion-base) var(--motion-ease);
+}
+
+/* ---- Phase 4 : shimmer skeletons ------------------------------------------ */
+.motion-skeleton {
+  border-radius: 8px;
+  background: linear-gradient(
+    100deg,
+    var(--nd-border-light, #f0f0f0) 40%,
+    var(--nd-bg-hover, #e8e8e8) 50%,
+    var(--nd-border-light, #f0f0f0) 60%
+  );
+  background-size: 200% 100%;
+  animation: motion-shimmer 1.4s linear infinite;
+}
+.motion-skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.motion-skeleton-line {
+  height: 14px;
+}
+.motion-skeleton-card {
+  height: 76px;
+  border-radius: 10px;
+}
+
+/* ---- Phase 5 : polish ------------------------------------------------------
+   Existing loaders (spinners, Marex) keep linear rotation — correct as is,
+   no changes. This section only carries the kill rules for the Phase 3+4
+   additions, per the 0-bis convention. */
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-overlay,
+  .reasoning-panel,
+  .motion-skeleton {
+    animation: none;
+  }
+}
+html[data-motion='reduced'] .reasoning-overlay,
+html[data-motion='reduced'] .reasoning-panel,
+html[data-motion='reduced'] .motion-skeleton,
+html[data-motion='off'] .reasoning-overlay,
+html[data-motion='off'] .reasoning-panel,
+html[data-motion='off'] .motion-skeleton {
+  animation: none;
+}
