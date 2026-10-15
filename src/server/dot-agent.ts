@@ -49,6 +49,7 @@ import {
 import { stepLabelForTool } from './agent-steps.js';
 import { buildSystemPrompt } from './agent-prompt.js';
 import { injectAttachedImages } from './attached-images.js';
+import { screenshotMiddleware } from './screenshot-middleware.js';
 const channelError = () => ({
   type: EventType.RUN_ERROR,
   message:
@@ -659,6 +660,8 @@ export class DotAgent extends AbstractAgent {
                 reasoning_effort: dot.reasoningEffort ?? 'none',
               },
               agentLoopStrategy: maxIterations(5),
+              // Phase 5a : injecte les screenshots computer comme images.
+              middleware: [screenshotMiddleware(dot.id)],
               tools: [
                 ...tanstackTools(serverTools),
                 ...connected,
