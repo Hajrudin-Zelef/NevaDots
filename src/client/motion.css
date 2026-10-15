@@ -1,0 +1,100 @@
+/* ==========================================================================
+   motion.css — NevaDots motion system
+   --------------------------------------------------------------------------
+   Tar 1 : Phase 0 (fondations) + Phase 0-bis (préférence motion).
+   Pure CSS, zero dependency. Golden rules:
+   - Only `transform` and `opacity` are animated (GPU compositing, 60fps).
+   - Enter-only: elements animate on mount, never on unmount.
+   - Additive classes with low specificity; layout, colors and responsive
+     rules are never overridden. `responsive.css` stays last and keeps winning.
+   ========================================================================== */
+
+/* ---- Phase 0 : foundations ---------------------------------------------- */
+:root {
+  /* Signature easing — same curve as the streaming tokens (tok-in). */
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-instant: 120ms;
+  --motion-fast: 180ms;
+  --motion-base: 300ms;
+  --motion-slow: 480ms;
+}
+
+/* Shared keyframes. Applied by later phases; defined once here. */
+@keyframes motion-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes motion-fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes motion-fade-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.965) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes motion-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes motion-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---- Phase 0-bis : motion preference ------------------------------------
+   `data-motion` is set pre-paint from localStorage (`nevadots-motion`) by
+   applyMotionPreference() in main.tsx. Values: full (default) | reduced | off.
+   Convention for later phases: every motion-system animation also gets a
+   data-motion kill rule next to its prefers-reduced-motion rule. */
+
+/* Live animations already covered from Tar 1: */
+html[data-motion='reduced'] .tok,
+html[data-motion='off'] .tok {
+  animation: none;
+}
+
+/* Explicit "off": the user asked for stillness. Durations collapse instead of
+   `animation: none` so animationend listeners (if any) still fire. */
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* System reduced-motion keeps working alongside the manual preference. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-instant: 0.01ms;
+    --motion-fast: 0.01ms;
+    --motion-base: 0.01ms;
+    --motion-slow: 0.01ms;
+  }
+}

@@ -30,6 +30,11 @@ import {
   themePreference,
   type ThemePreference,
 } from './theme';
+import {
+  motionPreference,
+  setMotionPreference,
+  type MotionPreference,
+} from './motion-pref';
 export type Dialog =
   | { type: 'space' }
   | { type: 'dot'; dot?: Dot; spaceId: string }
@@ -113,6 +118,7 @@ export function WorkspaceDialog({
   const [error, setError] = useState('');
   const [theme, setTheme] = useState(themePreference);
   const [palette, setPalette] = useState(palettePreference);
+  const [motion, setMotion] = useState(motionPreference);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
   const [models, setModels] = useState<ModelsResponse>({
     default: null,
@@ -597,6 +603,36 @@ export function WorkspaceDialog({
                     </div>
                     <p className="muted">
                       Mémorisé dans ce navigateur · Système suit l’appareil.
+                    </p>
+                    <div
+                      className="segmented"
+                      role="radiogroup"
+                      aria-label="Effets d'animation"
+                    >
+                      {(
+                        [
+                          ['full', 'Complets'],
+                          ['reduced', 'Réduits'],
+                          ['off', 'Désactivés'],
+                        ] as [MotionPreference, string][]
+                      ).map(([option, label]) => (
+                        <label key={option}>
+                          <input
+                            type="radio"
+                            name="motion"
+                            value={option}
+                            checked={motion === option}
+                            onChange={() => {
+                              setMotion(option);
+                              setMotionPreference(option);
+                            }}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="muted">
+                      Animations de l’interface · Mémorisé dans ce navigateur.
                     </p>
                     <div
                       className="palette-swatches"

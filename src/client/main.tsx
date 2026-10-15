@@ -7,10 +7,13 @@ import './editor.css';
 import './tokens.css';
 import './refonte.css';
 import './refonte-ocean.css';
+import './motion.css';
 import './responsive.css';
 import { initRipple } from './ripple';
 import { watchSystemTheme } from './theme';
+import { applyMotionPreference } from './motion-pref';
 watchSystemTheme();
+applyMotionPreference();
 initRipple();
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
