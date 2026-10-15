@@ -614,3 +614,46 @@ a:focus-visible,
   padding: 48px 24px;
   color: var(--p-text-muted);
 }
+
+/* ================= UI-5 — Dark mode + polish final ================= */
+/* Le flip OKLab génère les variantes sombres (vérifié au build) :
+   --p-green-soft #dcfce7 → #13281c, --p-green-deep #15803d → #509d63,
+   texte blanc sur vert → #f2f2f2. Retouches et détails top 1 % ci-dessous. */
+
+/* Sélection de texte premium */
+::selection {
+  background: var(--p-green);
+  color: #ffffff;
+}
+
+/* Barres de défilement discrètes */
+.template-app .sidebar-list::-webkit-scrollbar,
+.settings-modal .settings-body::-webkit-scrollbar {
+  width: 8px;
+}
+.template-app .sidebar-list::-webkit-scrollbar-thumb,
+.settings-modal .settings-body::-webkit-scrollbar-thumb {
+  background: var(--nd-border);
+  border-radius: var(--p-radius-pill);
+}
+.template-app .sidebar-list::-webkit-scrollbar-thumb:hover,
+.settings-modal .settings-body::-webkit-scrollbar-thumb:hover {
+  background: var(--p-text-faint);
+}
+
+/* Sombre : cartes et ombres adoucies */
+:root[data-theme='dark'] {
+  --p-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+  --p-shadow-pop: 0 8px 28px rgb(0 0 0 / 0.4);
+  --p-shadow-btn: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+
+/* Sombre : pastilles actives lisibles */
+:root[data-theme='dark'] .template-app .module-button.active,
+:root[data-theme='dark'] .template-app .dot-nav.active,
+:root[data-theme='dark'] .template-app .nav-item.sidebar-activity.active,
+:root[data-theme='dark'] .settings-nav-item.active,
+:root[data-theme='dark'] .pane-tabs .selected {
+  background: var(--p-green-soft);
+  color: var(--p-green-deep);
+}
