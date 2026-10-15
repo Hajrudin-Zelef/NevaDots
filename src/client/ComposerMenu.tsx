@@ -25,6 +25,8 @@ export function ComposerMenu({
   onAddFiles,
   onAddFolder,
   onClose,
+  contextBudget,
+  onContextBudget,
 }: {
   dots: Dot[];
   activeDotId?: string;
@@ -38,6 +40,9 @@ export function ComposerMenu({
   onAddFiles?: () => void;
   onAddFolder?: () => void;
   onClose: () => void;
+  /** Phase 6 : budget de contexte du Dot actif (null = Max/agentique). */
+  contextBudget?: number | null;
+  onContextBudget?: (budget: number | null) => void;
 }) {
   const run = (action: () => void) => () => {
     onClose();
@@ -84,6 +89,30 @@ export function ComposerMenu({
               onClick={run(() => onChooseDot(item))}
             >
               {item.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {onContextBudget && (
+        <div className="composer-menu-group">
+          <span className="composer-menu-label">Contexte</span>
+          {(
+            [
+              { label: '8K', value: 8192 },
+              { label: '16K', value: 16384 },
+              { label: '32K', value: 32768 },
+              { label: 'Max (agentique)', value: null },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              className={
+                (contextBudget ?? null) === option.value ? 'active' : undefined
+              }
+              onClick={run(() => onContextBudget(option.value))}
+            >
+              {option.label}
             </button>
           ))}
         </div>

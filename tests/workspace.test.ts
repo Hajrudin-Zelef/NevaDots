@@ -54,3 +54,16 @@ it('migrates legacy Space ownership once and never restores revoked access on re
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it('persists the per-dot context budget (phase 6)', () => {
+  const store = new WorkspaceStore(':memory:', 'owner');
+  const space = store.createSpace('Design', 'Design decisions');
+  const dot = store.createDot(space.id, 'Scout', 'Be concise', false, true);
+  expect(store.dot(dot.id)?.contextBudget ?? null).toBeNull();
+  store.setDotContextBudget(dot.id, 16384);
+  expect(store.dot(dot.id)?.contextBudget).toBe(16384);
+  store.setDotContextBudget(dot.id, null);
+  expect(store.dot(dot.id)?.contextBudget ?? null).toBeNull();
+  expect(() => store.setDotContextBudget('missing', 8192)).toThrow();
+  store.close();
+});

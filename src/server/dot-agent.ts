@@ -604,7 +604,11 @@ export class DotAgent extends AbstractAgent {
                 model,
                 apiKey: apiKey ?? '',
                 baseUrl,
-                contextWindow: this.config.contextWindow ?? 128000,
+                // Phase 6 : budget par Dot (chat général 8K–32K) ;
+                // null = agentique → contexte natif maximal (256K+).
+                contextWindow:
+                  dot.contextBudget ??
+                  Math.max(this.config.contextWindow ?? 0, 256000),
                 fetchImpl: previousFetch,
                 signal: ctx.abortSignal,
               },

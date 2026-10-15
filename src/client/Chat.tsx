@@ -1088,6 +1088,19 @@ export function Chat({
             onAddFiles={() => attachmentBar.current?.openFilesPicker()}
             onAddFolder={() => attachmentBar.current?.openFolderPicker()}
             onClose={() => setComposerToolsOpen(false)}
+            contextBudget={dot.contextBudget ?? null}
+            onContextBudget={async (budget) => {
+              try {
+                await api(`/dots/${dot.id}/context-budget`, 'PUT', { budget });
+                onSaved();
+              } catch (cause) {
+                setModelError(
+                  cause instanceof Error
+                    ? cause.message
+                    : 'Budget de contexte non enregistré.',
+                );
+              }
+            }}
           />
         }
         promptMenuOpen={promptMenuOpen}

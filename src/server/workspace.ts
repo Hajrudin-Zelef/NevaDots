@@ -34,6 +34,7 @@ export class WorkspaceStore {
       ['dots', 'model', 'TEXT'],
       ['dots', 'reasoningEffort', 'TEXT'],
       ['dots', 'avatar', 'TEXT'],
+      ['dots', 'contextBudget', 'INTEGER'],
       ['thread_bindings', 'learningContainerId', 'TEXT'],
       ['thread_bindings', 'updatedAt', 'INTEGER'],
       ['thread_bindings', 'summary', 'TEXT'],
@@ -165,6 +166,14 @@ export class WorkspaceStore {
     this.db
       .prepare('UPDATE dots SET reasoningEffort=? WHERE id=?')
       .run(effort, id);
+    return this.dot(id)!;
+  }
+  /** Phase 6 : budget de contexte par Dot (null = Max/agentique). */
+  setDotContextBudget(id: string, budget: number | null): Dot {
+    if (!this.dot(id)) throw new Error('Dot not found.');
+    this.db
+      .prepare('UPDATE dots SET contextBudget=? WHERE id=?')
+      .run(budget, id);
     return this.dot(id)!;
   }
   setDotAvatar(id: string, avatar: string | null): Dot {

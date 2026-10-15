@@ -418,6 +418,26 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       platform.workspace.setDotReasoning(c.req.param('id'), data.data.effort),
     );
   });
+  // Phase 6 : budget de contexte par Dot (null = Max/agentique).
+  app.put('/dots/:id/context-budget', async (c) => {
+    const data = z
+      .object({
+        budget: z
+          .union([z.literal(8192), z.literal(16384), z.literal(32768)])
+          .nullable(),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success) return c.json({ error: 'Invalid context budget.' }, 400);
+    if (!platform.workspace.dot(c.req.param('id')))
+      return c.json({ error: 'Dot not found.' }, 404);
+    return c.json(
+      platform.workspace.setDotContextBudget(
+        c.req.param('id'),
+        data.data.budget,
+      ),
+    );
+  });
   app.put('/dots/:id/avatar', async (c) => {
     const data = z
       .object({

@@ -103,6 +103,11 @@ export interface Dot {
    * Avatar id (see `AVATAR_IDS` in `./avatars`); null = identity-derived.
    */
   avatar?: string | null;
+  /**
+   * Budget de contexte en tokens (phase 6) : 8192/16384/32768 pour le chat
+   * général ; null/undefined = Max (agentique, contexte natif maximal).
+   */
+  contextBudget?: number | null;
 }
 export interface Conversation {
   id: string;

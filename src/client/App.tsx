@@ -1053,6 +1053,13 @@ export function App() {
                           attachmentBar.current?.openFolderPicker()
                         }
                         onClose={() => setComposerToolsOpen(false)}
+                        contextBudget={dot.contextBudget ?? null}
+                        onContextBudget={async (budget) => {
+                          await api(`/dots/${dot.id}/context-budget`, 'PUT', {
+                            budget,
+                          });
+                          await refresh();
+                        }}
                       />
                     }
                     promptMenuOpen={promptMenuOpen}

@@ -31,7 +31,7 @@ export interface CompactionResult {
   reason?: string;
 }
 
-const TRIGGER_FRAC = 0.75;
+const TRIGGER_FRAC = 0.5;
 const KEEP_TAIL_FRAC = 0.2;
 const SUMMARY_MAX_TOKENS = 1200;
 const MIN_REDUCTION = 0.2;
@@ -39,7 +39,10 @@ const SUMMARY_INPUT_CHARS = 24_000;
 const COMPACTED_MARKER = '[CONTEXT COMPACTED]';
 
 // Reuse a summary for an identical head+torso prefix across turns.
-const summaryCache = new Map<string, { summary: string; archivedIds: string[] }>();
+const summaryCache = new Map<
+  string,
+  { summary: string; archivedIds: string[] }
+>();
 const MAX_CACHE = 50;
 
 function textOf(message: ChatMessage): string {
@@ -102,7 +105,12 @@ export async function compactMessages(
   while (head < messages.length && isLeadingContext(messages[head])) head += 1;
   const start = tailStart(messages, deps.contextWindow * KEEP_TAIL_FRAC);
   if (start <= head)
-    return { messages, compacted: false, archivedIds: [], reason: 'nothing to compact' };
+    return {
+      messages,
+      compacted: false,
+      archivedIds: [],
+      reason: 'nothing to compact',
+    };
 
   const torso = messages.slice(head, start);
   const tail = messages.slice(start);
@@ -131,10 +139,20 @@ export async function compactMessages(
     try {
       summary = await summarize(torsoText.slice(0, SUMMARY_INPUT_CHARS), deps);
     } catch {
-      return { messages, compacted: false, archivedIds: [], reason: 'summary failed' };
+      return {
+        messages,
+        compacted: false,
+        archivedIds: [],
+        reason: 'summary failed',
+      };
     }
     if (summary.length < 40)
-      return { messages, compacted: false, archivedIds: [], reason: 'empty summary' };
+      return {
+        messages,
+        compacted: false,
+        archivedIds: [],
+        reason: 'empty summary',
+      };
     summaryCache.set(cacheKey, { summary, archivedIds });
     if (summaryCache.size > MAX_CACHE) {
       const oldest = summaryCache.keys().next().value;
@@ -150,7 +168,12 @@ export async function compactMessages(
   const next = [...leading, marker, ...tail];
   const after = estimateTokens(next);
   if (after > total * (1 - MIN_REDUCTION))
-    return { messages, compacted: false, archivedIds: [], reason: 'insufficient reduction' };
+    return {
+      messages,
+      compacted: false,
+      archivedIds: [],
+      reason: 'insufficient reduction',
+    };
 
   return { messages: next, compacted: true, archivedIds };
 }
