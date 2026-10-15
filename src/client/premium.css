@@ -217,3 +217,119 @@ a:focus-visible,
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+/* ================= UI-2 — Sidebar premium ================= */
+/* Parité mockup sidebar.png : carte métriques, nav modules 2x2, bouton
+   Nouvelle conversation vert, sections Dots/Spaces/Activité/Conversations. */
+
+.template-app .sidebar {
+  background: var(--nd-bg-sidebar);
+}
+
+/* Carte métriques */
+.template-app .sb-metrics {
+  background: var(--nd-bg);
+  border: 1px solid var(--nd-border);
+  border-radius: var(--p-radius-md);
+  box-shadow: var(--p-shadow-card);
+  padding: 12px 14px;
+}
+.template-app .sb-metric {
+  padding: 4px 0;
+}
+.template-app .sb-metric-val {
+  font-weight: 600;
+  color: var(--p-text);
+}
+
+/* Nav modules 2x2 : active = pastille verte */
+.template-app .module-nav {
+  gap: 6px;
+}
+.template-app .module-button {
+  border-radius: var(--p-radius-sm);
+  font-weight: 500;
+  transition:
+    background var(--p-speed) var(--p-ease),
+    color var(--p-speed) var(--p-ease),
+    transform var(--p-speed) var(--p-ease);
+}
+.template-app .module-button:hover {
+  transform: translateY(-1px);
+}
+.template-app .module-button.active {
+  background: var(--p-green-soft);
+  color: var(--p-green-deep);
+  font-weight: 600;
+}
+.template-app .module-button.active svg {
+  color: var(--p-green-deep);
+}
+
+/* Bouton Nouvelle conversation : vert plein */
+.template-app .new-chat-button {
+  border: 0;
+  border-radius: var(--p-radius-sm);
+  background: var(--p-green);
+  min-height: 40px;
+  font-size: 14px;
+  box-shadow: var(--p-shadow-btn);
+  transition:
+    background var(--p-speed) var(--p-ease),
+    transform var(--p-speed) var(--p-ease);
+}
+.template-app .new-chat-button:hover:not(:disabled) {
+  background: var(--p-green-dark);
+  transform: translateY(-1px);
+}
+.template-app .new-chat-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Sections Dots / Spaces */
+.template-app .sidebar-list > .spaces-heading {
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  margin: 14px 0 6px;
+}
+.template-app .dot-nav {
+  border-radius: var(--p-radius-sm);
+  font-weight: 500;
+}
+.template-app .dot-nav.active {
+  background: var(--p-green-soft);
+  color: var(--p-green-deep);
+  font-weight: 600;
+}
+
+/* Activité : pastille compteur */
+.template-app .nav-item.sidebar-activity {
+  border-radius: var(--p-radius-sm);
+  font-weight: 500;
+}
+.template-app .nav-item.sidebar-activity.active {
+  background: var(--p-green-soft);
+  color: var(--p-green-deep);
+  font-weight: 600;
+}
+.template-app .nav-item.sidebar-activity small {
+  background: var(--p-green);
+  color: #ffffff;
+  border-radius: var(--p-radius-pill);
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Conversations */
+.template-app .conversation-list-label {
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+.template-app .thread-list .nav-item {
+  border-radius: var(--p-radius-sm);
+  transition: background var(--p-speed) var(--p-ease);
+}
+.template-app .thread-list .nav-item:hover {
+  background: var(--nd-bg-hover);
+}
