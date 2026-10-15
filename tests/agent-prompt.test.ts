@@ -11,6 +11,7 @@ const base = {
   dotName: 'Leo',
   instructions: 'Be helpful.',
   memories: [],
+  brainSummary: 'aucun',
   page: undefined,
   computerConfigured: false,
   connectedCount: 0,

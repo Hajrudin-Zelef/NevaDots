@@ -50,6 +50,8 @@ import { stepLabelForTool } from './agent-steps.js';
 import { buildSystemPrompt } from './agent-prompt.js';
 import { injectAttachedImages } from './attached-images.js';
 import { screenshotMiddleware } from './screenshot-middleware.js';
+import { brainTools } from './brain-tools.js';
+import { consultBrainSync } from './operator-brain.js';
 const channelError = () => ({
   type: EventType.RUN_ERROR,
   message:
@@ -446,6 +448,12 @@ export class DotAgent extends AbstractAgent {
           initialSettings.memoryAllowed && dot.memoryAllowed
             ? this.store.memories().map((memory) => memory.text)
             : [];
+        // Phase 8 (Operator natif) : consulte le cerveau au démarrage
+        // (synchrone : fichiers locaux, cf. consultBrainSync).
+        const brainSummary =
+          initialSettings.memoryAllowed && dot.memoryAllowed
+            ? consultBrainSync(memories)
+            : 'aucun';
         // --- Reasoning capture -------------------------------------------------
         // Tee the provider SSE stream for reasoning deltas and re-emit them as
         // AG-UI REASONING_* events. If the provider emits no reasoning, nothing
@@ -569,6 +577,7 @@ export class DotAgent extends AbstractAgent {
         const serverTools = [
           ...tools,
           ...pageTools(pages),
+          ...brainTools(),
           ...(computer.configured
             ? computerTools(computer, dot.id, check, controller.signal)
             : []),
@@ -586,6 +595,7 @@ export class DotAgent extends AbstractAgent {
           dotName: dot.name,
           instructions: dot.instructions,
           memories,
+          brainSummary,
           page: pageContext,
           computerConfigured: computer.configured,
           connectedCount: connected.length,
