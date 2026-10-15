@@ -4141,3 +4141,25 @@ textarea::placeholder {
     color: var(--nd-text);
   }
 }
+
+/* ---- Sidebar (app) : police en noir ---- */
+.template-app.app .sidebar {
+  color: #000;
+}
+.template-app.app .sidebar .nav-label,
+.template-app.app .sidebar .space-title,
+.template-app.app .sidebar .spaces-heading,
+.template-app.app .sidebar .conversation-list-label,
+.template-app.app .sidebar .thread-group-title,
+.template-app.app .sidebar .thread-summary,
+.template-app.app .sidebar .sidebar-empty,
+.template-app.app .sidebar .sidebar-error,
+.template-app.app .sidebar .version-badge,
+.template-app.app .sidebar .sidebar-credit,
+.template-app.app .sidebar .version,
+.template-app.app .sidebar .sidebar-profile-name,
+.template-app.app .sidebar .sb-metrics,
+.template-app.app .sidebar .dot-nav:not(.active),
+.template-app.app .sidebar .nav-item:not(.active):not(.new-chat) {
+  color: #000;
+}
