@@ -185,7 +185,7 @@ export function WorkspaceDialog({
           ? 'Make this Dot yours.'
           : 'Meet your next specialist.'
         : dialog.type === 'settings'
-          ? 'Votre espace, vos règles.'
+          ? 'Paramètres'
           : dialog.type === 'memory'
             ? 'Something to remember.'
             : 'Let your Dot keep time.';
@@ -206,8 +206,10 @@ export function WorkspaceDialog({
         >
           <X size={18} />
         </button>
-        <span className="eyebrow">NEVADOTS</span>
-        <h2 id="dialog-title">{title}</h2>
+        {dialog.type !== 'settings' && (
+          <span className="eyebrow">NEVADOTS</span>
+        )}
+        {dialog.type !== 'settings' && <h2 id="dialog-title">{title}</h2>}
         <form
           onSubmit={async (e) => {
             e.preventDefault();
@@ -539,6 +541,9 @@ export function WorkspaceDialog({
                 aria-orientation="vertical"
                 aria-label="Modules des paramètres"
               >
+                <h2 id="dialog-title" className="settings-title">
+                  {title}
+                </h2>
                 {(
                   [
                     ['appearance', 'Apparence', Palette],
@@ -909,13 +914,9 @@ export function WorkspaceDialog({
             </p>
           )}
           {dialog.type === 'settings' ? (
-            settingsTab === 'preferences' ? (
-              <button className="primary full" disabled={busy}>
+            settingsTab === 'preferences' && (
+              <button className="primary full settings-save" disabled={busy}>
                 {busy ? 'Saving…' : 'Enregistrer'}
-              </button>
-            ) : (
-              <button type="button" className="primary full" onClick={onClose}>
-                Fermer
               </button>
             )
           ) : (

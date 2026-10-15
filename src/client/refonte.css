@@ -4077,3 +4077,65 @@ textarea::placeholder {
 .muse-task-badge.completed {
   color: var(--nd-accent, #22c55e);
 }
+
+/* Phase 4 : sidebar Paramètres pleine hauteur, façon image 6 (design seul). */
+@media (min-width: 761px) {
+  .modal.settings-modal {
+    max-width: 1020px;
+    height: min(94dvh, 920px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .settings-modal form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .settings-modal .settings-layout {
+    flex: 1;
+    min-height: 0;
+    margin-top: 0;
+    gap: 0;
+    align-items: stretch;
+  }
+  .settings-modal .settings-nav {
+    width: 272px;
+    padding: 30px 18px 24px 30px;
+    gap: 5px;
+    border-right: 1px solid var(--nd-border);
+    overflow-y: auto;
+  }
+  .settings-nav .settings-title {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--nd-text);
+    margin: 0 0 18px 12px;
+  }
+  .settings-modal .settings-nav-item {
+    padding: 10px 12px;
+  }
+  .settings-modal .settings-body {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 34px 40px;
+  }
+  .settings-modal .settings-save {
+    flex: none;
+    margin: 0 40px 30px;
+  }
+}
+@media (max-width: 760px) {
+  /* Le titre suit la nav horizontale sur mobile. */
+  .settings-nav .settings-title {
+    width: 100%;
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0 0 4px 4px;
+    color: var(--nd-text);
+  }
+}
