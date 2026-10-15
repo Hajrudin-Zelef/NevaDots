@@ -27,6 +27,8 @@ export function ComposerMenu({
   onClose,
   contextBudget,
   onContextBudget,
+  compactionStrategy,
+  onCompactionStrategy,
 }: {
   dots: Dot[];
   activeDotId?: string;
@@ -43,6 +45,9 @@ export function ComposerMenu({
   /** Phase 6 : budget de contexte du Dot actif (null = Max/agentique). */
   contextBudget?: number | null;
   onContextBudget?: (budget: number | null) => void;
+  /** Phase 9 : stratégie de compaction du Dot actif (défaut : native). */
+  compactionStrategy?: 'native' | 'magic-compact' | null;
+  onCompactionStrategy?: (strategy: 'native' | 'magic-compact') => void;
 }) {
   const run = (action: () => void) => () => {
     onClose();
@@ -111,6 +116,30 @@ export function ComposerMenu({
                 (contextBudget ?? null) === option.value ? 'active' : undefined
               }
               onClick={run(() => onContextBudget(option.value))}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {onCompactionStrategy && (
+        <div className="composer-menu-group">
+          <span className="composer-menu-label">Compaction</span>
+          {(
+            [
+              { label: 'Natif', value: 'native' },
+              { label: 'Magic Compact', value: 'magic-compact' },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              className={
+                (compactionStrategy ?? 'native') === option.value
+                  ? 'active'
+                  : undefined
+              }
+              onClick={run(() => onCompactionStrategy(option.value))}
             >
               {option.label}
             </button>

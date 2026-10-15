@@ -35,6 +35,7 @@ export class WorkspaceStore {
       ['dots', 'reasoningEffort', 'TEXT'],
       ['dots', 'avatar', 'TEXT'],
       ['dots', 'contextBudget', 'INTEGER'],
+      ['dots', 'compactionStrategy', 'TEXT'],
       ['thread_bindings', 'learningContainerId', 'TEXT'],
       ['thread_bindings', 'updatedAt', 'INTEGER'],
       ['thread_bindings', 'summary', 'TEXT'],
@@ -174,6 +175,17 @@ export class WorkspaceStore {
     this.db
       .prepare('UPDATE dots SET contextBudget=? WHERE id=?')
       .run(budget, id);
+    return this.dot(id)!;
+  }
+  /** Phase 9 : stratégie de compaction par Dot (null = native). */
+  setDotCompactionStrategy(
+    id: string,
+    strategy: 'native' | 'magic-compact' | null,
+  ): Dot {
+    if (!this.dot(id)) throw new Error('Dot not found.');
+    this.db
+      .prepare('UPDATE dots SET compactionStrategy=? WHERE id=?')
+      .run(strategy, id);
     return this.dot(id)!;
   }
   setDotAvatar(id: string, avatar: string | null): Dot {

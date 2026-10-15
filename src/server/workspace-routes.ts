@@ -438,6 +438,25 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       ),
     );
   });
+  // Phase 9 : stratégie de compaction par Dot (null = native).
+  app.put('/dots/:id/compaction-strategy', async (c) => {
+    const data = z
+      .object({
+        strategy: z.enum(['native', 'magic-compact']).nullable(),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success)
+      return c.json({ error: 'Invalid compaction strategy.' }, 400);
+    if (!platform.workspace.dot(c.req.param('id')))
+      return c.json({ error: 'Dot not found.' }, 404);
+    return c.json(
+      platform.workspace.setDotCompactionStrategy(
+        c.req.param('id'),
+        data.data.strategy,
+      ),
+    );
+  });
   app.put('/dots/:id/avatar', async (c) => {
     const data = z
       .object({

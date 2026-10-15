@@ -1101,6 +1101,21 @@ export function Chat({
                 );
               }
             }}
+            compactionStrategy={dot.compactionStrategy ?? 'native'}
+            onCompactionStrategy={async (strategy) => {
+              try {
+                await api(`/dots/${dot.id}/compaction-strategy`, 'PUT', {
+                  strategy,
+                });
+                onSaved();
+              } catch (cause) {
+                setModelError(
+                  cause instanceof Error
+                    ? cause.message
+                    : 'Stratégie de compaction non enregistrée.',
+                );
+              }
+            }}
           />
         }
         promptMenuOpen={promptMenuOpen}

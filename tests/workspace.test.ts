@@ -67,3 +67,16 @@ it('persists the per-dot context budget (phase 6)', () => {
   expect(() => store.setDotContextBudget('missing', 8192)).toThrow();
   store.close();
 });
+
+it('persists the per-dot compaction strategy (phase 9)', () => {
+  const store = new WorkspaceStore(':memory:', 'owner');
+  const space = store.createSpace('Design', 'Design decisions');
+  const dot = store.createDot(space.id, 'Scout', 'Be concise', false, true);
+  expect(store.dot(dot.id)?.compactionStrategy ?? null).toBeNull();
+  store.setDotCompactionStrategy(dot.id, 'magic-compact');
+  expect(store.dot(dot.id)?.compactionStrategy).toBe('magic-compact');
+  store.setDotCompactionStrategy(dot.id, null);
+  expect(store.dot(dot.id)?.compactionStrategy ?? null).toBeNull();
+  expect(() => store.setDotCompactionStrategy('missing', 'native')).toThrow();
+  store.close();
+});

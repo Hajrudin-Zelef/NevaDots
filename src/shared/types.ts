@@ -108,6 +108,10 @@ export interface Dot {
    * général ; null/undefined = Max (agentique, contexte natif maximal).
    */
   contextBudget?: number | null;
+  /**
+   * Stratégie de compaction (phase 9) : 'native' (défaut) ou 'magic-compact'.
+   */
+  compactionStrategy?: 'native' | 'magic-compact' | null;
 }
 export interface Conversation {
   id: string;

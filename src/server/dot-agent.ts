@@ -15,6 +15,7 @@ import {
   searchArchived,
 } from './tool-archive.js';
 import { compactMessages, type ChatMessage } from './context-compaction.js';
+import { magicCompactMessages } from './magic-compaction.js';
 import { classifyModelError } from './model-errors.js';
 import { AbstractAgent } from '@ag-ui/client';
 import {
@@ -371,25 +372,34 @@ export class DotAgent extends AbstractAgent {
         // Recall tools only appear once a truncated tool result was archived in
         // an earlier turn (saves schema tokens otherwise).
         if (hasArchives(input.threadId)) {
+          const recallExecute = async ({ id }: { id: string }) => {
+            check();
+            const entry = recallArchived(id);
+            if (!entry)
+              throw new Error(
+                'Unknown or expired archive id. Read it again instead.',
+              );
+            return {
+              id: entry.id,
+              label: entry.label,
+              text: entry.text.slice(0, 20000),
+            };
+          };
           tools.push(
             defineTool({
               name: 'recall',
               description:
                 'Retrieve the full text of a tool result archived earlier because it was too large to keep in context. The id appears in a "[résultat tronqué …]" marker.',
               parameters: z.object({ id: z.string() }),
-              execute: async ({ id }) => {
-                check();
-                const entry = recallArchived(id);
-                if (!entry)
-                  throw new Error(
-                    'Unknown or expired archive id. Read it again instead.',
-                  );
-                return {
-                  id: entry.id,
-                  label: entry.label,
-                  text: entry.text.slice(0, 20000),
-                };
-              },
+              execute: recallExecute,
+            }),
+            // Phase 9 : alias Magic Compact pour le contenu omis.
+            defineTool({
+              name: 'read_omitted_content',
+              description:
+                'Retrieve omitted tool I/O archived during Magic Compact compaction. The id appears in a "[contenu omis …]" marker.',
+              parameters: z.object({ id: z.string() }),
+              execute: recallExecute,
             }),
             defineTool({
               name: 'recall_search',
@@ -607,7 +617,12 @@ export class DotAgent extends AbstractAgent {
           type: 'tanstack',
           factory: async (ctx) => {
             check();
-            const compacted = await compactMessages(
+            // Phase 9 : stratégie de compaction par Dot (défaut : native).
+            const compact =
+              dot.compactionStrategy === 'magic-compact'
+                ? magicCompactMessages
+                : compactMessages;
+            const compacted = await compact(
               ctx.input.messages as ChatMessage[],
               {
                 threadId: input.threadId,

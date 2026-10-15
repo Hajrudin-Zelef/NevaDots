@@ -1060,6 +1060,15 @@ export function App() {
                           });
                           await refresh();
                         }}
+                        compactionStrategy={dot.compactionStrategy ?? 'native'}
+                        onCompactionStrategy={async (strategy) => {
+                          await api(
+                            `/dots/${dot.id}/compaction-strategy`,
+                            'PUT',
+                            { strategy },
+                          );
+                          await refresh();
+                        }}
                       />
                     }
                     promptMenuOpen={promptMenuOpen}
