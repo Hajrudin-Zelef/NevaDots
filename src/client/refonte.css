@@ -3890,6 +3890,91 @@ textarea::placeholder {
   color: var(--nd-accent, #2563eb);
   background: var(--nd-bg-hover);
 }
+/* Phase 3 : carte de progression des étapes de l'agent. */
+.step-card {
+  margin: 8px 0;
+  border: 1px solid var(--nd-border);
+  border-radius: 10px;
+  background: var(--nd-bg-secondary, transparent);
+  overflow: hidden;
+}
+.step-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--nd-text);
+  font-size: 13px;
+}
+.step-card-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--nd-text-secondary);
+}
+.step-card.live .step-card-icon {
+  color: var(--nd-accent, #2563eb);
+}
+.step-card-title {
+  flex: 1;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.step-card-count {
+  flex: none;
+  font-size: 12px;
+  color: var(--nd-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.step-card-chevron {
+  flex: none;
+  color: var(--nd-text-secondary);
+  transition: transform 0.15s ease;
+}
+.step-card-chevron.open {
+  transform: rotate(180deg);
+}
+.step-card-list {
+  margin: 0;
+  padding: 4px 12px 10px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.step-card-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--nd-text-secondary);
+}
+.step-card-step.done {
+  color: var(--nd-text);
+}
+.step-card-step.done .step-card-step-icon {
+  color: #16a34a;
+}
+.step-card-step.running .step-card-step-icon {
+  color: var(--nd-accent, #2563eb);
+}
+.step-card-step-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.step-card-step-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .file-preview-overlay {
   position: fixed;
   inset: 0;

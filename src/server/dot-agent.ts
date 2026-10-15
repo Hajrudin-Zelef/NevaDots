@@ -17,7 +17,13 @@ import {
 import { compactMessages, type ChatMessage } from './context-compaction.js';
 import { classifyModelError } from './model-errors.js';
 import { AbstractAgent } from '@ag-ui/client';
-import { type BaseEvent, type RunAgentInput, EventType } from '@ag-ui/core';
+import {
+  type BaseEvent,
+  type RunAgentInput,
+  type ToolCallEndEvent,
+  type ToolCallStartEvent,
+  EventType,
+} from '@ag-ui/core';
 import {
   BuiltInAgent,
   type ToolDefinition,
@@ -40,6 +46,7 @@ import {
   createReasoningFetch,
   saveReasoningStats,
 } from './reasoning.js';
+import { stepLabelForTool } from './agent-steps.js';
 const channelError = () => ({
   type: EventType.RUN_ERROR,
   message:
@@ -89,6 +96,9 @@ export class DotAgent extends AbstractAgent {
       let timedOut = false;
       let finished = false;
       let configurationFailure = false;
+      // Phase 3 : associe chaque appel d'outil à son libellé d'étape
+      // (TOOL_CALL_END ne porte pas le nom de l'outil).
+      const stepLabels = new Map<string, string>();
       const observe = answerObserver((event) =>
         this.setupTelemetry?.capture(event),
       );
@@ -665,6 +675,28 @@ export class DotAgent extends AbstractAgent {
                 event.type === EventType.RUN_FINISHED
               )
                 finished = true;
+              // Phase 3 : dérive des événements d'étape des appels d'outils
+              // pour la carte de progression du transcript.
+              // (BaseEvent est un schéma passthrough : cast vers les types précis.)
+              if (event.type === EventType.TOOL_CALL_START) {
+                const start = event as ToolCallStartEvent;
+                const label = stepLabelForTool(start.toolCallName);
+                stepLabels.set(start.toolCallId, label);
+                subscriber.next({
+                  type: EventType.STEP_STARTED,
+                  stepName: label,
+                });
+              } else if (event.type === EventType.TOOL_CALL_END) {
+                const end = event as ToolCallEndEvent;
+                const label = stepLabels.get(end.toolCallId);
+                if (label) {
+                  stepLabels.delete(end.toolCallId);
+                  subscriber.next({
+                    type: EventType.STEP_FINISHED,
+                    stepName: label,
+                  });
+                }
+              }
               subscriber.next(
                 this.channel && event.type === EventType.RUN_ERROR
                   ? channelError()

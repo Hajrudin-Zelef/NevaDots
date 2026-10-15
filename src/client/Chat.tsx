@@ -50,6 +50,8 @@ import { Mascot } from './Mascot';
 import { Composer } from './Composer';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
+import { useAgentSteps } from './useAgentSteps';
+import { StepCard } from './StepCard';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
 import { CallView } from './CallView';
@@ -115,6 +117,8 @@ export function Chat({
   });
   const { copilotkit } = useCopilotKit();
   const runError = useRef('');
+  // Phase 3 : carte de progression des étapes de l'agent.
+  const { steps, history, resetSteps } = useAgentSteps(agent);
   const [pageContext, setPageContext] = useState<PageContext | null>();
   const [contextError, setContextError] = useState('');
   const [contextAttempt, setContextAttempt] = useState(0);
@@ -511,6 +515,7 @@ export function Chat({
     setError('');
     runError.current = '';
     setRunning(true);
+    resetSteps();
     agent.addMessage({
       id: crypto.randomUUID(),
       role: 'user',
@@ -823,12 +828,20 @@ export function Chat({
         <ChatTranscript
           messages={visible}
           calls={calls}
-          renderTools={(message) => (
-            <CopilotChatToolCallsView
-              message={message}
-              messages={agent.messages}
-            />
-          )}
+          renderTools={(message) => {
+            // Phase 3 : la carte de progression remplace le rendu brut
+            // pour les tours qui ont des étapes enregistrées.
+            const recorded = history.find((h) => h.messageId === message.id);
+            if (recorded) {
+              return <StepCard steps={recorded.steps} live={false} />;
+            }
+            return (
+              <CopilotChatToolCallsView
+                message={message}
+                messages={agent.messages}
+              />
+            );
+          }}
           reasoningForMessage={reasoningForMessage}
           onOpenReasoning={openReasoning}
           streaming={running}
@@ -838,14 +851,16 @@ export function Chat({
             {text}
           </div>
         ))}
-        {running && (
+        {running && steps.length > 0 ? (
+          <StepCard steps={steps} live />
+        ) : running ? (
           <div className="thinking">
             <span />
             <span />
             <span />
             <span>{dot.name} is thinking</span>
           </div>
-        )}
+        ) : null}
         <div ref={bottom} />
       </div>
       {contextError && (
