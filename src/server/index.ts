@@ -1,5 +1,6 @@
 import { webSearchProvider } from './parallel.js';
 import { createShutdown } from './shutdown.js';
+import { cleanupOrphanAttachments } from './attachment-routes.js';
 import { reportChannelFailure, safeFailure } from './slack-channel.js';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -176,6 +177,15 @@ app.get('*', serveStatic({ path: './dist/client/index.html' }));
 const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   console.log(`NevaDots template listening on http://${host}:${info.port}`);
   runner.start();
+  // Phase 2a : purge les pièces jointes orphelines (> 7 j, jamais rattachées).
+  void cleanupOrphanAttachments()
+    .then((removed) => {
+      if (removed > 0)
+        console.log(
+          `Attachments: ${removed} fichier(s) orphelin(s) supprimé(s).`,
+        );
+    })
+    .catch(() => {});
   void platform
     .start()
     .catch((error) =>

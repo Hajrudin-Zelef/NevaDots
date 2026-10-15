@@ -65,6 +65,7 @@ export const AttachmentBar = forwardRef<
               attachment={item}
               onRemove={attachments.remove}
               onPreview={setPreview}
+              onRetry={attachments.retry}
             />
           ))}
         </div>

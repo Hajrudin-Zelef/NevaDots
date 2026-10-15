@@ -3866,6 +3866,30 @@ textarea::placeholder {
   color: #dc2626;
   background: var(--nd-bg-hover);
 }
+/* Phase 2a : état d'upload des cartes de pièces jointes. */
+.file-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.file-card-status.error {
+  color: #dc2626;
+}
+.file-card-retry {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  flex: none;
+  color: var(--nd-text-secondary);
+  background: none;
+  border: 0;
+  border-left: 1px solid var(--nd-border);
+  cursor: pointer;
+}
+.file-card-retry:hover {
+  color: var(--nd-accent, #2563eb);
+  background: var(--nd-bg-hover);
+}
 .file-preview-overlay {
   position: fixed;
   inset: 0;

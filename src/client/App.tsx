@@ -45,7 +45,6 @@ import { Composer } from './Composer';
 import { ComposerMenu } from './ComposerMenu';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
-import { buildMessageWithAttachments } from './attachments';
 import { ThreadList } from './ThreadList';
 import { ResultPane } from './ResultPane';
 import { TaskRow } from './TaskPresentation';
@@ -227,7 +226,7 @@ export function App() {
   const [sourceOpen, setSourceOpen] = useState(false);
   const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
-  const attachments = useAttachments();
+  const attachments = useAttachments(`home:${selectedDot}`);
   const attachmentBar = useRef<AttachmentBarHandle>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string>();
   const [pendingVoice, setPendingVoice] = useState(false);
@@ -1008,17 +1007,12 @@ export function App() {
                     onSubmit={() => {
                       void (async () => {
                         try {
-                          const uploaded = await attachments.uploadAll();
-                          const text = buildMessageWithAttachments(
-                            prompt,
-                            uploaded,
-                          );
-                          attachments.clear();
+                          const text = await attachments.prepareSend(prompt);
                           await newConversation(
                             `${promptSource.trim() ? `From ${promptSource.trim()}:\n\n` : ''}${text}`,
                           );
                         } catch {
-                          // L'erreur d'upload est déjà affichée via attachments.error.
+                          // prepareSend a déjà signalé l'échec (fichiers en erreur).
                         }
                       })();
                     }}

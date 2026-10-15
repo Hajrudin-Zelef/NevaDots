@@ -50,7 +50,6 @@ import { Mascot } from './Mascot';
 import { Composer } from './Composer';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
-import { buildMessageWithAttachments } from './attachments';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
 import { CallView } from './CallView';
@@ -145,7 +144,7 @@ export function Chat({
   }, [thread.id, contextAttempt]);
   const [draft, setDraft] = useState('');
   const [queued, setQueued] = useState<string[]>([]);
-  const attachments = useAttachments();
+  const attachments = useAttachments(`thread:${thread.id}`);
   const attachmentBar = useRef<AttachmentBarHandle>(null);
   const [stageOpen, setStageOpen] = useState(false);
   const [notify, setNotify] = useState(
@@ -1036,12 +1035,10 @@ export function Chat({
         onSubmit={() => {
           void (async () => {
             try {
-              const uploaded = await attachments.uploadAll();
-              const text = buildMessageWithAttachments(draft, uploaded);
-              attachments.clear();
+              const text = await attachments.prepareSend(draft);
               void send(`${source ? `From ${source}:\n\n` : ''}${text}`);
             } catch {
-              // L'erreur d'upload est déjà affichée via attachments.error.
+              // prepareSend a déjà signalé l'échec (fichiers en erreur).
             }
           })();
         }}

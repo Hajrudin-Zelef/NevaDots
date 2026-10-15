@@ -1,24 +1,66 @@
-import { useRef, useState } from 'react';
-import { api } from './api';
-import type { Attachment } from './attachments';
+import { useEffect, useRef, useState } from 'react';
+import { api, authHeaders, ApiError } from './api';
+import {
+  buildMessageWithAttachments,
+  clearPendingAttachments,
+  loadPendingAttachments,
+  savePendingAttachments,
+  type Attachment,
+  type AttachmentCategory,
+} from './attachments';
 
 interface ServerAttachment {
   id: string;
   name: string;
   size: number;
   mime: string;
-  category: Attachment['category'];
+  category: AttachmentCategory;
 }
 
 /**
- * Gère les fichiers joints du composer : sélection locale, cartes,
- * upload vers le serveur à l'envoi, retrait.
+ * Upload multipart brut.
+ * Le helper api() force Content-Type: application/json et JSON.stringify()
+ * le FormData — il est inutilisable pour l'upload de fichiers.
  */
-export function useAttachments() {
+async function uploadFiles(
+  entries: { file: File; name: string }[],
+): Promise<ServerAttachment[]> {
+  const form = new FormData();
+  for (const { file, name } of entries) form.append('files', file, name);
+  const response = await fetch('/api/attachments', {
+    method: 'POST',
+    headers: { ...authHeaders() },
+    body: form,
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    attachments?: ServerAttachment[];
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new ApiError(
+      data.error ?? `Échec de l'envoi des fichiers (${response.status}).`,
+      response.status,
+    );
+  }
+  return data.attachments ?? [];
+}
+
+/**
+ * Gère les pièces jointes du composer.
+ *
+ * Phase 2a : upload immédiat en arrière-plan dès la sélection (un POST par
+ * fichier, état par carte), persistance des IDs serveur en localStorage
+ * (restauration au rechargement), marquage "rattaché" à l'envoi pour exclure
+ * les fichiers du nettoyage des orphelins côté serveur.
+ *
+ * @param scope clé d'isolation du brouillon (ex. `home:<dotId>`, `thread:<id>`).
+ */
+export function useAttachments(scope: string) {
   const [items, setItemsState] = useState<Attachment[]>([]);
   const itemsRef = useRef<Attachment[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const [restoring, setRestoring] = useState(true);
 
   const setItems = (
     next: Attachment[] | ((cur: Attachment[]) => Attachment[]),
@@ -28,130 +70,216 @@ export function useAttachments() {
     setItemsState(value);
   };
 
-  const addFiles = (files: FileList | File[]) => {
-    const list = Array.from(files);
-    if (!list.length) return;
-    setItems((current) => {
-      const next = [...current];
-      for (const file of list) {
-        // Évite les doublons (même nom + même taille).
-        if (next.some((a) => a.name === file.name && a.size === file.size))
-          continue;
-        const id = `local-${crypto.randomUUID()}`;
-        const attachment: Attachment = {
-          id,
-          name: file.name,
-          size: file.size,
-          mime: file.type || 'application/octet-stream',
-          category: guessCategory(file),
-        };
-        // Miniature locale immédiate pour les images.
-        if (attachment.category === 'image') {
-          attachment.objectUrl = URL.createObjectURL(file);
+  // Persistance : seuls les fichiers prêts (ID serveur) sont conservés.
+  useEffect(() => {
+    savePendingAttachments(scope, items);
+  }, [scope, items]);
+
+  // Restauration au montage / changement de contexte.
+  useEffect(() => {
+    let cancelled = false;
+    setRestoring(true);
+    void (async () => {
+      const stored = loadPendingAttachments(scope);
+      const revived: Attachment[] = [];
+      for (const entry of stored) {
+        try {
+          const meta = await api<ServerAttachment>(
+            `/attachments/${encodeURIComponent(entry.id)}`,
+            'GET',
+          );
+          const attachment: Attachment = {
+            id: meta.id,
+            name: meta.name,
+            size: meta.size,
+            mime: meta.mime,
+            category: meta.category,
+            status: 'ready',
+            textContent: entry.textContent,
+          };
+          // Réhydrate le contenu texte depuis le serveur si absent du cache.
+          if (
+            (meta.category === 'text' || meta.category === 'code') &&
+            !attachment.textContent
+          ) {
+            try {
+              const preview = await api<{ content: string }>(
+                `/attachments/${encodeURIComponent(meta.id)}/text`,
+                'GET',
+              );
+              attachment.textContent = preview.content;
+            } catch {
+              // Aperçu indisponible : la carte reste, sans contenu injecté.
+            }
+          }
+          revived.push(attachment);
+        } catch {
+          // ID mort (nettoyé par le sweep serveur) : abandonné silencieusement.
         }
-        // Lecture texte immédiate pour text/code (injection au modèle).
-        if (attachment.category === 'text' || attachment.category === 'code') {
-          void file
-            .text()
-            .then((text) =>
-              setItems((cur) =>
-                cur.map((a) => (a.id === id ? { ...a, textContent: text } : a)),
-              ),
-            )
-            .catch(() => {});
-        }
-        // Garde le File d'origine pour l'upload.
-        (attachment as { file?: File }).file = file;
-        next.push(attachment);
       }
-      return next;
-    });
-  };
+      if (!cancelled) {
+        itemsRef.current = revived;
+        setItemsState(revived);
+        setRestoring(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [scope]);
 
-  const remove = (id: string) => {
-    setItems((current) => {
-      const target = current.find((a) => a.id === id);
-      if (target?.objectUrl) URL.revokeObjectURL(target.objectUrl);
-      // Supprime aussi côté serveur si déjà uploadé (id non local).
-      if (target && !target.id.startsWith('local-')) {
-        void api(
-          `/attachments/${encodeURIComponent(target.id)}`,
-          'DELETE',
-          {},
-        ).catch(() => {});
-      }
-      return current.filter((a) => a.id !== id);
-    });
-  };
-
-  const clear = () => {
-    setItems((current) => {
-      for (const a of current) {
-        if (a.objectUrl) URL.revokeObjectURL(a.objectUrl);
-      }
-      return [];
-    });
-  };
-
-  /**
-   * Upload les fichiers locaux vers le serveur.
-   * Retourne les pièces jointes avec leurs ids serveur.
-   */
-  const uploadAll = async (): Promise<Attachment[]> => {
-    // Capture l'état actuel de façon synchrone via un ref miroir.
-    const snapshot = itemsRef.current;
-    const pending = snapshot.filter((a) => a.id.startsWith('local-'));
-    if (!pending.length) return snapshot;
-    setUploading(true);
-    setError('');
-    try {
-      const form = new FormData();
-      for (const a of pending) {
-        const file = (a as { file?: File }).file;
-        if (file) form.append('files', file, a.name);
-      }
-      const result = await api<{ attachments: ServerAttachment[] }>(
-        '/attachments',
-        'POST',
-        form,
-      );
-      const byName = new Map(result.attachments.map((s) => [s.name, s]));
-      const updated = snapshot.map((a) => {
-        const server = byName.get(a.name);
-        if (!server || !a.id.startsWith('local-')) return a;
+  /** Bascule une carte `local-` vers son ID serveur (upload réussi). */
+  const finalizeUpload = (localId: string, server: ServerAttachment) => {
+    setItems((cur) =>
+      cur.map((a) => {
+        if (a.id !== localId) return a;
         if (a.objectUrl) URL.revokeObjectURL(a.objectUrl);
         const {
-          file: _omit,
-          objectUrl: _omitUrl,
+          file: _file,
+          objectUrl: _url,
           ...rest
         } = a as Attachment & {
           file?: File;
         };
-        void _omit;
-        void _omitUrl;
+        void _file;
+        void _url;
         return {
           ...rest,
           id: server.id,
           mime: server.mime,
           category: server.category,
+          status: 'ready' as const,
         };
-      });
-      setItems(updated);
-      itemsRef.current = updated;
-      return updated;
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Échec de l'envoi des fichiers.",
-      );
-      throw cause;
-    } finally {
-      setUploading(false);
-    }
+      }),
+    );
   };
 
-  return { items, addFiles, remove, clear, uploadAll, uploading, error };
+  const failUpload = (localId: string) => {
+    setItems((cur) =>
+      cur.map((a) =>
+        a.id === localId ? { ...a, status: 'error' as const } : a,
+      ),
+    );
+  };
+
+  const uploadOne = (localId: string, file: File, name: string) => {
+    void uploadFiles([{ file, name }])
+      .then((servers) => {
+        const server = servers[0];
+        if (!server) throw new Error('Réponse serveur vide.');
+        finalizeUpload(localId, server);
+      })
+      .catch(() => failUpload(localId));
+  };
+
+  const addFiles = (files: FileList | File[]) => {
+    const candidates = Array.from(files).filter(
+      (file) =>
+        !itemsRef.current.some(
+          (a) => a.name === file.name && a.size === file.size,
+        ),
+    );
+    if (!candidates.length) return;
+    const fresh = candidates.map((file) => {
+      const id = `local-${crypto.randomUUID()}`;
+      const attachment: Attachment = {
+        id,
+        name: file.name,
+        size: file.size,
+        mime: file.type || 'application/octet-stream',
+        category: guessCategory(file),
+        status: 'uploading',
+      };
+      // Miniature locale immédiate pour les images.
+      if (attachment.category === 'image') {
+        attachment.objectUrl = URL.createObjectURL(file);
+      }
+      // Lecture texte immédiate pour text/code (injection au modèle).
+      if (attachment.category === 'text' || attachment.category === 'code') {
+        void file
+          .text()
+          .then((text) =>
+            setItems((cur) =>
+              cur.map((a) => (a.id === id ? { ...a, textContent: text } : a)),
+            ),
+          )
+          .catch(() => {});
+      }
+      // Garde le File d'origine pour l'upload immédiat et un éventuel réessai.
+      (attachment as { file?: File }).file = file;
+      return { id, file, attachment };
+    });
+    setItems((cur) => [...cur, ...fresh.map((f) => f.attachment)]);
+    // Upload immédiat en arrière-plan.
+    for (const { id, file } of fresh) uploadOne(id, file, file.name);
+  };
+
+  const retry = (id: string) => {
+    const target = itemsRef.current.find((a) => a.id === id);
+    const file = (target as (Attachment & { file?: File }) | undefined)?.file;
+    if (!target || !file || target.status !== 'error') return;
+    setItems((cur) =>
+      cur.map((a) =>
+        a.id === id ? { ...a, status: 'uploading' as const } : a,
+      ),
+    );
+    uploadOne(id, file, target.name);
+  };
+
+  const remove = (id: string) => {
+    const target = itemsRef.current.find((a) => a.id === id);
+    if (target?.objectUrl) URL.revokeObjectURL(target.objectUrl);
+    // Supprime aussi côté serveur si déjà uploadé (id non local).
+    if (target && !target.id.startsWith('local-')) {
+      void api(
+        `/attachments/${encodeURIComponent(target.id)}`,
+        'DELETE',
+        {},
+      ).catch(() => {});
+    }
+    setItems((cur) => cur.filter((a) => a.id !== id));
+  };
+
+  /**
+   * Prépare l'envoi : attend les uploads en cours, refuse si échec, marque
+   * les fichiers comme rattachés au message, construit le texte, vide le
+   * brouillon (local + localStorage).
+   */
+  const prepareSend = async (draft: string): Promise<string> => {
+    for (let i = 0; i < 600; i++) {
+      if (!itemsRef.current.some((a) => a.status === 'uploading')) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    const snapshot = itemsRef.current;
+    const failed = snapshot.filter((a) => a.status === 'error');
+    if (failed.length) {
+      throw new Error(
+        `Envoi impossible : ${failed.map((a) => a.name).join(', ')} n'a pas pu être téléversé.`,
+      );
+    }
+    const ready = snapshot.filter(
+      (a) => a.status === 'ready' && !a.id.startsWith('local-'),
+    );
+    if (ready.length) {
+      // Exclut les fichiers du nettoyage des orphelins (rattachés à un message).
+      void api('/attachments/mark-attached', 'POST', {
+        ids: ready.map((a) => a.id),
+      }).catch(() => {});
+    }
+    const text = buildMessageWithAttachments(draft, snapshot);
+    clearPendingAttachments(scopeRef.current);
+    // Vide l'état local sans DELETE : les fichiers sont rattachés au message.
+    setItems((cur) => {
+      for (const a of cur) if (a.objectUrl) URL.revokeObjectURL(a.objectUrl);
+      return [];
+    });
+    return text;
+  };
+
+  // `uploading` couvre aussi la restauration : pas d'envoi avant cartes stables.
+  const uploading = restoring || items.some((a) => a.status === 'uploading');
+
+  return { items, addFiles, remove, retry, prepareSend, uploading };
 }
 
 function guessCategory(file: File): Attachment['category'] {

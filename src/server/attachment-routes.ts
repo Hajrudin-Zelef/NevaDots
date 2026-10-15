@@ -16,6 +16,8 @@ export interface AttachmentMeta {
   mime: string;
   category: AttachmentCategory;
   createdAt: number;
+  /** Timestamp du rattachement à un message envoyé (exclut du sweep orphelins). */
+  attachedAt?: number;
 }
 
 const CODE_EXTENSIONS = new Set([
@@ -180,5 +182,59 @@ export function attachmentRoutes() {
     return c.json({ ok: true });
   });
 
+  // Marque des pièces jointes comme rattachées à un message envoyé.
+  // Les fichiers rattachés sont exclus du nettoyage des orphelins.
+  app.post('/attachments/mark-attached', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      ids?: unknown;
+    };
+    const ids = Array.isArray(body.ids)
+      ? body.ids.filter((id): id is string => typeof id === 'string')
+      : [];
+    const now = Date.now();
+    let marked = 0;
+    for (const id of ids) {
+      const meta = await readMeta(id);
+      if (!meta || meta.attachedAt) continue;
+      // Écrit via l'ID relu du meta (pas le paramètre brut).
+      await fs.writeFile(
+        join(attachmentDir(meta.id), 'meta.json'),
+        JSON.stringify({ ...meta, attachedAt: now }),
+      );
+      marked++;
+    }
+    return c.json({ marked });
+  });
+
   return app;
+}
+
+/**
+ * Nettoyage des orphelins (phase 2a) : supprime les pièces jointes jamais
+ * rattachées à un message et plus vieilles que `maxAgeMs` (défaut : 7 jours).
+ * Appelé au démarrage du serveur. Retourne le nombre de fichiers supprimés.
+ */
+export async function cleanupOrphanAttachments(
+  maxAgeMs = 7 * 24 * 3600 * 1000,
+): Promise<number> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(ATTACHMENTS_DIR);
+  } catch {
+    return 0;
+  }
+  const now = Date.now();
+  let removed = 0;
+  for (const entry of entries) {
+    const meta = await readMeta(entry);
+    if (!meta || meta.attachedAt) continue;
+    const createdAt = typeof meta.createdAt === 'number' ? meta.createdAt : now;
+    if (now - createdAt > maxAgeMs) {
+      await fs
+        .rm(attachmentDir(meta.id), { recursive: true, force: true })
+        .catch(() => {});
+      removed++;
+    }
+  }
+  return removed;
 }

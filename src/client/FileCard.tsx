@@ -4,6 +4,8 @@ import {
   FileText,
   FileType,
   File as FileIcon,
+  Loader2,
+  RotateCcw,
   X,
 } from 'lucide-react';
 import type { Attachment } from './attachments';
@@ -21,10 +23,12 @@ export function FileCard({
   attachment,
   onRemove,
   onPreview,
+  onRetry,
 }: {
   attachment: Attachment;
   onRemove: (id: string) => void;
   onPreview: (attachment: Attachment) => void;
+  onRetry: (id: string) => void;
 }) {
   const Icon = CATEGORY_ICON[attachment.category];
   const isImage = attachment.category === 'image';
@@ -34,6 +38,8 @@ export function FileCard({
     (isImage && !attachment.id.startsWith('local-')
       ? attachmentContentUrl(attachment.id)
       : undefined);
+  const isUploading = attachment.status === 'uploading';
+  const isError = attachment.status === 'error';
 
   return (
     <div className="file-card" role="listitem">
@@ -53,9 +59,35 @@ export function FileCard({
         )}
         <span className="file-card-meta">
           <span className="file-card-name">{attachment.name}</span>
-          <span className="file-card-size">{formatSize(attachment.size)}</span>
+          <span className="file-card-size">
+            {isUploading ? (
+              <span className="file-card-status">
+                <Loader2
+                  size={12}
+                  className="spin"
+                  aria-label="Envoi en cours"
+                />{' '}
+                Envoi…
+              </span>
+            ) : isError ? (
+              <span className="file-card-status error">Échec de l'envoi</span>
+            ) : (
+              formatSize(attachment.size)
+            )}
+          </span>
         </span>
       </button>
+      {isError && (
+        <button
+          type="button"
+          className="file-card-retry"
+          onClick={() => onRetry(attachment.id)}
+          aria-label={`Réessayer l'envoi de ${attachment.name}`}
+          title="Réessayer l'envoi"
+        >
+          <RotateCcw size={14} />
+        </button>
+      )}
       <button
         type="button"
         className="file-card-remove"
