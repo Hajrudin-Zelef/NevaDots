@@ -333,3 +333,152 @@ a:focus-visible,
 .template-app .thread-list .nav-item:hover {
   background: var(--nd-bg-hover);
 }
+
+/* ================= UI-3 — Paramètres premium ================= */
+/* Parité mockups : apparences, Avartar, deepthink, dots et spaces,
+   selecteur de modeles, reglages, Santé, a propos (+ API et Modèles,
+   Connexions : même langage, sans mockup). */
+
+/* Cartes de contenu */
+.settings-modal .config-note {
+  background: var(--nd-bg);
+  border: 1px solid var(--nd-border);
+  border-radius: var(--p-radius-md);
+  box-shadow: var(--p-shadow-card);
+  padding: 20px;
+}
+.settings-modal .config-note strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--p-text-strong);
+}
+.settings-modal .config-note p {
+  color: var(--p-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.settings-card {
+  border: 1px solid var(--nd-border) !important;
+  border-radius: var(--p-radius-md) !important;
+  box-shadow: var(--p-shadow-card);
+}
+
+/* Pastilles d'accent 32px (parité mockup) */
+.palette-swatches {
+  gap: 10px;
+}
+.palette-swatch {
+  width: 32px;
+  height: 32px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+.palette-swatch.active {
+  border-color: var(--p-text-strong);
+  box-shadow:
+    0 0 0 2px var(--nd-bg),
+    0 0 0 4px var(--p-text-strong);
+}
+.palette-swatch:focus-visible {
+  outline: 2px solid var(--p-green-dark);
+  outline-offset: 2px;
+}
+
+/* Bouton Enregistrer vert pleine largeur */
+.settings-modal .settings-save {
+  display: block;
+  width: calc(100% - 80px);
+  padding: 13px 16px;
+  border: 0;
+  border-radius: var(--p-radius-sm);
+  background: var(--p-green);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--p-shadow-btn);
+  transition:
+    background var(--p-speed) var(--p-ease),
+    transform var(--p-speed) var(--p-ease);
+}
+.settings-modal .settings-save:hover:not(:disabled) {
+  background: var(--p-green-dark);
+  transform: translateY(-1px);
+}
+.settings-modal .settings-save:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Liens Nouveau / Modifier en vert */
+.settings-modal .text-button {
+  color: var(--p-green-deep);
+  font-weight: 600;
+}
+.settings-modal .text-button:hover {
+  color: var(--p-green-dark);
+  text-decoration: underline;
+}
+
+/* Lignes Dots / Espaces */
+.settings-modal .settings-list-row {
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--nd-border);
+  font-size: 14px;
+}
+.settings-modal .settings-list-row:last-child {
+  border-bottom: 0;
+}
+.settings-modal .settings-list-head {
+  padding: 16px 4px 8px;
+}
+.settings-modal .settings-list-head strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--p-text-strong);
+}
+
+/* Checkboxes vertes (permission-row) */
+.settings-modal .permission-row input[type='checkbox'] {
+  accent-color: var(--p-green);
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.settings-modal .permission-row {
+  gap: 12px;
+  padding: 6px 0;
+}
+.settings-modal .permission-row strong {
+  font-size: 14px;
+  color: var(--p-text-strong);
+}
+
+/* Selects premium dans les panneaux */
+.settings-modal select {
+  border-radius: var(--p-radius-sm);
+  border: 1px solid var(--nd-border);
+  padding: 10px 14px;
+  font-size: 14px;
+  background: var(--nd-bg-input);
+  color: var(--nd-text);
+  transition:
+    border-color var(--p-speed) var(--p-ease),
+    box-shadow var(--p-speed) var(--p-ease);
+}
+.settings-modal select:hover {
+  border-color: var(--p-text-faint);
+}
+.settings-modal select:focus {
+  outline: none;
+  border-color: var(--p-green);
+  box-shadow: 0 0 0 3px rgb(34 197 94 / 0.15);
+}
+
+/* Titres de section */
+.settings-modal .settings-body h2,
+.settings-modal .settings-body h3 {
+  color: var(--p-text-strong);
+  letter-spacing: -0.01em;
+}
