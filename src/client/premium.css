@@ -482,3 +482,135 @@ a:focus-visible,
   color: var(--p-text-strong);
   letter-spacing: -0.01em;
 }
+
+/* ================= UI-4 — Computer premium ================= */
+/* Parité mockups : navigater dots, Fichier ordi dots, terminal ordi dots,
+   activites recent, en Bref. */
+
+/* Onglets Navigateur / Fichiers / Terminal / Activité */
+.computer-tool-tabs {
+  gap: 4px;
+  border-bottom: 1px solid var(--nd-border);
+}
+.computer-tool-tabs button {
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--p-text-muted);
+  border-bottom: 2px solid transparent;
+  border-radius: var(--p-radius-sm) var(--p-radius-sm) 0 0;
+  transition:
+    color var(--p-speed) var(--p-ease),
+    border-color var(--p-speed) var(--p-ease),
+    background var(--p-speed) var(--p-ease);
+}
+.computer-tool-tabs button:hover {
+  color: var(--p-text);
+  background: var(--nd-bg-hover);
+}
+.computer-tool-tabs button[aria-selected='true'] {
+  color: var(--p-green-deep);
+  border-bottom-color: var(--p-green);
+  font-weight: 600;
+}
+
+/* Onglets Brief / Navigateur du panneau résultat */
+.pane-tabs .selected {
+  background: var(--p-green-soft);
+  color: var(--p-green-deep);
+  font-weight: 600;
+}
+
+/* Boutons d'action computer : pills */
+.computer-actions button,
+.computer-panel button:not(.icon-button):not([role='tab']) {
+  border-radius: var(--p-radius-pill);
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--nd-border);
+  background: var(--nd-bg);
+  color: var(--p-text);
+  cursor: pointer;
+  transition:
+    background var(--p-speed) var(--p-ease),
+    border-color var(--p-speed) var(--p-ease),
+    transform var(--p-speed) var(--p-ease);
+}
+.computer-actions button:hover:not(:disabled),
+.computer-panel
+  button:not(.icon-button):not([role='tab']):hover:not(:disabled) {
+  border-color: var(--p-green);
+  color: var(--p-green-deep);
+  transform: translateY(-1px);
+}
+.computer-actions button:disabled,
+.computer-panel button:not(.icon-button):not([role='tab']):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Champs computer */
+.computer-panel input[type='text'],
+.computer-panel input:not([type]),
+.computer-panel textarea {
+  border-radius: var(--p-radius-sm);
+  border: 1px solid var(--nd-border);
+  padding: 10px 14px;
+  font-size: 14px;
+  background: var(--nd-bg-input);
+  color: var(--nd-text);
+  transition:
+    border-color var(--p-speed) var(--p-ease),
+    box-shadow var(--p-speed) var(--p-ease);
+}
+.computer-panel input[type='text']:focus,
+.computer-panel input:not([type]):focus,
+.computer-panel textarea:focus {
+  outline: none;
+  border-color: var(--p-green);
+  box-shadow: 0 0 0 3px rgb(34 197 94 / 0.15);
+}
+
+/* Sections repliables */
+.computer-panel details {
+  border: 1px solid var(--nd-border);
+  border-radius: var(--p-radius-md);
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  background: var(--nd-bg);
+}
+.computer-panel details > summary {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--p-text-strong);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+/* Liste d'activité récente */
+.computer-activity-list,
+.activity-list {
+  border: 1px solid var(--nd-border);
+  border-radius: var(--p-radius-md);
+  overflow: hidden;
+  background: var(--nd-bg);
+}
+.computer-activity-list > *,
+.activity-list > * {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--nd-border);
+  font-size: 13px;
+}
+.computer-activity-list > *:last-child,
+.activity-list > *:last-child {
+  border-bottom: 0;
+}
+
+/* Brief : état vide centré */
+.brief-empty,
+.result-pane .brief {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--p-text-muted);
+}
