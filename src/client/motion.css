@@ -238,7 +238,8 @@ select {
   }
   .settings-card:hover,
   .external-account:hover,
-  .icon-button:hover:not(:disabled) {
+  .icon-button:hover:not(:disabled),
+  .icon-button:active:not(:disabled) {
     transform: none;
   }
 }
@@ -275,9 +276,11 @@ html[data-motion='off'] select {
 html[data-motion='reduced'] .settings-card:hover,
 html[data-motion='reduced'] .external-account:hover,
 html[data-motion='reduced'] .icon-button:hover:not(:disabled),
+html[data-motion='reduced'] .icon-button:active:not(:disabled),
 html[data-motion='off'] .settings-card:hover,
 html[data-motion='off'] .external-account:hover,
-html[data-motion='off'] .icon-button:hover:not(:disabled) {
+html[data-motion='off'] .icon-button:hover:not(:disabled),
+html[data-motion='off'] .icon-button:active:not(:disabled) {
   transform: none;
 }
 
