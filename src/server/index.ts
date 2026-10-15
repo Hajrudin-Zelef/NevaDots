@@ -162,7 +162,7 @@ app.use('/*', async (c, next) => {
     path.startsWith('/assets/')
       ? 'public, max-age=31536000, immutable'
       : path.startsWith('/dots/')
-        ? 'private, max-age=300'
+        ? 'private, max-age=31536000, immutable'
         : path.startsWith('/fonts/')
           ? 'public, max-age=604800'
           : 'no-store',

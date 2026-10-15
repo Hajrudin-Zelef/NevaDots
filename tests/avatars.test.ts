@@ -3,8 +3,13 @@ import {
   AVATAR_ASSET_VERSION,
   AVATAR_FILES,
   AVATAR_IDS,
+  AVATAR_QUALITY_FPS,
+  AVATAR_QUALITY_SETTINGS,
   DEFAULT_AVATAR,
+  DEFAULT_AVATAR_QUALITY,
+  DEFAULT_AVATAR_QUALITY_SETTING,
   PROTECTED_AVATARS,
+  avatarPoster,
   avatarSrc,
   avatarStateCandidates,
   avatarStateFiles,
@@ -33,25 +38,37 @@ it('exposes only the three NevaDots Dots and the three kept classics', () => {
   expect(AVATAR_IDS).not.toContain('robot-blue');
 });
 
-it('defaults to the main Dot "leo"', () => {
+it('defaults to the main Dot "leo" and to the standard animation tier', () => {
   expect(DEFAULT_AVATAR).toBe('leo');
   expect(AVATAR_IDS).toContain(DEFAULT_AVATAR);
+  expect(DEFAULT_AVATAR_QUALITY).toBe('standard');
+  expect(DEFAULT_AVATAR_QUALITY_SETTING).toBe('auto');
+  expect(AVATAR_QUALITY_SETTINGS).toEqual(['auto', 'low', 'standard', 'high']);
+  expect(AVATAR_QUALITY_FPS).toEqual({ low: 12, standard: 15, high: 30 });
 });
 
-it('maps every id to a cache-busted file in /dots', () => {
+it('maps every id to a cache-busted file in /dots (default tier)', () => {
   for (const id of AVATAR_IDS) {
     expect(AVATAR_FILES[id]).toBeTruthy();
-    expect(avatarSrc(id)).toBe(u(AVATAR_FILES[id]));
+    // the default tier is standard; stills are unchanged
+    const expected = AVATAR_FILES[id].endsWith('.webp')
+      ? AVATAR_FILES[id].replace(/\.webp$/, '.15.webp')
+      : AVATAR_FILES[id];
+    expect(avatarSrc(id)).toBe(u(expected));
   }
 });
 
-it('groups assets under a per-family folder', () => {
+it('groups assets under a per-family folder and tiers the animated ones', () => {
   expect(avatarSrc('mint')).toBe(u('classic/mint.png'));
-  expect(avatarSrc('orange')).toBe(u('classic/orange.png'));
-  expect(avatarSrc('purple')).toBe(u('classic/purple.png'));
-  expect(avatarSrc('sam')).toBe(u('sam/idle.webp'));
-  expect(avatarSrc('leo')).toBe(u('leo/idle.webp'));
+  expect(avatarSrc('sam')).toBe(u('sam/idle.15.webp'));
+  expect(avatarSrc('leo')).toBe(u('leo/idle.15.webp'));
   expect(avatarSrc('aline')).toBe(u('aline/idle.png'));
+  // explicit tiers (high keeps the bare name; stills ignore the tier)
+  expect(avatarSrc('leo', 'high')).toBe(u('leo/idle.webp'));
+  expect(avatarSrc('leo', 'low')).toBe(u('leo/idle.12.webp'));
+  expect(avatarSrc('leo', 'standard')).toBe(u('leo/idle.15.webp'));
+  expect(avatarSrc('mint', 'low')).toBe(u('classic/mint.png'));
+  expect(avatarSrc('mint', 'high')).toBe(u('classic/mint.png'));
 });
 
 it('returns null for null, unknown and retired ids', () => {
@@ -62,17 +79,31 @@ it('returns null for null, unknown and retired ids', () => {
   expect(avatarSrc('robot')).toBeNull();
 });
 
+it('offers a tiny still poster for animated avatars, else the avatar itself', () => {
+  expect(avatarPoster('leo')).toBe(u('leo/poster.webp'));
+  expect(avatarPoster('sam')).toBe(u('sam/poster.webp'));
+  // still avatars have no poster → the still file
+  expect(avatarPoster('mint')).toBe(u('classic/mint.png'));
+  expect(avatarPoster('aline')).toBe(u('aline/idle.png'));
+  expect(avatarPoster(null)).toBeNull();
+  expect(avatarPoster('nope')).toBeNull();
+});
+
 it('aliases the NevaDots Dot "sam" states to its four shipped clips', () => {
-  // shipped clips
-  expect(avatarStateSrc('sam', 'listening')).toBe(u('sam/listening.webp'));
-  expect(avatarStateSrc('sam', 'thinking')).toBe(u('sam/thinking.webp'));
-  expect(avatarStateSrc('sam', 'writing')).toBe(u('sam/writing.webp'));
+  // shipped clips (standard tier)
+  expect(avatarStateSrc('sam', 'listening')).toBe(u('sam/listening.15.webp'));
+  expect(avatarStateSrc('sam', 'thinking')).toBe(u('sam/thinking.15.webp'));
+  expect(avatarStateSrc('sam', 'writing')).toBe(u('sam/writing.15.webp'));
   // aliases reuse the nearest clip
-  expect(avatarStateSrc('sam', 'analyzing')).toBe(u('sam/thinking.webp'));
-  expect(avatarStateSrc('sam', 'searching')).toBe(u('sam/thinking.webp'));
-  expect(avatarStateSrc('sam', 'working')).toBe(u('sam/writing.webp'));
+  expect(avatarStateSrc('sam', 'analyzing')).toBe(u('sam/thinking.15.webp'));
+  expect(avatarStateSrc('sam', 'searching')).toBe(u('sam/thinking.15.webp'));
+  expect(avatarStateSrc('sam', 'working')).toBe(u('sam/writing.15.webp'));
   // complete reuses the idle pose (the client overlays a "Valider" badge)
-  expect(avatarStateSrc('sam', 'complete')).toBe(u('sam/idle.webp'));
+  expect(avatarStateSrc('sam', 'complete')).toBe(u('sam/idle.15.webp'));
+  // high tier keeps the bare names
+  expect(avatarStateSrc('sam', 'listening', 'high')).toBe(
+    u('sam/listening.webp'),
+  );
   // deliberately absent → base fallback
   expect(avatarStateSrc('sam', 'paused')).toBeNull();
   expect(avatarStateSrc('sam', 'error')).toBeNull();
@@ -81,22 +112,15 @@ it('aliases the NevaDots Dot "sam" states to its four shipped clips', () => {
 
 it('gives "leo" two interchangeable variants per animated state', () => {
   expect(avatarStateCandidates('leo', 'listening')).toEqual([
-    u('leo/listening-1.webp'),
-    u('leo/listening-2.webp'),
+    u('leo/listening-1.15.webp'),
+    u('leo/listening-2.15.webp'),
   ]);
-  expect(avatarStateCandidates('leo', 'thinking')).toEqual([
-    u('leo/thinking-1.webp'),
-    u('leo/thinking-2.webp'),
-  ]);
-  expect(avatarStateCandidates('leo', 'writing')).toEqual([
-    u('leo/writing-1.webp'),
-    u('leo/writing-2.webp'),
+  expect(avatarStateCandidates('leo', 'listening', 'low')).toEqual([
+    u('leo/listening-1.12.webp'),
+    u('leo/listening-2.12.webp'),
   ]);
   // aliases share the thinking/writing variants
   expect(avatarStateCandidates('leo', 'analyzing')).toEqual(
-    avatarStateCandidates('leo', 'thinking'),
-  );
-  expect(avatarStateCandidates('leo', 'searching')).toEqual(
     avatarStateCandidates('leo', 'thinking'),
   );
   expect(avatarStateCandidates('leo', 'working')).toEqual(
@@ -104,12 +128,12 @@ it('gives "leo" two interchangeable variants per animated state', () => {
   );
   // complete reuses idle; absent states fall back
   expect(avatarStateCandidates('leo', 'complete')).toEqual([
-    u('leo/idle.webp'),
+    u('leo/idle.15.webp'),
   ]);
   expect(avatarStateCandidates('leo', 'paused')).toEqual([]);
   expect(avatarStateCandidates('leo', 'idle')).toEqual([]);
   // avatarStateSrc is the deterministic first candidate
-  expect(avatarStateSrc('leo', 'listening')).toBe(u('leo/listening-1.webp'));
+  expect(avatarStateSrc('leo', 'listening')).toBe(u('leo/listening-1.15.webp'));
 });
 
 it('has no state clips for still avatars', () => {
@@ -141,12 +165,11 @@ it('protects only the NevaDots avatars against right-click / drag', () => {
 });
 
 it('lists every state clip of an avatar for preloading', () => {
-  expect(avatarStateFiles('sam')).toContain(u('sam/listening.webp'));
+  expect(avatarStateFiles('sam')).toContain(u('sam/listening.15.webp'));
   // leo exposes both variants of every animated state
-  expect(avatarStateFiles('leo')).toContain(u('leo/listening-1.webp'));
-  expect(avatarStateFiles('leo')).toContain(u('leo/listening-2.webp'));
-  expect(avatarStateFiles('leo')).toContain(u('leo/thinking-2.webp'));
-  expect(avatarStateFiles('leo')).toContain(u('leo/writing-1.webp'));
+  expect(avatarStateFiles('leo')).toContain(u('leo/listening-1.15.webp'));
+  expect(avatarStateFiles('leo')).toContain(u('leo/listening-2.15.webp'));
+  expect(avatarStateFiles('leo', 'high')).toContain(u('leo/thinking-2.webp'));
   expect(avatarStateFiles('mint')).toEqual([]);
   expect(avatarStateFiles(undefined)).toEqual([]);
 });

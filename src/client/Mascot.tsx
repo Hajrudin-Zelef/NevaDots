@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AVATAR_IDS,
   DEFAULT_AVATAR,
+  avatarPoster,
   avatarSrc,
   avatarStateCandidates,
   avatarStateFiles,
   hasValidateOverlay,
   isProtectedAvatar,
 } from '../shared/avatars';
+import { AVATAR_QUALITY_EVENT, getAvatarQuality } from './avatar-quality';
 
 export const AVATARS = AVATAR_IDS;
 export type Avatar = (typeof AVATARS)[number];
@@ -68,10 +70,19 @@ export function Mascot({
   const live = animate ?? !small;
 
   const character = avatarFile(avatar);
-  const baseSrc = avatarSrc(character) ?? `/dots/${character}.png`;
+  // Re-render when the animation-quality preference resolves to a new tier.
+  const [quality, setQuality] = useState(getAvatarQuality);
+  useEffect(() => {
+    const onChange = () => setQuality(getAvatarQuality());
+    window.addEventListener(AVATAR_QUALITY_EVENT, onChange);
+    return () => window.removeEventListener(AVATAR_QUALITY_EVENT, onChange);
+  }, []);
+  const baseSrc = avatarSrc(character, quality) ?? `/dots/${character}.png`;
+  // Tiny still shown instantly while the (heavier) animated clip loads.
+  const posterSrc = avatarPoster(character, quality) ?? baseSrc;
   // Animated avatars ship their own motion; the synthetic CSS keyframe loops
   // (dot-idle/dot-think/...) are for still avatars only.
-  const hasClips = avatarStateFiles(character).length > 0;
+  const hasClips = avatarStateFiles(character, quality).length > 0;
   // NevaDots avatars are owner-private: block right-click and drag on them.
   const protect = isProtectedAvatar(character);
 
@@ -82,7 +93,7 @@ export function Mascot({
   const lastVariant = useRef<string | null>(null);
   useEffect(() => {
     if (!live) return;
-    const list = avatarStateCandidates(character, state);
+    const list = avatarStateCandidates(character, state, quality);
     if (!list.length) {
       setVariant(null);
       return;
@@ -94,28 +105,33 @@ export function Mascot({
     const pick = pool[Math.floor(Math.random() * pool.length)] ?? list[0];
     lastVariant.current = pick;
     setVariant(pick);
-  }, [character, state, live]);
+  }, [character, state, live, quality]);
   const wanted = (live && variant) || baseSrc;
 
   // Two persistent layers. A switch loads the incoming clip into the hidden
   // layer and lets it start animating there before dissolving to it, so a
   // change never shows a frozen first frame and the clip is never restarted
   // mid-fade (the previous one-shot swap did both).
-  const [slots, setSlots] = useState<[string, string]>([baseSrc, baseSrc]);
+  const [slots, setSlots] = useState<[string, string]>(() => {
+    const start = hasClips ? posterSrc : baseSrc;
+    return [start, start];
+  });
   const [active, setActive] = useState<0 | 1>(0);
-  const activeSrc = useRef(baseSrc);
+  const activeSrc = useRef(hasClips ? posterSrc : baseSrc);
   const activeRef = useRef<0 | 1>(0);
   const fadeTimer = useRef<number | undefined>(undefined);
   const fadeGen = useRef(0);
   const alt = decorative ? '' : `${name} is ${stateRef.current}`;
 
-  // Reset the layers when the underlying avatar changes.
+  // Reset the layers when the avatar or its tier changes: show the light poster
+  // first, then the crossfade effect dissolves to the animated clip once decoded.
   useEffect(() => {
-    activeSrc.current = baseSrc;
+    const start = hasClips ? posterSrc : baseSrc;
+    activeSrc.current = start;
     activeRef.current = 0;
     setActive(0);
-    setSlots([baseSrc, baseSrc]);
-  }, [baseSrc]);
+    setSlots([start, start]);
+  }, [baseSrc, posterSrc, hasClips]);
 
   // Dissolve to the wanted clip once it is decoded.
   useEffect(() => {
@@ -313,7 +329,7 @@ export function Mascot({
       ) : (
         <img
           className="dot-body"
-          src={baseSrc}
+          src={posterSrc}
           alt={alt}
           width={512}
           height={512}

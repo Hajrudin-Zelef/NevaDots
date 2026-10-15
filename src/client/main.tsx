@@ -11,10 +11,12 @@ import './motion.css';
 import './responsive.css';
 import { initRipple } from './ripple';
 import { watchSystemTheme } from './theme';
+import { initAvatarQuality } from './avatar-quality';
 import { applyMotionPreference } from './motion-pref';
 watchSystemTheme();
 applyMotionPreference();
 initRipple();
+initAvatarQuality();
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

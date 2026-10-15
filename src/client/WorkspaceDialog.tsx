@@ -9,19 +9,21 @@ import {
   Palette,
   Plug,
   SlidersHorizontal,
+  Sparkles,
   X,
 } from 'lucide-react';
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
 import type { ModelsResponse } from '../shared/models';
 import { api } from './api';
 import { AVATARS } from './Mascot';
-import { avatarSrc, isProtectedAvatar } from '../shared/avatars';
+import { avatarPoster, isProtectedAvatar } from '../shared/avatars';
 import { ConnectionsSection } from './ConnectionsSection';
 import { ExternalAccountsSection } from './ExternalAccountsSection';
 import { ApiProvidersPanel } from './ApiProvidersPanel';
 import { ModelSelectorPanel } from './ModelSelectorPanel';
 
 import { DeepThinkPanel } from './DeepThinkPanel';
+import { AvatarPanel } from './AvatarPanel';
 import {
   PALETTES,
   palettePreference,
@@ -52,6 +54,7 @@ interface SystemMetrics {
 
 type SettingsTab =
   | 'appearance'
+  | 'avatar'
   | 'api'
   | 'models'
   | 'deepthink'
@@ -336,7 +339,7 @@ export function WorkspaceDialog({
                       }
                     >
                       <img
-                        src={avatarSrc(id) ?? undefined}
+                        src={avatarPoster(id) ?? undefined}
                         alt=""
                         width={44}
                         height={44}
@@ -547,6 +550,7 @@ export function WorkspaceDialog({
                 {(
                   [
                     ['appearance', 'Apparence', Palette],
+                    ['avatar', 'Avatar', Sparkles],
                     ['api', 'API et Modèles', KeyRound],
                     ['models', 'Sélecteur de modèles', Cpu],
 
@@ -662,6 +666,9 @@ export function WorkspaceDialog({
                     </div>
                     <p className="muted">Couleur d’accent.</p>
                   </fieldset>
+                )}
+                {dialog.type === 'settings' && settingsTab === 'avatar' && (
+                  <AvatarPanel />
                 )}
                 {dialog.type === 'settings' && settingsTab === 'api' && (
                   <ApiProvidersPanel />

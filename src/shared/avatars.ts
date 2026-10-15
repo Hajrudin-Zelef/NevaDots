@@ -7,13 +7,14 @@
  *
  * Assets are grouped by family under `public/dots/` (served at `/dots/<path>`):
  *   classic/  the remaining still PNG avatars (mint, orange, purple)
- *   sam/      NevaDots Dot "Sam" (animated, full set of state aliases)
+ *   sam/      NevaDots Dot "Sam" (animated)
  *   leo/      NevaDots Dot "Leo" (animated; two variants for some states)
  *   aline/    NevaDots Dot "Aline" (still base for now; clips to come)
  *
- * The former `blue`/`pink`/`green` PNGs and the `robot`/`robot-blue` animated
- * robots were retired (archived in the confidential OffLineFork area). Any Dot
- * still pointing at them falls back to the default avatar (see `Mascot.tsx`).
+ * Animated clips ship in three fps tiers (see `AvatarQuality`): the base
+ * `<state>.webp` is "high", `<state>.15.webp` "standard" and `<state>.12.webp`
+ * "low". Each animated avatar also has a tiny still `poster.webp` used as an
+ * instant placeholder while the clip loads.
  */
 export const AVATAR_IDS = [
   'sam',
@@ -34,7 +35,39 @@ export const DEFAULT_AVATAR: AvatarId = 'leo';
  * as a query so the browser (which caches `/dots/` for a day) fetches the new
  * art instead of a stale copy.
  */
-export const AVATAR_ASSET_VERSION = '2';
+export const AVATAR_ASSET_VERSION = '3';
+
+/** Concrete animation tiers, cheapest first. */
+export type AvatarQuality = 'low' | 'standard' | 'high';
+
+/** The user's stored preference: a concrete tier, or automatic selection. */
+export type AvatarQualitySetting = 'auto' | AvatarQuality;
+
+export const AVATAR_QUALITY_SETTINGS: readonly AvatarQualitySetting[] = [
+  'auto',
+  'low',
+  'standard',
+  'high',
+];
+
+/** Default preference (auto-adapts to the connection/device). */
+export const DEFAULT_AVATAR_QUALITY_SETTING: AvatarQualitySetting = 'auto';
+
+/** Tier used when nothing else is known (no Network/Device API, etc.). */
+export const DEFAULT_AVATAR_QUALITY: AvatarQuality = 'standard';
+
+/** fps of each tier (the file suffix used for non-high tiers). */
+export const AVATAR_QUALITY_FPS: Record<AvatarQuality, number> = {
+  low: 12,
+  standard: 15,
+  high: 30,
+};
+
+/** File name for a clip at a given tier (high keeps the bare name). */
+function tierFile(file: string, quality: AvatarQuality): string {
+  if (quality === 'high' || !file.endsWith('.webp')) return file;
+  return file.replace(/\.webp$/, `.${AVATAR_QUALITY_FPS[quality]}.webp`);
+}
 
 /** URL of a file under `public/dots/`, cache-busted. */
 function dotUrl(file: string): string {
@@ -51,10 +84,32 @@ export const AVATAR_FILES: Record<AvatarId, string> = {
   aline: 'aline/idle.png',
 };
 
-/** Public URL for an avatar id, or `null` when the id is unknown. */
-export function avatarSrc(id: string | null | undefined): string | null {
+/** Directory of an avatar's assets under `public/dots/`. */
+function avatarDir(id: AvatarId): string {
+  return AVATAR_FILES[id].replace(/\/[^/]+$/, '');
+}
+
+/** Public URL for an avatar id at a tier, or `null` when the id is unknown. */
+export function avatarSrc(
+  id: string | null | undefined,
+  quality: AvatarQuality = DEFAULT_AVATAR_QUALITY,
+): string | null {
   if (!id || !(id in AVATAR_FILES)) return null;
-  return dotUrl(AVATAR_FILES[id as AvatarId]);
+  return dotUrl(tierFile(AVATAR_FILES[id as AvatarId], quality));
+}
+
+/**
+ * Small still used as a thumbnail (pickers) and as an instant placeholder while
+ * an animated clip loads. Falls back to the avatar itself for still avatars.
+ */
+export function avatarPoster(
+  id: string | null | undefined,
+  quality: AvatarQuality = DEFAULT_AVATAR_QUALITY,
+): string | null {
+  if (!id || !(id in AVATAR_FILES)) return null;
+  const animated = !!AVATAR_STATE_FILES[id as AvatarId];
+  if (!animated) return avatarSrc(id, quality);
+  return dotUrl(`${avatarDir(id as AvatarId)}/poster.webp`);
 }
 
 /**
@@ -119,31 +174,38 @@ export function isProtectedAvatar(id: string | null | undefined): boolean {
   return !!id && (PROTECTED_AVATARS as readonly string[]).includes(id);
 }
 
-/** Every clip URL declared for an avatar state (one per variant). */
+/** Every clip URL declared for an avatar state at a tier (one per variant). */
 export function avatarStateCandidates(
   id: string | null | undefined,
   state: string,
+  quality: AvatarQuality = DEFAULT_AVATAR_QUALITY,
 ): string[] {
   if (!id) return [];
   const file = AVATAR_STATE_FILES[id as AvatarId]?.[state];
   if (!file) return [];
-  return (Array.isArray(file) ? file : [file]).map(dotUrl);
+  return (Array.isArray(file) ? file : [file]).map((f) =>
+    dotUrl(tierFile(f, quality)),
+  );
 }
 
 /** First declared clip URL for a state, or `null` to fall back to the base. */
 export function avatarStateSrc(
   id: string | null | undefined,
   state: string,
+  quality: AvatarQuality = DEFAULT_AVATAR_QUALITY,
 ): string | null {
-  return avatarStateCandidates(id, state)[0] ?? null;
+  return avatarStateCandidates(id, state, quality)[0] ?? null;
 }
 
-/** Every state-clip URL declared for an avatar (for idle-time preloading). */
-export function avatarStateFiles(id: string | null | undefined): string[] {
+/** Every state-clip URL declared for an avatar at a tier (for preloading). */
+export function avatarStateFiles(
+  id: string | null | undefined,
+  quality: AvatarQuality = DEFAULT_AVATAR_QUALITY,
+): string[] {
   if (!id) return [];
   const map = AVATAR_STATE_FILES[id as AvatarId];
   if (!map) return [];
   return Object.values(map)
     .flatMap((file) => (Array.isArray(file) ? file : [file]))
-    .map(dotUrl);
+    .map((f) => dotUrl(tierFile(f, quality)));
 }

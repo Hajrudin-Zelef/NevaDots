@@ -95,6 +95,27 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     const stats = getReasoningStats(messageId);
     return c.json(stats ?? {});
   });
+  // Avatar animation quality preference. `auto` (default) lets the client pick
+  // a tier from the network/device; a concrete tier forces it.
+  const AVATAR_QUALITIES = ['auto', 'low', 'standard', 'high'] as const;
+  app.get('/avatar-quality', (c) => {
+    const raw = platform.workspace.configGet('avatar_quality');
+    const quality =
+      raw && (AVATAR_QUALITIES as readonly string[]).includes(raw)
+        ? raw
+        : 'auto';
+    return c.json({ quality });
+  });
+  app.put('/avatar-quality', async (c) => {
+    const parsed = z
+      .object({ quality: z.enum(AVATAR_QUALITIES) })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success)
+      return c.json({ error: 'Invalid avatar quality.' }, 400);
+    platform.workspace.configSet('avatar_quality', parsed.data.quality);
+    return c.json({ ok: true, quality: parsed.data.quality });
+  });
   // DeepThink Global: translation settings for the reasoning panel.
   // Persists {lang, provider, model}; empty provider/model = server default.
   const DEEPTHINK_LANGS = ['fr', 'en', 'es', 'de', 'it'] as const;
