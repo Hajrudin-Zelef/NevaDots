@@ -32,12 +32,18 @@ export function createApp({
   platform,
 }: AppOptions) {
   const app = new Hono();
-  app.use(
-    '/api/*',
-    bodyLimit({
-      maxSize: 1_000_000,
-      onError: (c) => c.json({ error: 'Request is too large.' }, 413),
-    }),
+  const jsonLimit = bodyLimit({
+    maxSize: 1_000_000,
+    onError: (c) => c.json({ error: 'Request is too large.' }, 413),
+  });
+  const uploadLimit = bodyLimit({
+    maxSize: 60_000_000,
+    onError: (c) => c.json({ error: 'Upload is too large.' }, 413),
+  });
+  app.use('/api/*', (c, next) =>
+    c.req.method === 'POST' && c.req.path === '/api/attachments'
+      ? uploadLimit(c, next)
+      : jsonLimit(c, next),
   );
   app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
@@ -91,7 +97,8 @@ export function createApp({
     if (
       !['GET', 'HEAD'].includes(c.req.method) &&
       contentType &&
-      !contentType.includes('application/json')
+      !contentType.includes('application/json') &&
+      !contentType.includes('multipart/form-data')
     )
       return c.json({ error: 'Use application/json.' }, 415);
     await next();
