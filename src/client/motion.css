@@ -98,3 +98,55 @@ html[data-motion='off'] *::after {
     --motion-slow: 0.01ms;
   }
 }
+
+/* ---- Phase 1 : dialogues, onglets, vues ---------------------------------- */
+/* Shared dialog system: WorkspaceDialog (.modal), ActivityDetailModal
+   (.ad-modal), InterventionStage. Backdrop fades, panel scales in. */
+.modal-backdrop {
+  animation: motion-fade var(--motion-instant) ease-out;
+}
+.modal,
+.ad-modal {
+  animation: motion-fade-scale var(--motion-base) var(--motion-ease);
+  transform-origin: center;
+}
+.intervention-stage {
+  animation: motion-fade-rise var(--motion-base) var(--motion-ease);
+}
+
+/* Settings tabs: panels remount on tab switch, so the enter animation
+   replays as a fade between tabs. */
+.settings-body > * {
+  animation: motion-fade-rise var(--motion-base) var(--motion-ease);
+}
+
+/* Chat messages bloom in on mount (history load + new messages). */
+.chat-bubble {
+  animation: motion-fade-rise var(--motion-fast) var(--motion-ease);
+}
+
+/* Phase 1 kill rules: reduced preference or system reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal,
+  .ad-modal,
+  .intervention-stage,
+  .settings-body > *,
+  .chat-bubble {
+    animation: none;
+  }
+}
+html[data-motion='reduced'] .modal-backdrop,
+html[data-motion='reduced'] .modal,
+html[data-motion='reduced'] .ad-modal,
+html[data-motion='reduced'] .intervention-stage,
+html[data-motion='reduced'] .settings-body > *,
+html[data-motion='reduced'] .chat-bubble,
+html[data-motion='off'] .modal-backdrop,
+html[data-motion='off'] .modal,
+html[data-motion='off'] .ad-modal,
+html[data-motion='off'] .intervention-stage,
+html[data-motion='off'] .settings-body > *,
+html[data-motion='off'] .chat-bubble {
+  animation: none;
+}
