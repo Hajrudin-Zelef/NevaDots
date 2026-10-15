@@ -150,3 +150,133 @@ html[data-motion='off'] .settings-body > *,
 html[data-motion='off'] .chat-bubble {
   animation: none;
 }
+
+/* ---- Phase 2 : micro-interactions ---------------------------------------- */
+/* Cards: subtle premium lift on hover. */
+.settings-card,
+.external-account {
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) ease;
+}
+.settings-card:hover,
+.external-account:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07);
+}
+
+/* Pop-in menus: connector ⋮ menu, composer menu. */
+.external-menu,
+.composer-menu {
+  animation: motion-pop-in var(--motion-instant) var(--motion-ease);
+  transform-origin: top right;
+}
+
+/* Icon buttons: tactile press. */
+.icon-button {
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+.icon-button:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+.icon-button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+/* Thread list rows. */
+.thread-row .nav-item {
+  transition:
+    background var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+/* Call view: enter animation + smooth minimize. */
+.call-view {
+  animation: motion-fade-scale var(--motion-base) var(--motion-ease);
+  transition:
+    transform var(--motion-base) var(--motion-ease),
+    opacity var(--motion-base) ease;
+}
+
+/* Inputs: soft focus glow transition. */
+input,
+textarea,
+select {
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+/* Inline error banners fade in instead of popping. */
+.sidebar-error,
+.config-note.api-error {
+  animation: motion-fade-rise var(--motion-fast) var(--motion-ease);
+}
+
+/* Phase 2 kill rules: reduced preference or system reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  .external-menu,
+  .composer-menu,
+  .call-view,
+  .sidebar-error,
+  .config-note.api-error {
+    animation: none;
+  }
+  .settings-card,
+  .external-account,
+  .icon-button,
+  .thread-row .nav-item,
+  .call-view,
+  input,
+  textarea,
+  select {
+    transition: none;
+  }
+  .settings-card:hover,
+  .external-account:hover,
+  .icon-button:hover:not(:disabled) {
+    transform: none;
+  }
+}
+html[data-motion='reduced'] .external-menu,
+html[data-motion='reduced'] .composer-menu,
+html[data-motion='reduced'] .call-view,
+html[data-motion='reduced'] .sidebar-error,
+html[data-motion='reduced'] .config-note.api-error,
+html[data-motion='off'] .external-menu,
+html[data-motion='off'] .composer-menu,
+html[data-motion='off'] .call-view,
+html[data-motion='off'] .sidebar-error,
+html[data-motion='off'] .config-note.api-error {
+  animation: none;
+}
+html[data-motion='reduced'] .settings-card,
+html[data-motion='reduced'] .external-account,
+html[data-motion='reduced'] .icon-button,
+html[data-motion='reduced'] .thread-row .nav-item,
+html[data-motion='reduced'] .call-view,
+html[data-motion='reduced'] input,
+html[data-motion='reduced'] textarea,
+html[data-motion='reduced'] select,
+html[data-motion='off'] .settings-card,
+html[data-motion='off'] .external-account,
+html[data-motion='off'] .icon-button,
+html[data-motion='off'] .thread-row .nav-item,
+html[data-motion='off'] .call-view,
+html[data-motion='off'] input,
+html[data-motion='off'] textarea,
+html[data-motion='off'] select {
+  transition: none;
+}
+html[data-motion='reduced'] .settings-card:hover,
+html[data-motion='reduced'] .external-account:hover,
+html[data-motion='reduced'] .icon-button:hover:not(:disabled),
+html[data-motion='off'] .settings-card:hover,
+html[data-motion='off'] .external-account:hover,
+html[data-motion='off'] .icon-button:hover:not(:disabled) {
+  transform: none;
+}
