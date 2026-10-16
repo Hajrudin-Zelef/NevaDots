@@ -4782,3 +4782,36 @@ h3 {
 .mascot.has-clips .blob-group {
   display: none;
 }
+
+.computer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--nd-accent) 14%, transparent);
+  color: var(--nd-accent-dark);
+  text-transform: capitalize;
+}
+.computer-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--nd-accent);
+  box-shadow: 0 0 0 0 color-mix(in oklab, var(--nd-accent) 60%, transparent);
+  animation: computer-status-pulse 2s ease-out infinite;
+}
+@keyframes computer-status-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--nd-accent) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}

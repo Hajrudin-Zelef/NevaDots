@@ -2568,13 +2568,21 @@ textarea::placeholder {
 .browser-chrome {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 14px;
+  background: color-mix(
+    in oklab,
+    var(--nd-ink, #1f2937) 4%,
+    var(--nd-bg, #fff)
+  );
+  border: 1px solid var(--nd-line, #e7e5e0);
 }
 .browser-reload {
   flex: none;
   width: 30px;
   height: 30px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--nd-line, #e7e5e0);
   background: var(--nd-bg, #fff);
   color: var(--nd-ink, #1f2937);
@@ -2582,6 +2590,15 @@ textarea::placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+.browser-reload:hover:not(:disabled) {
+  background: var(--nd-bg-hover);
+}
+.browser-reload:active:not(:disabled) {
+  transform: scale(0.94);
 }
 .browser-reload:disabled {
   opacity: 0.5;
@@ -2593,29 +2610,49 @@ textarea::placeholder {
 }
 .browser-url input {
   width: 100%;
-  height: 30px;
+  height: 32px;
   border-radius: 999px;
-  border: 1px solid var(--nd-line, #e7e5e0);
+  border: 1px solid transparent;
   background: var(--nd-bg, #fff);
   color: var(--nd-ink, #1f2937);
-  padding: 0 12px;
-  font-size: 14.5px;
+  padding: 0 14px;
+  font-size: 14px;
+  transition: border-color 0.15s ease;
+}
+.browser-url input:focus {
+  outline: none;
+  border-color: var(--nd-accent, #22c55e);
 }
 .browser-control {
   flex: none;
-  height: 30px;
-  padding: 0 12px;
+  height: 32px;
+  padding: 0 14px;
   border-radius: 999px;
   border: 1px solid var(--nd-accent, #22c55e);
   background: var(--nd-accent, #22c55e);
   color: #fff;
-  font-size: 14.5px;
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+.browser-control:hover:not(:disabled) {
+  background: var(--nd-accent-dark, #15803d);
+  border-color: var(--nd-accent-dark, #15803d);
+}
+.browser-control:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .browser-control.active {
   background: var(--nd-bg, #fff);
   color: var(--nd-accent, #22c55e);
+}
+.browser-control.active:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--nd-accent) 10%, var(--nd-bg, #fff));
 }
 .browser-control:disabled {
   opacity: 0.5;

@@ -489,19 +489,21 @@ a:focus-visible,
 
 /* Onglets Navigateur / Fichiers / Terminal / Activité */
 .computer-tool-tabs {
+  display: flex;
   gap: 4px;
   border-bottom: 1px solid var(--nd-border);
+  padding-bottom: 6px;
 }
 .computer-tool-tabs button {
-  padding: 10px 14px;
+  padding: 8px 16px;
   font-size: 14px;
   font-weight: 500;
   color: var(--p-text-muted);
-  border-bottom: 2px solid transparent;
-  border-radius: var(--p-radius-sm) var(--p-radius-sm) 0 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
   transition:
     color var(--p-speed) var(--p-ease),
-    border-color var(--p-speed) var(--p-ease),
     background var(--p-speed) var(--p-ease);
 }
 .computer-tool-tabs button:hover {
@@ -509,8 +511,8 @@ a:focus-visible,
   background: var(--nd-bg-hover);
 }
 .computer-tool-tabs button[aria-selected='true'] {
-  color: var(--p-green-deep);
-  border-bottom-color: var(--p-green);
+  color: #fff;
+  background: var(--nd-accent);
   font-weight: 600;
 }
 
