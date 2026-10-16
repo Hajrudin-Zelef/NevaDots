@@ -9,7 +9,7 @@ import {
   Palette,
   Plug,
   SlidersHorizontal,
-  Sparkles,
+  CircleUserRound,
   X,
 } from 'lucide-react';
 import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
@@ -575,7 +575,7 @@ export function WorkspaceDialog({
                 {(
                   [
                     ['appearance', 'Apparence', Palette],
-                    ['avatar', 'Avatar', Sparkles],
+                    ['avatar', 'Avatar', CircleUserRound],
                     ['api', 'API et Modèles', KeyRound],
                     ['models', 'Sélecteur de modèles', Cpu],
 
