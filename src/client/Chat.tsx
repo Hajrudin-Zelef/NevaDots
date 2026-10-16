@@ -936,6 +936,8 @@ export function Chat({
             paused,
             researchAllowed: true,
             memoryAllowed: true,
+            replyStyle: 'standard',
+            replyLanguage: 'fr',
           }
         }
         onOpenConversation={(id) => onOpenConversation?.(id)}

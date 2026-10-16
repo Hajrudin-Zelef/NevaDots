@@ -7,6 +7,8 @@ const settings: Settings = {
   paused: false,
   researchAllowed: true,
   memoryAllowed: true,
+  replyStyle: 'standard',
+  replyLanguage: 'fr',
 };
 const task: Task = {
   id: 'one',

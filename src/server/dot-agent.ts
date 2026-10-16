@@ -520,6 +520,18 @@ export class DotAgent extends AbstractAgent {
           }) => {
             const stats = buildReasoningStats(model, info);
             saveReasoningStats(reasoningMessageId, stats);
+            // Usage agrégé (réglages : consommation aujourd'hui / 7 jours).
+            try {
+              this.store.recordUsage({
+                ts: Date.now(),
+                model,
+                promptTokens: info.promptTokens,
+                completionTokens: info.completionTokens,
+                costUsd: stats.costUsd,
+              });
+            } catch {
+              // Usage is best-effort; never break a run on a metrics write.
+            }
             closeReasoning();
           },
         };
@@ -612,6 +624,8 @@ export class DotAgent extends AbstractAgent {
           connectionActionToolName: connectionActionTool.name,
           externalServices: externalServices.map((s) => s.name),
           spaceId: dot.spaceId,
+          replyStyle: initialSettings.replyStyle,
+          replyLanguage: initialSettings.replyLanguage,
         });
         this.inner = new BuiltInAgent({
           type: 'tanstack',

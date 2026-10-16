@@ -210,6 +210,8 @@ export function createApp({
         paused: z.boolean().optional(),
         researchAllowed: z.boolean().optional(),
         memoryAllowed: z.boolean().optional(),
+        replyStyle: z.enum(['concise', 'standard', 'detailed']).optional(),
+        replyLanguage: z.enum(['fr', 'auto']).optional(),
       })
       .strict()
       .safeParse(await c.req.json().catch(() => null));
@@ -257,6 +259,12 @@ export function createApp({
       ? c.json({ ok: true })
       : c.json({ error: 'Memory not found.' }, 404),
   );
+  // Bulk "forget everything" (double-confirmed client-side).
+  app.delete('/api/memories', (c) =>
+    c.json({ ok: true, removed: store.deleteAllMemories() }),
+  );
+  // Aggregated model usage for the settings cockpit.
+  app.get('/api/usage', (c) => c.json(store.usageSummary()));
   app.onError((error, c) => {
     console.error('API request failed:', error.name);
     return c.json(

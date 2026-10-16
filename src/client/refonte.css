@@ -4643,25 +4643,6 @@ textarea::placeholder {
   padding: 4px 2px 18px;
 }
 
-.settings-body:has(.permission-row)::before {
-  content: 'Préférences de travail';
-  display: block;
-  margin: 0 0 2px;
-  color: var(--nd-text);
-  font-size: 22px;
-  font-weight: 750;
-  letter-spacing: -0.025em;
-}
-
-.settings-body:has(.permission-row)::after {
-  content: 'Contrôlez les capacités utilisées par vos Dots et leurs modèles.';
-  display: block;
-  order: -1;
-  margin: -12px 0 2px;
-  color: var(--nd-text-secondary);
-  font-size: 13px;
-}
-
 .settings-body .permission-row {
   position: relative;
   min-height: 86px;
@@ -4749,20 +4730,6 @@ textarea::placeholder {
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
-.settings-body .config-note::before {
-  content: 'Configuration des modèles';
-  display: block;
-  margin-bottom: 4px;
-  color: var(--nd-text);
-  font-size: 16px;
-  font-weight: 750;
-  letter-spacing: -0.01em;
-}
-
-.settings-body .config-note > strong {
-  display: none;
-}
-
 .settings-modal .settings-save {
   min-height: 48px;
   margin: 6px 0 0;
@@ -4773,10 +4740,6 @@ textarea::placeholder {
 }
 
 @media (max-width: 640px) {
-  .settings-body:has(.permission-row)::before {
-    font-size: 19px;
-  }
-
   .settings-body .permission-row {
     padding: 17px;
   }
@@ -4785,3 +4748,244 @@ textarea::placeholder {
     padding: 20px 17px;
   }
 }
+
+/* Réglages — volet Préférences (cockpit) */
+.prefs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prefs-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.prefs-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--nd-border);
+  border-radius: 14px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--nd-accent) 6%, var(--nd-bg)),
+    var(--nd-bg)
+  );
+}
+
+.prefs-kpi-val {
+  overflow: hidden;
+  color: var(--nd-text);
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prefs-kpi-label {
+  color: var(--nd-text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.prefs-section {
+  margin: 8px 0 0;
+  color: var(--nd-text);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.prefs-lead {
+  margin: -8px 0 2px;
+}
+
+.prefs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prefs-field-label {
+  color: var(--nd-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.memory-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -6px 2px 2px;
+}
+
+.text-button.danger {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.provider-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border: 1px solid var(--nd-border);
+  border-radius: 999px;
+  background: var(--nd-bg);
+  color: var(--nd-text);
+  cursor: pointer;
+  font-size: 13px;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.provider-chip:hover {
+  border-color: var(--nd-accent);
+  transform: translateY(-1px);
+}
+
+.provider-chip small {
+  color: var(--nd-text-secondary);
+  font-size: 11px;
+}
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--nd-text-secondary);
+}
+
+.chip-dot.ok {
+  background: var(--nd-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nd-accent) 22%, transparent);
+}
+
+.usage-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--nd-border);
+  border-radius: 14px;
+  background: var(--nd-bg);
+  overflow: hidden;
+}
+
+.usage-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.usage-row + .usage-row {
+  border-top: 1px solid var(--nd-border);
+}
+
+.usage-row > span:first-child {
+  flex: 0 0 130px;
+  color: var(--nd-text-secondary);
+  font-size: 13px;
+}
+
+.usage-row > strong {
+  color: var(--nd-text);
+  font-size: 15px;
+}
+
+.usage-row > span:last-child {
+  margin-left: auto;
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+}
+
+.dot-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dot-model-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.4fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--nd-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--nd-bg-hover) 42%, transparent);
+}
+
+.dot-model-name {
+  overflow: hidden;
+  color: var(--nd-text);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot-model-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+}
+
+.dot-model-meta code {
+  padding: 2px 7px;
+  border: 1px solid var(--nd-border);
+  border-radius: 6px;
+  background: var(--nd-bg);
+  color: var(--nd-text);
+  font-size: 11px;
+}
+
+@media (max-width: 640px) {
+  .prefs-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-row {
+    flex-wrap: wrap;
+  }
+
+  .usage-row > span:first-child {
+    flex: 0 0 auto;
+  }
+
+  .usage-row > span:last-child {
+    margin-left: 0;
+  }
+
+  .dot-model-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Réglages : retirer le contour des cartes de préférences */
+.settings-body .permission-row,
+.settings-body .permission-row:hover,
+.settings-body .permission-row:has(input:checked) {
+  border-color: transparent;
+  border-width: 0;
+}
+

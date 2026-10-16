@@ -11,6 +11,7 @@ import type {
   Settings,
   Task,
   TaskEvent,
+  UsageSummary,
 } from '../shared/types.js';
 
 export type Claim = Task & { lease: string };
@@ -19,6 +20,8 @@ const defaults: Settings = {
   paused: false,
   researchAllowed: true,
   memoryAllowed: true,
+  replyStyle: 'standard',
+  replyLanguage: 'fr',
 };
 export class Store {
   private db: DatabaseSync;
@@ -32,9 +35,11 @@ export class Store {
       CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, taskId TEXT NOT NULL, status TEXT NOT NULL, startedAt INTEGER NOT NULL, finishedAt INTEGER, result TEXT, error TEXT);
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, taskId TEXT NOT NULL, runId TEXT, text TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, text TEXT NOT NULL, createdAt INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, model TEXT NOT NULL, promptTokens INTEGER, completionTokens INTEGER, costUsd REAL);
       CREATE INDEX IF NOT EXISTS tasks_due ON tasks(status, nextRunAt);
       CREATE INDEX IF NOT EXISTS runs_task ON runs(taskId, startedAt);
-      CREATE INDEX IF NOT EXISTS events_task ON events(taskId, id);`);
+      CREATE INDEX IF NOT EXISTS events_task ON events(taskId, id);
+      CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);`);
     this.db
       .prepare('INSERT OR IGNORE INTO settings VALUES (1, ?)')
       .run(JSON.stringify(defaults));
@@ -71,7 +76,9 @@ export class Store {
     const row = this.db
       .prepare('SELECT value FROM settings WHERE id=1')
       .get() as { value: string };
-    return JSON.parse(row.value) as Settings;
+    // Merge defaults so settings rows written before a field existed keep a
+    // sane value for the new field.
+    return { ...defaults, ...(JSON.parse(row.value) as Partial<Settings>) };
   }
   updateSettings(patch: Partial<Settings>): Settings {
     return this.transaction(() => {
@@ -319,5 +326,59 @@ export class Store {
     return (
       this.db.prepare('DELETE FROM memories WHERE id=?').run(id).changes > 0
     );
+  }
+  deleteAllMemories(): number {
+    return this.db.prepare('DELETE FROM memories').run().changes as number;
+  }
+  /** Record one model completion's token usage (best-effort, no throw). */
+  recordUsage(entry: {
+    ts: number;
+    model: string;
+    promptTokens: number | null;
+    completionTokens: number | null;
+    costUsd: number | null;
+  }): void {
+    this.db
+      .prepare(
+        'INSERT INTO usage (ts, model, promptTokens, completionTokens, costUsd) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(
+        entry.ts,
+        entry.model,
+        entry.promptTokens,
+        entry.completionTokens,
+        entry.costUsd,
+      );
+  }
+  /** Totals for two windows: the current calendar day and the last 7 days. */
+  usageSummary(now = Date.now()): { today: UsageSummary; week: UsageSummary } {
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const aggregate = (since: number): UsageSummary => {
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(*) AS runs,
+                  COALESCE(SUM(promptTokens), 0) AS promptTokens,
+                  COALESCE(SUM(completionTokens), 0) AS completionTokens,
+                  COALESCE(SUM(costUsd), 0) AS costUsd
+             FROM usage WHERE ts >= ?`,
+        )
+        .get(since) as {
+        runs: number;
+        promptTokens: number;
+        completionTokens: number;
+        costUsd: number;
+      };
+      return {
+        runs: row.runs,
+        promptTokens: row.promptTokens,
+        completionTokens: row.completionTokens,
+        costUsd: row.costUsd,
+      };
+    };
+    return {
+      today: aggregate(startOfDay.getTime()),
+      week: aggregate(now - 7 * 24 * 60 * 60 * 1000),
+    };
   }
 }

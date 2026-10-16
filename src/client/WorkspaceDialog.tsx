@@ -12,7 +12,15 @@ import {
   CircleUserRound,
   X,
 } from 'lucide-react';
-import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
+import type {
+  Dot,
+  Memory,
+  ReplyLanguage,
+  ReplyStyle,
+  State,
+  UsageSummary,
+  WorkspaceState,
+} from '../shared/types';
 import type { ModelsResponse } from '../shared/models';
 import { api } from './api';
 import { AVATARS } from './Mascot';
@@ -64,6 +72,13 @@ type SettingsTab =
   | 'health'
   | 'about';
 
+/** Compact token count for the usage card (1.2k, 3.4M). */
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
 export function WorkspaceDialog({
   dialog,
   state,
@@ -99,6 +114,17 @@ export function WorkspaceDialog({
       ? (dialog.dot?.memoryAllowed ?? true)
       : state.settings.memoryAllowed,
   );
+  const [replyStyle, setReplyStyle] = useState<ReplyStyle>(
+    state.settings.replyStyle ?? 'standard',
+  );
+  const [replyLanguage, setReplyLanguage] = useState<ReplyLanguage>(
+    state.settings.replyLanguage ?? 'fr',
+  );
+  const [usage, setUsage] = useState<{
+    today: UsageSummary;
+    week: UsageSummary;
+  } | null>(null);
+  const [forgetArmed, setForgetArmed] = useState(false);
   const [spaceIds, setSpaceIds] = useState(
     dialog.type === 'dot' ? (dialog.dot?.spaceIds ?? [dialog.spaceId]) : [],
   );
@@ -145,6 +171,11 @@ export function WorkspaceDialog({
     void api<SystemMetrics>('/metrics')
       .then((value) => {
         if (active) setMetrics(value);
+      })
+      .catch(() => {});
+    void api<{ today: UsageSummary; week: UsageSummary }>('/usage')
+      .then((value) => {
+        if (active) setUsage(value);
       })
       .catch(() => {});
     return () => {
@@ -251,7 +282,12 @@ export function WorkspaceDialog({
               }
               path = '/settings';
               method = 'PATCH';
-              body = { researchAllowed: research, memoryAllowed: memory };
+              body = {
+                researchAllowed: research,
+                memoryAllowed: memory,
+                replyStyle,
+                replyLanguage,
+              };
             }
             if (dialog.type === 'memory') {
               path = dialog.memory
@@ -706,7 +742,42 @@ export function WorkspaceDialog({
                 )}{' '}
                 {dialog.type === 'settings' &&
                   settingsTab === 'preferences' && (
-                    <>
+                    <div className="prefs">
+                      <section className="prefs-summary" aria-label="Résumé">
+                        <div className="prefs-kpi">
+                          <span className="prefs-kpi-val">
+                            {workspace.dots.length}
+                          </span>
+                          <span className="prefs-kpi-label">Dot(s)</span>
+                        </div>
+                        <div className="prefs-kpi">
+                          <span
+                            className="prefs-kpi-val"
+                            title={models.default?.model ?? ''}
+                          >
+                            {models.default?.model ??
+                              metrics?.model ??
+                              'non configuré'}
+                          </span>
+                          <span className="prefs-kpi-label">
+                            Modèle par défaut
+                          </span>
+                        </div>
+                        <div className="prefs-kpi">
+                          <span className="prefs-kpi-val">
+                            {usage ? `$${usage.today.costUsd.toFixed(3)}` : '—'}
+                          </span>
+                          <span className="prefs-kpi-label">
+                            Coût aujourd’hui
+                          </span>
+                        </div>
+                      </section>
+
+                      <h3 className="prefs-section">Préférences de travail</h3>
+                      <p className="muted prefs-lead">
+                        Capacités communes à tous vos Dots.
+                      </p>
+
                       <label className="permission-row">
                         <input
                           type="checkbox"
@@ -735,48 +806,198 @@ export function WorkspaceDialog({
                           </small>
                         </span>
                       </label>
-                      <div className="config-note">
-                        <strong>Modèles</strong>
+
+                      <div className="memory-actions">
+                        <span className="muted">
+                          {state.memories.length} mémoire
+                          {state.memories.length > 1 ? 's' : ''} enregistrée
+                          {state.memories.length > 1 ? 's' : ''}
+                        </span>
+                        <button
+                          type="button"
+                          className={`text-button${forgetArmed ? ' danger' : ''}`}
+                          disabled={!state.memories.length || busy}
+                          onClick={async () => {
+                            if (!forgetArmed) {
+                              setForgetArmed(true);
+                              return;
+                            }
+                            setBusy(true);
+                            setError('');
+                            try {
+                              await api('/memories', 'DELETE');
+                              setForgetArmed(false);
+                            } catch {
+                              setError('Suppression impossible.');
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        >
+                          {forgetArmed ? 'Confirmer ?' : 'Tout oublier'}
+                        </button>
+                      </div>
+
+                      <div className="prefs-field">
+                        <span className="prefs-field-label">
+                          Style de réponse
+                        </span>
+                        <div
+                          className="segmented"
+                          role="radiogroup"
+                          aria-label="Style de réponse"
+                        >
+                          {(
+                            [
+                              ['concise', 'Concis'],
+                              ['standard', 'Standard'],
+                              ['detailed', 'Détaillé'],
+                            ] as [ReplyStyle, string][]
+                          ).map(([option, label]) => (
+                            <label key={option}>
+                              <input
+                                type="radio"
+                                name="reply-style"
+                                value={option}
+                                checked={replyStyle === option}
+                                onChange={() => setReplyStyle(option)}
+                              />
+                              <span>{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="prefs-field">
+                        <span className="prefs-field-label">
+                          Langue de réponse
+                        </span>
+                        <div
+                          className="segmented"
+                          role="radiogroup"
+                          aria-label="Langue de réponse"
+                        >
+                          {(
+                            [
+                              ['fr', 'Français'],
+                              ['auto', 'Suivre l’utilisateur'],
+                            ] as [ReplyLanguage, string][]
+                          ).map(([option, label]) => (
+                            <label key={option}>
+                              <input
+                                type="radio"
+                                name="reply-language"
+                                value={option}
+                                checked={replyLanguage === option}
+                                onChange={() => setReplyLanguage(option)}
+                              />
+                              <span>{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <h3 className="prefs-section">
+                        Configuration des modèles
+                      </h3>
+                      <p className="muted prefs-lead">
+                        Fournisseurs, consommation et modèle de chaque Dot.
+                      </p>
+
+                      <div className="provider-chips">
                         {models.providers.length > 0 ? (
-                          <>
-                            <p>
-                              Fournisseurs : chaque Dot peut choisir un
-                              fournisseur et un modèle depuis le sélecteur du
-                              composeur.
-                            </p>
-                            {models.providers.map((provider) => (
-                              <p key={provider.id}>
-                                <code>{provider.label}</code> —{' '}
+                          models.providers.map((provider) => (
+                            <button
+                              type="button"
+                              key={provider.id}
+                              className="provider-chip"
+                              title={provider.models.join(', ')}
+                              onClick={() => setSettingsTab('api')}
+                            >
+                              <span
+                                className={`chip-dot ${provider.configured ? 'ok' : 'off'}`}
+                                aria-hidden="true"
+                              />
+                              <strong>{provider.label}</strong>
+                              <small>
                                 {provider.configured
                                   ? 'clé configurée'
                                   : 'clé absente'}
-                                {provider.models.length > 0 && (
-                                  <> · {provider.models.join(', ')}</>
-                                )}
-                              </p>
-                            ))}
-                            <p>
-                              Par défaut :{' '}
-                              <code>
-                                {models.default?.model ??
-                                  metrics?.model ??
-                                  'non configuré'}
-                              </code>
-                            </p>
-                          </>
+                              </small>
+                            </button>
+                          ))
                         ) : (
-                          <p>
-                            Modèle par défaut :{' '}
-                            <code>{metrics?.model ?? 'non configuré'}</code>
-                          </p>
+                          <p className="muted">Aucun fournisseur détecté.</p>
                         )}
-                        <p>
-                          Les clés se règlent dans <code>.env</code> (
-                          <code>OPENAI_*</code>, <code>OPENROUTER_*</code>,{' '}
-                          <code>DEEPSEEK_*</code>).
-                        </p>
                       </div>
-                    </>
+
+                      <div className="usage-card">
+                        <div className="usage-row">
+                          <span>Aujourd’hui</span>
+                          <strong>
+                            {usage ? `$${usage.today.costUsd.toFixed(3)}` : '—'}
+                          </strong>
+                          <span>
+                            {usage
+                              ? `${fmtTokens(usage.today.promptTokens + usage.today.completionTokens)} jetons · ${usage.today.runs} appel(s)`
+                              : ''}
+                          </span>
+                        </div>
+                        <div className="usage-row">
+                          <span>7 derniers jours</span>
+                          <strong>
+                            {usage ? `$${usage.week.costUsd.toFixed(3)}` : '—'}
+                          </strong>
+                          <span>
+                            {usage
+                              ? `${fmtTokens(usage.week.promptTokens + usage.week.completionTokens)} jetons · ${usage.week.runs} appel(s)`
+                              : ''}
+                          </span>
+                        </div>
+                      </div>
+
+                      {workspace.dots.length > 0 && (
+                        <ul className="dot-model-list">
+                          {workspace.dots.map((item) => (
+                            <li className="dot-model-row" key={item.id}>
+                              <span className="dot-model-name">
+                                {item.name}
+                              </span>
+                              <span className="dot-model-meta">
+                                <code>
+                                  {item.model ??
+                                    models.default?.model ??
+                                    'défaut'}
+                                </code>
+                                <span>
+                                  {item.contextBudget
+                                    ? `${item.contextBudget / 1024}K`
+                                    : 'Max'}
+                                </span>
+                                <span>
+                                  {item.compactionStrategy === 'magic-compact'
+                                    ? 'Magic Compact'
+                                    : 'Natif'}
+                                </span>
+                              </span>
+                              <button
+                                type="button"
+                                className="text-button"
+                                onClick={() =>
+                                  onOpenDialog({
+                                    type: 'dot',
+                                    dot: item,
+                                    spaceId: item.spaceId,
+                                  })
+                                }
+                              >
+                                Régler
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   )}
                 {dialog.type === 'settings' && settingsTab === 'dots' && (
                   <div className="settings-list">

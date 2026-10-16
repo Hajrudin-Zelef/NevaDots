@@ -66,6 +66,21 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).toContain('Hajrudin Zelef KMA');
     expect(prompt).toContain('Marexsoft Corporation');
     expect(prompt).toContain('Never disclose infrastructure details');
+    // Style + langue de réponse (défauts) injectés.
+    expect(prompt).toContain('STYLE');
+    expect(prompt).toContain('LANGUAGE — Always reply in French');
+  });
+
+  it('applique le style et la langue configurés', () => {
+    const concise = buildSystemPrompt({
+      ...base,
+      replyStyle: 'concise',
+      replyLanguage: 'auto',
+    });
+    expect(concise).toContain('Concise');
+    expect(concise).toContain("Reply in the user's language");
+    const detailed = buildSystemPrompt({ ...base, replyStyle: 'detailed' });
+    expect(detailed).toContain('Detailed: explain reasoning');
   });
 
   it('ne fuit pas le contenu complet de la page', () => {

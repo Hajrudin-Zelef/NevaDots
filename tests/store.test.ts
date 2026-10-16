@@ -30,6 +30,54 @@ describe('durable task lifecycle', () => {
     expect(reopened.settings().name).toBe('Sam');
     reopened.close();
   });
+  it('provides reply defaults and persists style/language', () => {
+    const { store } = fixture();
+    // Defaults are surfaced even though the row predates the fields.
+    expect(store.settings().replyStyle).toBe('standard');
+    expect(store.settings().replyLanguage).toBe('fr');
+    store.updateSettings({ replyStyle: 'concise', replyLanguage: 'auto' });
+    expect(store.settings().replyStyle).toBe('concise');
+    expect(store.settings().replyLanguage).toBe('auto');
+  });
+  it('aggregates usage per day and per week', () => {
+    const { store } = fixture();
+    const now = Date.now();
+    store.recordUsage({
+      ts: now,
+      model: 'm',
+      promptTokens: 100,
+      completionTokens: 50,
+      costUsd: 0.01,
+    });
+    store.recordUsage({
+      ts: now - 3 * 24 * 60 * 60 * 1000,
+      model: 'm',
+      promptTokens: 200,
+      completionTokens: 100,
+      costUsd: 0.02,
+    });
+    store.recordUsage({
+      ts: now - 30 * 24 * 60 * 60 * 1000,
+      model: 'm',
+      promptTokens: 999,
+      completionTokens: 999,
+      costUsd: 9.99,
+    });
+    const { today, week } = store.usageSummary(now);
+    expect(today.runs).toBe(1);
+    expect(today.promptTokens).toBe(100);
+    expect(today.costUsd).toBeCloseTo(0.01);
+    expect(week.runs).toBe(2);
+    expect(week.completionTokens).toBe(150);
+  });
+  it('forgets every memory at once', () => {
+    const { store } = fixture();
+    store.saveMemory('one');
+    store.saveMemory('two');
+    expect(store.memories()).toHaveLength(2);
+    expect(store.deleteAllMemories()).toBe(2);
+    expect(store.memories()).toHaveLength(0);
+  });
   it('claims each due job once even through separate database connections', () => {
     const { store, path } = fixture();
     store.createTask('Research one');
@@ -164,7 +212,11 @@ describe('one-shot scheduled tasks', () => {
     const claim = store.claim(now + 60_001);
     expect(claim?.id).toBe(task.id);
     // A one-shot has no repeat, so finishing leaves nothing to run again.
-    store.finish(claim!, { text: 'Done', sources: [], sample: true }, now + 61_000);
+    store.finish(
+      claim!,
+      { text: 'Done', sources: [], sample: true },
+      now + 61_000,
+    );
     expect(store.task(task.id)?.nextRunAt).toBeNull();
     expect(store.claim(now + 200_000)).toBeNull();
   });

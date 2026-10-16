@@ -6,11 +6,26 @@ export type Status =
   | 'failed'
   | 'interrupted'
   | 'cancelled';
+/** Global reply style applied to every Dot's system prompt. */
+export type ReplyStyle = 'concise' | 'standard' | 'detailed';
+/** Global reply language: 'fr' pins French, 'auto' follows the user. */
+export type ReplyLanguage = 'fr' | 'auto';
 export interface Settings {
   name: string;
   paused: boolean;
   researchAllowed: boolean;
   memoryAllowed: boolean;
+  /** Reply verbosity hint injected into the system prompt (default 'standard'). */
+  replyStyle: ReplyStyle;
+  /** Reply language hint injected into the system prompt (default 'fr'). */
+  replyLanguage: ReplyLanguage;
+}
+/** Aggregated model usage over a window (tokens + estimated cost). */
+export interface UsageSummary {
+  costUsd: number;
+  promptTokens: number;
+  completionTokens: number;
+  runs: number;
 }
 export interface Task {
   id: string;

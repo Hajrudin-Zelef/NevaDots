@@ -438,11 +438,11 @@ a:focus-visible,
   color: var(--p-text-strong);
 }
 
-/* Checkboxes vertes (permission-row) */
+/* Checkboxes vertes (permission-row). La taille est pilotée par
+   refonte.css (interrupteur à bascule dans les réglages) : on ne garde ici
+   que l'accent + le curseur, pour ne pas écraser la largeur de la bascule. */
 .settings-modal .permission-row input[type='checkbox'] {
   accent-color: var(--p-green);
-  width: 20px;
-  height: 20px;
   flex-shrink: 0;
   cursor: pointer;
 }
