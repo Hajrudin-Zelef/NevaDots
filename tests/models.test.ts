@@ -48,6 +48,7 @@ describe('provider registry (buildProviders)', () => {
     });
     expect(providers.map((provider) => provider.id)).toEqual([
       'opencode',
+      'litellm',
       'openrouter',
       'deepseek',
       'freellmapi',
@@ -63,6 +64,15 @@ describe('provider registry (buildProviders)', () => {
       'kimi-k3',
     ]);
     expect(defaultProvider(providers)?.id).toBe('opencode');
+  });
+
+  it('offers the local LiteLLM gateway with its model catalog', () => {
+    const providers = buildProviders({ LITELLM_API_KEY: 'mk' });
+    const litellm = findProvider(providers, 'litellm');
+    expect(litellm?.baseUrl).toBe('http://127.0.0.1:4000/v1');
+    expect(litellm?.apiKey).toBe('mk');
+    expect(litellm?.models).toContain('deepseek-v4.1-flash');
+    expect(litellm?.models).toContain('local-qwen');
   });
 
   it('falls back to sensible defaults when a provider is unconfigured', () => {

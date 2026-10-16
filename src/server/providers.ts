@@ -28,7 +28,7 @@ interface ProviderDef {
   id: string;
   label: string;
   baseUrl: string;
-  keyUrl: string;
+  keyUrl?: string;
   envKey: string;
   envBaseUrl: string;
   envModels: string;
@@ -49,6 +49,34 @@ export const PROVIDER_DEFS: readonly ProviderDef[] = [
     envModels: 'OPENAI_MODELS',
     envModel: 'OPENAI_MODEL',
     fallback: [],
+  },
+  {
+    // Local LiteLLM gateway (OpenAI-compatible). It aggregates the owner's
+    // upstream keys (DeepSeek, OpenCode Go, OpenRouter, local llama.cpp) behind
+    // a single master key, so NevaDots talks to one endpoint here. Start it with
+    // the compose in /home/sam/litellm; models mirror its `model_name` entries.
+    id: 'litellm',
+    label: 'LiteLLM',
+    baseUrl: 'http://127.0.0.1:4000/v1',
+    envKey: 'LITELLM_API_KEY',
+    envBaseUrl: 'LITELLM_BASE_URL',
+    envModels: 'LITELLM_MODELS',
+    fallback: [
+      'deepseek-chat',
+      'deepseek-reasoner',
+      'openrouter-auto',
+      'openrouter-deepseek',
+      'opencode-go',
+      'opencode-deepseek-v4.1',
+      'opencode-deepseek-v4-pro',
+      'deepseek-v4-flash',
+      'deepseek-v4.1-flash',
+      'glm-5.3-flash',
+      'minimax-m3',
+      'hy3',
+      'hy4-preview',
+      'local-qwen',
+    ],
   },
   {
     id: 'openrouter',
