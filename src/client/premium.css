@@ -661,3 +661,8 @@ a:focus-visible,
   background: var(--p-green-soft);
   color: var(--p-green-deep);
 }
+
+/* Fix textarea : défilement interne au-delà de max-height */
+.chat-compose-row textarea {
+  overflow-y: auto;
+}

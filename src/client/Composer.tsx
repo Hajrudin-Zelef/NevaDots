@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   ArrowUp,
   Brain,
@@ -115,6 +116,17 @@ export function Composer(props: ComposerProps) {
     note,
   } = props;
 
+  // Auto-agrandissement du textarea : suit le contenu jusqu'à max-height (120px),
+  // puis le texte défile à l'intérieur. Sans ça, un long message reste écrasé
+  // sur une ligne et le texte « casse » visuellement.
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }, [text]);
+
   return (
     <form
       className="chat-composer"
@@ -151,6 +163,7 @@ export function Composer(props: ComposerProps) {
       {attachmentCards}
       <div className="chat-compose-row">
         <textarea
+          ref={textareaRef}
           aria-label={inputAriaLabel}
           placeholder={placeholder}
           value={text}
