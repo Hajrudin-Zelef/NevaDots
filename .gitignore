@@ -24,3 +24,7 @@ docs/FORKoffLine/
 
 # Confidential fork planning notes and source masters — never committed.
 OffLineFork/
+
+# Private Dot art (owner's, ~66 Mo) and stray screenshots — never committed.
+/public/dots/leo/
+/Capture*.png
