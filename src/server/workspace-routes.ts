@@ -43,15 +43,18 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     platform.setupTelemetry.capture(event);
     return c.json({ ok: true });
   });
-  app.get('/workspace', (c) =>
-    c.json({
-      spaces: platform.workspace.spaces(),
+  app.get('/workspace', (c) => {
+    const counts = platform.workspace.pages.countsBySpace();
+    return c.json({
+      spaces: platform.workspace
+        .spaces()
+        .map((space) => ({ ...space, pageCount: counts[space.id] ?? 0 })),
       dots: platform.workspace.dots(),
       conversations: platform.workspace.conversations(),
       setup: platform.setup(),
       calls: platform.workspace.calls(),
-    }),
-  );
+    });
+  });
   app.get('/models', (c) => {
     const registry = platform.config.providerRegistry;
     if (registry)
@@ -294,6 +297,29 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       201,
     );
   });
+  app.put('/spaces/:id', async (c) => {
+    const data = z
+      .object({
+        name: z.string().trim().min(1).max(60),
+        description: z.string().max(500).default(''),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success)
+      return c.json(
+        { error: 'Enter a Space name (up to 60 characters).' },
+        400,
+      );
+    if (!platform.workspace.space(c.req.param('id')))
+      return c.json({ error: 'Space not found.' }, 404);
+    return c.json(
+      platform.workspace.updateSpace(
+        c.req.param('id'),
+        data.data.name,
+        data.data.description,
+      ),
+    );
+  });
   app.post('/dots', async (c) => {
     const data = dotSchema
       .extend({ spaceId: z.string() })
@@ -362,6 +388,10 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       );
     }
     return c.json(platform.workspace.updateDot(c.req.param('id'), data.data));
+  });
+  app.post('/dots/:id/duplicate', (c) => {
+    const copy = platform.workspace.duplicateDot(c.req.param('id'));
+    return copy ? c.json(copy, 201) : c.json({ error: 'Dot not found.' }, 404);
   });
   app.put('/dots/:id/model', async (c) => {
     const data = z

@@ -85,6 +85,13 @@ export class Pages {
       .prepare('SELECT * FROM pages WHERE spaceId=? ORDER BY createdAt,id')
       .all(spaceId) as unknown as Page[];
   }
+  /** Page count per space id (single aggregate query). */
+  countsBySpace(): Record<string, number> {
+    const rows = this.db
+      .prepare('SELECT spaceId, COUNT(*) AS n FROM pages GROUP BY spaceId')
+      .all() as unknown as { spaceId: string; n: number }[];
+    return Object.fromEntries(rows.map((row) => [row.spaceId, row.n]));
+  }
   get(spaceId: string, id: string): Page {
     this.requireSpace(spaceId);
     const row = this.db

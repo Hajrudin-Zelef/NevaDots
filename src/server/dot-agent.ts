@@ -524,6 +524,7 @@ export class DotAgent extends AbstractAgent {
             try {
               this.store.recordUsage({
                 ts: Date.now(),
+                dotId: dot.id,
                 model,
                 promptTokens: info.promptTokens,
                 completionTokens: info.completionTokens,

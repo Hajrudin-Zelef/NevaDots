@@ -24,6 +24,31 @@ it('rejects a dot in a nonexistent space and does not rebind an existing thread'
   store.close();
 });
 
+it('edits a space and duplicates a dot with its tune', () => {
+  const store = new WorkspaceStore(':memory:', 'owner');
+  const space = store.createSpace('Design', 'Design decisions');
+  const updated = store.updateSpace(space.id, 'Atelier', 'Refonte UI');
+  expect(updated.name).toBe('Atelier');
+  expect(store.space(space.id)?.description).toBe('Refonte UI');
+  expect(() => store.updateSpace('missing', 'x', '')).toThrow();
+
+  const dot = store.createDot(space.id, 'Scout', 'Be concise', false, true);
+  store.setDotContextBudget(dot.id, 16384);
+  store.setDotCompactionStrategy(dot.id, 'magic-compact');
+  const before = store.dots().length;
+  const copy = store.duplicateDot(dot.id);
+  expect(copy).toBeTruthy();
+  expect(copy?.name).toBe('Scout (copie)');
+  expect(copy?.instructions).toBe('Be concise');
+  expect(copy?.memoryAllowed).toBe(true);
+  expect(copy?.contextBudget).toBe(16384);
+  expect(copy?.compactionStrategy).toBe('magic-compact');
+  expect(copy?.id).not.toBe(dot.id);
+  expect(store.dots()).toHaveLength(before + 1);
+  expect(store.duplicateDot('missing')).toBeNull();
+  store.close();
+});
+
 it('migrates legacy Space ownership once and never restores revoked access on restart', () => {
   const dir = mkdtempSync(join(tmpdir(), 'opendots-access-'));
   const path = join(dir, 'workspace.sqlite');

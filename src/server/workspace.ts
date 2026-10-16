@@ -130,6 +130,16 @@ export class WorkspaceStore {
       .run(space.id, name, description, space.createdAt);
     return space;
   }
+  space(id: string): Space | undefined {
+    return this.spaces().find((space) => space.id === id);
+  }
+  updateSpace(id: string, name: string, description: string): Space {
+    if (!this.space(id)) throw new Error('Space not found.');
+    this.db
+      .prepare('UPDATE spaces SET name=?, description=? WHERE id=?')
+      .run(name, description, id);
+    return this.space(id)!;
+  }
   dots(): Dot[] {
     return this.db
       .prepare('SELECT * FROM dots ORDER BY createdAt')
@@ -248,6 +258,28 @@ export class WorkspaceStore {
       throw error;
     }
     return dot;
+  }
+  /** Clone a Dot (instructions, permissions, spaces, model, avatar, tune). */
+  duplicateDot(id: string): Dot | null {
+    const current = this.dot(id);
+    if (!current) return null;
+    const copy = this.createDot(
+      current.spaceId,
+      `${current.name} (copie)`.slice(0, 40),
+      current.instructions,
+      current.researchAllowed,
+      current.memoryAllowed,
+      current.spaceIds,
+      current.learningContainerId ?? null,
+      current.skillDeliveryEnabled ?? false,
+      current.model ?? null,
+      current.avatar ?? null,
+    );
+    if (current.contextBudget != null)
+      this.setDotContextBudget(copy.id, current.contextBudget);
+    if (current.compactionStrategy != null)
+      this.setDotCompactionStrategy(copy.id, current.compactionStrategy);
+    return this.dot(copy.id) ?? null;
   }
   canAccessSpace(dotId: string, spaceId: string) {
     return !!this.db

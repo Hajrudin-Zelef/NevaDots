@@ -17,8 +17,9 @@ import type {
   Memory,
   ReplyLanguage,
   ReplyStyle,
+  Space,
   State,
-  UsageSummary,
+  UsageReport,
   WorkspaceState,
 } from '../shared/types';
 import type { ModelsResponse } from '../shared/models';
@@ -46,7 +47,7 @@ import {
   type MotionPreference,
 } from './motion-pref';
 export type Dialog =
-  | { type: 'space' }
+  | { type: 'space'; space?: Space }
   | { type: 'dot'; dot?: Dot; spaceId: string }
   | { type: 'settings' }
   | { type: 'memory'; memory?: Memory }
@@ -95,14 +96,20 @@ export function WorkspaceDialog({
   mutate: (path: string, method: string, body?: unknown) => Promise<boolean>;
 }) {
   const [name, setName] = useState(
-    dialog.type === 'dot' ? (dialog.dot?.name ?? '') : '',
+    dialog.type === 'dot'
+      ? (dialog.dot?.name ?? '')
+      : dialog.type === 'space'
+        ? (dialog.space?.name ?? '')
+        : '',
   );
   const [text, setText] = useState(
     dialog.type === 'dot'
       ? (dialog.dot?.instructions ?? '')
       : dialog.type === 'memory'
         ? (dialog.memory?.text ?? '')
-        : '',
+        : dialog.type === 'space'
+          ? (dialog.space?.description ?? '')
+          : '',
   );
   const [research, setResearch] = useState(
     dialog.type === 'dot'
@@ -120,10 +127,7 @@ export function WorkspaceDialog({
   const [replyLanguage, setReplyLanguage] = useState<ReplyLanguage>(
     state.settings.replyLanguage ?? 'fr',
   );
-  const [usage, setUsage] = useState<{
-    today: UsageSummary;
-    week: UsageSummary;
-  } | null>(null);
+  const [usage, setUsage] = useState<UsageReport | null>(null);
   const [forgetArmed, setForgetArmed] = useState(false);
   const [spaceIds, setSpaceIds] = useState(
     dialog.type === 'dot' ? (dialog.dot?.spaceIds ?? [dialog.spaceId]) : [],
@@ -173,7 +177,7 @@ export function WorkspaceDialog({
         if (active) setMetrics(value);
       })
       .catch(() => {});
-    void api<{ today: UsageSummary; week: UsageSummary }>('/usage')
+    void api<UsageReport>('/usage')
       .then((value) => {
         if (active) setUsage(value);
       })
@@ -216,7 +220,9 @@ export function WorkspaceDialog({
   }, []);
   const title =
     dialog.type === 'space'
-      ? 'A space for something.'
+      ? dialog.space
+        ? 'Modifier cet espace.'
+        : 'A space for something.'
       : dialog.type === 'dot'
         ? dialog.dot
           ? 'Make this Dot yours.'
@@ -256,7 +262,8 @@ export function WorkspaceDialog({
               method = 'POST',
               body: unknown;
             if (dialog.type === 'space') {
-              path = '/spaces';
+              path = dialog.space ? `/spaces/${dialog.space.id}` : '/spaces';
+              method = dialog.space ? 'PUT' : 'POST';
               body = { name, description: text };
             }
             if (dialog.type === 'dot') {
@@ -1000,7 +1007,7 @@ export function WorkspaceDialog({
                     </div>
                   )}
                 {dialog.type === 'settings' && settingsTab === 'dots' && (
-                  <div className="settings-list">
+                  <div className="settings-list ws-workspace">
                     <div className="settings-list-head">
                       <strong>Dots</strong>
                       <button
@@ -1016,24 +1023,98 @@ export function WorkspaceDialog({
                         Nouveau
                       </button>
                     </div>
-                    {workspace.dots.map((item) => (
-                      <div className="settings-list-row" key={item.id}>
-                        <span>{item.name}</span>
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() =>
-                            onOpenDialog({
-                              type: 'dot',
-                              dot: item,
-                              spaceId: item.spaceId,
-                            })
-                          }
-                        >
-                          Modifier
-                        </button>
-                      </div>
-                    ))}
+                    {workspace.dots.map((item) => {
+                      const conversations = workspace.conversations.filter(
+                        (conversation) => conversation.dotId === item.id,
+                      ).length;
+                      const spend = usage?.byDot.find(
+                        (entry) => entry.dotId === item.id,
+                      );
+                      return (
+                        <div className="ws-dot" key={item.id}>
+                          <img
+                            className="ws-avatar"
+                            src={avatarPoster(item.avatar) ?? undefined}
+                            alt=""
+                            width={40}
+                            height={40}
+                          />
+                          <div className="ws-main">
+                            <span className="ws-name">{item.name}</span>
+                            <span className="ws-meta">
+                              <code>{item.model ?? 'modèle par défaut'}</code>
+                              <span>
+                                {item.contextBudget
+                                  ? `${item.contextBudget / 1024}K`
+                                  : 'Contexte Max'}
+                              </span>
+                              <span>
+                                {item.compactionStrategy === 'magic-compact'
+                                  ? 'Magic Compact'
+                                  : 'Compaction native'}
+                              </span>
+                              <span>
+                                {conversations} conversation
+                                {conversations > 1 ? 's' : ''}
+                              </span>
+                              {spend && spend.runs > 0 && (
+                                <span title="Coût estimé sur 7 jours">
+                                  ${spend.costUsd.toFixed(3)} / 7 j
+                                </span>
+                              )}
+                            </span>
+                            <span className="ws-badges">
+                              <span
+                                className={`ws-badge ${item.researchAllowed ? 'on' : 'off'}`}
+                              >
+                                Recherche
+                              </span>
+                              <span
+                                className={`ws-badge ${item.memoryAllowed ? 'on' : 'off'}`}
+                              >
+                                Mémoires
+                              </span>
+                            </span>
+                          </div>
+                          <div className="ws-actions">
+                            <button
+                              type="button"
+                              className="text-button"
+                              onClick={() =>
+                                onOpenDialog({
+                                  type: 'dot',
+                                  dot: item,
+                                  spaceId: item.spaceId,
+                                })
+                              }
+                            >
+                              Modifier
+                            </button>
+                            <button
+                              type="button"
+                              className="text-button"
+                              disabled={busy}
+                              onClick={async () => {
+                                setBusy(true);
+                                setError('');
+                                try {
+                                  await api(
+                                    `/dots/${encodeURIComponent(item.id)}/duplicate`,
+                                    'POST',
+                                  );
+                                } catch {
+                                  setError('Duplication impossible.');
+                                } finally {
+                                  setBusy(false);
+                                }
+                              }}
+                            >
+                              Dupliquer
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                     <div className="settings-list-head">
                       <strong>Espaces</strong>
                       <button
@@ -1044,11 +1125,43 @@ export function WorkspaceDialog({
                         Nouveau
                       </button>
                     </div>
-                    {workspace.spaces.map((item) => (
-                      <div className="settings-list-row" key={item.id}>
-                        <span>{item.name}</span>
-                      </div>
-                    ))}
+                    {workspace.spaces.map((item) => {
+                      const dots = workspace.dots.filter((dot) =>
+                        dot.spaceIds?.includes(item.id),
+                      ).length;
+                      const pages = item.pageCount ?? 0;
+                      return (
+                        <div className="ws-space" key={item.id}>
+                          <div className="ws-main">
+                            <span className="ws-name">{item.name}</span>
+                            <span className="ws-meta">
+                              <span>
+                                {pages} page{pages > 1 ? 's' : ''}
+                              </span>
+                              <span>
+                                {dots} Dot{dots > 1 ? 's' : ''}
+                              </span>
+                              {item.description && (
+                                <span className="ws-desc">
+                                  {item.description}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="ws-actions">
+                            <button
+                              type="button"
+                              className="text-button"
+                              onClick={() =>
+                                onOpenDialog({ type: 'space', space: item })
+                              }
+                            >
+                              Modifier
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {dialog.type === 'settings' &&

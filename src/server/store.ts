@@ -5,12 +5,14 @@ import { dirname } from 'node:path';
 import type {
   Action,
   Detail,
+  DotUsage,
   Memory,
   Result,
   Run,
   Settings,
   Task,
   TaskEvent,
+  UsageReport,
   UsageSummary,
 } from '../shared/types.js';
 
@@ -40,6 +42,12 @@ export class Store {
       CREATE INDEX IF NOT EXISTS runs_task ON runs(taskId, startedAt);
       CREATE INDEX IF NOT EXISTS events_task ON events(taskId, id);
       CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);`);
+    // Per-Dot attribution was added later; migrate old databases in place.
+    try {
+      this.db.exec('ALTER TABLE usage ADD COLUMN dotId TEXT');
+    } catch {
+      // Column already present — nothing to do.
+    }
     this.db
       .prepare('INSERT OR IGNORE INTO settings VALUES (1, ?)')
       .run(JSON.stringify(defaults));
@@ -333,6 +341,7 @@ export class Store {
   /** Record one model completion's token usage (best-effort, no throw). */
   recordUsage(entry: {
     ts: number;
+    dotId: string | null;
     model: string;
     promptTokens: number | null;
     completionTokens: number | null;
@@ -340,10 +349,11 @@ export class Store {
   }): void {
     this.db
       .prepare(
-        'INSERT INTO usage (ts, model, promptTokens, completionTokens, costUsd) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO usage (ts, dotId, model, promptTokens, completionTokens, costUsd) VALUES (?, ?, ?, ?, ?, ?)',
       )
       .run(
         entry.ts,
+        entry.dotId,
         entry.model,
         entry.promptTokens,
         entry.completionTokens,
@@ -351,9 +361,10 @@ export class Store {
       );
   }
   /** Totals for two windows: the current calendar day and the last 7 days. */
-  usageSummary(now = Date.now()): { today: UsageSummary; week: UsageSummary } {
+  usageSummary(now = Date.now()): UsageReport {
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
+    const weekStart = now - 7 * 24 * 60 * 60 * 1000;
     const aggregate = (since: number): UsageSummary => {
       const row = this.db
         .prepare(
@@ -376,9 +387,21 @@ export class Store {
         costUsd: row.costUsd,
       };
     };
+    const byDot = this.db
+      .prepare(
+        `SELECT dotId,
+                COUNT(*) AS runs,
+                COALESCE(SUM(promptTokens), 0) AS promptTokens,
+                COALESCE(SUM(completionTokens), 0) AS completionTokens,
+                COALESCE(SUM(costUsd), 0) AS costUsd
+           FROM usage WHERE ts >= ? AND dotId IS NOT NULL
+          GROUP BY dotId ORDER BY costUsd DESC`,
+      )
+      .all(weekStart) as unknown as DotUsage[];
     return {
       today: aggregate(startOfDay.getTime()),
-      week: aggregate(now - 7 * 24 * 60 * 60 * 1000),
+      week: aggregate(weekStart),
+      byDot,
     };
   }
 }

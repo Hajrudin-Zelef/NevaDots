@@ -27,6 +27,16 @@ export interface UsageSummary {
   completionTokens: number;
   runs: number;
 }
+/** Usage attributed to one Dot over the reporting window. */
+export interface DotUsage extends UsageSummary {
+  dotId: string;
+}
+/** Response of GET /api/usage. */
+export interface UsageReport {
+  today: UsageSummary;
+  week: UsageSummary;
+  byDot: DotUsage[];
+}
 export interface Task {
   id: string;
   prompt: string;
@@ -89,6 +99,8 @@ export interface Space {
   name: string;
   description: string;
   createdAt: number;
+  /** Number of pages in the space (only set by GET /workspace). */
+  pageCount?: number;
 }
 export interface Dot {
   id: string;

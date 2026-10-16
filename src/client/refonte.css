@@ -5122,3 +5122,116 @@ textarea::placeholder {
     padding: 15px;
   }
 }
+
+/* Dots & Espaces — cartes détaillées */
+.ws-dot,
+.ws-space {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--nd-bg-hover) 45%, transparent);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.ws-dot:hover,
+.ws-space:hover {
+  border-color: color-mix(in srgb, var(--nd-accent) 22%, var(--nd-border));
+  background: color-mix(in srgb, var(--nd-accent) 6%, var(--nd-bg));
+}
+
+.ws-avatar {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--nd-bg);
+  box-shadow: 0 2px 6px rgba(20, 24, 32, 0.12);
+}
+
+.ws-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ws-name {
+  color: var(--nd-text);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ws-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+}
+
+.ws-meta code {
+  padding: 2px 7px;
+  border: 1px solid var(--nd-border);
+  border-radius: 6px;
+  background: var(--nd-bg);
+  color: var(--nd-text);
+  font-size: 11px;
+}
+
+.ws-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.ws-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ws-badge.on {
+  background: color-mix(in srgb, var(--nd-accent) 14%, transparent);
+  color: var(--nd-accent);
+}
+
+.ws-badge.off {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text-secondary);
+  text-decoration: line-through;
+}
+
+.ws-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .ws-dot,
+  .ws-space {
+    flex-wrap: wrap;
+  }
+
+  .ws-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
