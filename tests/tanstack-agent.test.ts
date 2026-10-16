@@ -303,7 +303,7 @@ it('offers connected tools to the model and the approval tool only when the web 
   expect(headless).not.toContain(connectionActionTool.name);
 });
 
-it('tells the model the current time so scheduled runs do not invent one', async () => {
+it('tells the model the current date so scheduled runs do not invent one', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-04T07:33:12.000Z'));
   try {
@@ -318,7 +318,7 @@ it('tells the model the current time so scheduled runs do not invent one', async
     const system = request.messages.find(
       (message: { role: string }) => message.role === 'system',
     );
-    expect(system.content).toContain('Time: 2026-10-04T07:33:12.000Z UTC');
+    expect(system.content).toContain('Date: 2026-10-04 —');
   } finally {
     vi.useRealTimers();
   }

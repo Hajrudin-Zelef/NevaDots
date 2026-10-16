@@ -206,9 +206,34 @@ export async function seedUserPartitionFromMemories(
 }
 
 /**
+ * Optimisation tokens (2026-10-16) : cache du résumé cerveau par mtime.
+ * Le résumé n'est reconstruit que si un fichier du cerveau a changé.
+ */
+let brainCacheSlot: { fingerprint: string; summary: string } | null = null;
+
+/** Première ligne non vide d'un fichier, nettoyée (sans `#`, ≤80 car.). */
+function brainFileHeadline(abs: string): string {
+  try {
+    const content = readFileSync(abs, 'utf8');
+    for (const raw of content.split('\n')) {
+      const line = raw.replace(/^#+\s*/, '').trim();
+      if (line) return line.length > 80 ? `${line.slice(0, 80)}…` : line;
+    }
+  } catch {
+    // Illisible : pas de résumé.
+  }
+  return '';
+}
+
+/**
  * Version synchrone de la consultation (phase 8) : le run() de DotAgent
  * est synchrone (Observable), les fichiers sont locaux et petits.
- * Seed + résumé borné en un appel.
+ * Seed + résumé compact en un appel.
+ *
+ * Le résumé est un index compact (fichier : première ligne) au lieu du
+ * contenu complet des index.md — l'agent lit le détail via brain_read
+ * quand il en a besoin. memories.md est exclu (déjà injecté via
+ * slimMemories dans le prompt, source live = SQLite).
  */
 export function consultBrainSync(memories: string[]): string {
   const root = userPartitionRoot();
@@ -235,22 +260,28 @@ export function consultBrainSync(memories: string[]): string {
       // Seed optionnel : le cerveau reste vide.
     }
   }
-  // Résumé borné des 3 partitions.
-  const parts: string[] = [];
+  // Marche des 3 partitions : fichiers + mtimes pour le fingerprint.
+  const found: { partition: string; rel: string; abs: string }[] = [];
+  const fp: string[] = [];
   for (const partition of ['user', 'project', 'shared'] as const) {
     const proot = partitionRoot(partition);
-    const files: string[] = [];
     try {
       const walk = (dir: string, prefix: string): void => {
-        if (files.length >= 100) return;
+        if (found.length >= 100) return;
         for (const entry of readdirSync(dir).sort()) {
-          if (files.length >= 100) return;
+          if (found.length >= 100) return;
           if (entry.startsWith('.')) continue;
           const abs = join(dir, entry);
           const rel = prefix ? `${prefix}/${entry}` : entry;
           try {
-            if (statSync(abs).isDirectory()) walk(abs, rel);
-            else if (entry.endsWith('.md')) files.push(rel);
+            const st = statSync(abs);
+            if (st.isDirectory()) walk(abs, rel);
+            else if (entry.endsWith('.md')) {
+              if (partition === 'user' && rel.toLowerCase() === 'memories.md')
+                continue;
+              found.push({ partition, rel, abs });
+              fp.push(`${partition}:${rel}:${st.mtimeMs}`);
+            }
           } catch {
             continue;
           }
@@ -260,26 +291,24 @@ export function consultBrainSync(memories: string[]): string {
     } catch {
       continue;
     }
+  }
+  const fingerprint = fp.join('|');
+  if (brainCacheSlot && brainCacheSlot.fingerprint === fingerprint) {
+    return brainCacheSlot.summary;
+  }
+  // Résumé compact : [partition] + "fichier : première ligne".
+  const parts: string[] = [];
+  for (const partition of ['user', 'project', 'shared'] as const) {
+    const files = found.filter((f) => f.partition === partition);
     if (!files.length) continue;
     const lines = [`[${partition}]`];
-    const indexFile = files.find(
-      (f) =>
-        f.toLowerCase() === 'index.md' || f.toLowerCase().endsWith('/index.md'),
-    );
-    if (indexFile) {
-      try {
-        const content = readFileSync(join(proot, indexFile), 'utf8');
-        lines.push(
-          content.length > PARTITION_BUDGET
-            ? `${content.slice(0, PARTITION_BUDGET)}\n…[tronqué]`
-            : content,
-        );
-      } catch {
-        // Index illisible : on liste seulement.
-      }
+    for (const f of files) {
+      const head = brainFileHeadline(f.abs);
+      lines.push(head ? `- ${f.rel} : ${head}` : `- ${f.rel}`);
     }
-    lines.push(`Fichiers : ${files.join(', ')}`);
     parts.push(lines.join('\n'));
   }
-  return parts.length ? parts.join('\n\n') : 'aucun';
+  const summary = parts.length ? parts.join('\n\n') : 'aucun';
+  brainCacheSlot = { fingerprint, summary };
+  return summary;
 }
