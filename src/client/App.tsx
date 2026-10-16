@@ -98,32 +98,6 @@ function useMetrics() {
   return metrics;
 }
 
-function fmtPct(value: number | null | undefined) {
-  return value == null ? '—' : `${Math.round(value)}%`;
-}
-function fmtBytes(value: number | null | undefined) {
-  if (value == null) return '—';
-  const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
-  let amount = value;
-  let unit = 0;
-  while (amount >= 1024 && unit < units.length - 1) {
-    amount /= 1024;
-    unit += 1;
-  }
-  return `${amount.toFixed(1)} ${units[unit]}`;
-}
-function fmtRate(value: number | null | undefined) {
-  if (value == null) return '—';
-  const units = ['o/s', 'Ko/s', 'Mo/s', 'Go/s'];
-  let v = value;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i += 1;
-  }
-  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
-}
-
 export function App() {
   const metrics = useMetrics();
   const [state, setState] = useState<State>();
@@ -570,39 +544,6 @@ export function App() {
           </button>
           <span className="version-badge">v0.1.0</span>
           <span className="sidebar-credit">Assistant IA auto-hébergé</span>
-        </div>
-        <div className="sb-metrics" aria-label="Métriques système">
-          <div className="sb-metrics-title">Métriques</div>
-          <div className="sb-metric sb-metric-net">
-            <span className="sb-metric-label">Modèle</span>
-            <span className="sb-metric-val" title={metrics?.model ?? ''}>
-              {metrics?.model ?? '—'} · 0 tok
-            </span>
-          </div>
-          <div className="sb-metric">
-            <span className="sb-metric-label">CPU</span>
-            <span className="sb-metric-val">{fmtPct(metrics?.cpu)}</span>
-          </div>
-          <div className="sb-metric">
-            <span className="sb-metric-label">RAM</span>
-            <span className="sb-metric-val">
-              {fmtBytes(metrics?.memUsedBytes)} /{' '}
-              {fmtBytes(metrics?.memTotalBytes)}
-            </span>
-          </div>
-          <div className="sb-metric">
-            <span className="sb-metric-label">Disque</span>
-            <span className="sb-metric-val">
-              {fmtBytes(metrics?.diskUsedBytes)} /{' '}
-              {fmtBytes(metrics?.diskTotalBytes)}
-            </span>
-          </div>
-          <div className="sb-metric sb-metric-net">
-            <span className="sb-metric-label">Réseau</span>
-            <span className="sb-metric-val" title="↓ réception / ↑ envoi">
-              ↓ {fmtRate(metrics?.netIn)} · ↑ {fmtRate(metrics?.netOut)}
-            </span>
-          </div>
         </div>
         <nav className="module-nav" aria-label="Modules">
           <button

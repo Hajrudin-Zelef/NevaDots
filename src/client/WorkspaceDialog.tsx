@@ -119,6 +119,9 @@ export function WorkspaceDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [dotTab, setDotTab] = useState<'general' | 'access' | 'automation'>(
+    'general',
+  );
   const [theme, setTheme] = useState(themePreference);
   const [palette, setPalette] = useState(palettePreference);
   const [motion, setMotion] = useState(motionPreference);
@@ -321,6 +324,28 @@ export function WorkspaceDialog({
             </>
           )}
           {dialog.type === 'dot' && (
+            <div className="dot-tabs" role="tablist" aria-label="Dot settings">
+              {(
+                [
+                  ['general', 'Général'],
+                  ['access', 'Accès & mémoire'],
+                  ['automation', 'Automatisation'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  type="button"
+                  key={id}
+                  role="tab"
+                  aria-selected={dotTab === id}
+                  className={`dot-tab-button ${dotTab === id ? 'active' : ''}`}
+                  onClick={() => setDotTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {dialog.type === 'dot' && dotTab === 'general' && (
             <fieldset className="avatar-picker">
               <legend>Avatar</legend>
               <div className="avatar-swatches">
@@ -354,7 +379,7 @@ export function WorkspaceDialog({
               </p>
             </fieldset>
           )}
-          {dialog.type === 'dot' && (
+          {dialog.type === 'dot' && dotTab === 'access' && (
             <fieldset className="space-access-fields">
               <legend>Space access</legend>
               <p className="muted">
@@ -399,7 +424,7 @@ export function WorkspaceDialog({
               </select>
             </fieldset>
           )}
-          {dialog.type === 'dot' && (
+          {dialog.type === 'dot' && dotTab === 'access' && (
             <>
               <label className="permission-row">
                 <input
@@ -431,7 +456,7 @@ export function WorkspaceDialog({
               </label>
             </>
           )}
-          {dialog.type === 'dot' && (
+          {dialog.type === 'dot' && dotTab === 'automation' && (
             <fieldset className="space-access-fields">
               <legend>Automatic Learning</legend>
               <label className="field-label" htmlFor="learning-container">
@@ -481,7 +506,7 @@ export function WorkspaceDialog({
               </a>
             </fieldset>
           )}
-          {dialog.type === 'dot' && dialog.dot && (
+          {dialog.type === 'dot' && dotTab === 'automation' && dialog.dot && (
             <ConnectionsSection dotId={dialog.dot.id} />
           )}
           {dialog.type === 'schedule' && (

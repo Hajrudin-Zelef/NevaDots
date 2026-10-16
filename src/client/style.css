@@ -2464,6 +2464,32 @@ h3 {
 .thinking > span:last-child {
   margin-left: 6px;
 }
+.dot-tabs {
+  display: flex;
+  gap: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 4px 0 20px;
+}
+.dot-tab-button {
+  padding: 0 0 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted, #9aa3b5);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.dot-tab-button:hover {
+  color: var(--text, #e4e7ee);
+}
+.dot-tab-button.active {
+  color: var(--text, #ffffff);
+  border-bottom-color: #3b82f6;
+}
 .permission-row {
   display: flex;
   align-items: flex-start;
