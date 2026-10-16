@@ -2,9 +2,11 @@ import { homedir } from 'node:os';
 import { join, normalize, relative, sep } from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
+  closeSync,
   mkdirSync,
+  openSync,
   readdirSync,
-  readFileSync,
+  readSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -211,16 +213,56 @@ export async function seedUserPartitionFromMemories(
  */
 let brainCacheSlot: { fingerprint: string; summary: string } | null = null;
 
-/** Première ligne non vide d'un fichier, nettoyée (sans `#`, ≤80 car.). */
+/** Plafond du résumé compact injecté au prompt : le cerveau peut grossir,
+ * le coût en tokens du préfixe CONTEXT ne doit pas. Coupe sur une ligne. */
+const CONSULT_BUDGET = 2500;
+
+/** Première ligne significative d'un fichier, nettoyée (≤80 car.).
+ * Ne lit que les 1024 premiers octets — pas le fichier entier.
+ * Le frontmatter YAML est sauté : on prend `description:` si présent,
+ * sinon le premier titre après le bloc. Ne renvoie jamais un `---` nu
+ * (sinon le résumé injecte 13 × « --- » d'inutiles au lieu de libellés). */
 function brainFileHeadline(abs: string): string {
+  const cap = (line: string): string =>
+    line.length > 80 ? `${line.slice(0, 80)}…` : line;
+  let fd: number | null = null;
   try {
-    const content = readFileSync(abs, 'utf8');
-    for (const raw of content.split('\n')) {
-      const line = raw.replace(/^#+\s*/, '').trim();
-      if (line) return line.length > 80 ? `${line.slice(0, 80)}…` : line;
+    fd = openSync(abs, 'r');
+    const buf = Buffer.alloc(1024);
+    const n = readSync(fd, buf, 0, 1024, 0);
+    const lines = buf.toString('utf8', 0, n).split('\n');
+    if (lines[0]?.trim() === '---') {
+      let desc = '';
+      for (let i = 1; i < lines.length; i++) {
+        const t = lines[i].trim();
+        if (t === '---') {
+          if (desc) return cap(desc);
+          for (let j = i + 1; j < lines.length; j++) {
+            const l = lines[j].replace(/^#+\s*/, '').trim();
+            if (l) return cap(l);
+          }
+          return '';
+        }
+        if (!desc && /^description:\s*/i.test(t))
+          desc = t.replace(/^description:\s*/i, '').trim();
+      }
+      // Bloc non refermé dans la fenêtre (frontmatter long) : description.
+      if (desc) return cap(desc);
+    }
+    for (const raw of lines) {
+      const l = raw.replace(/^#+\s*/, '').trim();
+      if (l && l !== '---') return cap(l);
     }
   } catch {
     // Illisible : pas de résumé.
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Ignore.
+      }
+    }
   }
   return '';
 }
@@ -230,10 +272,11 @@ function brainFileHeadline(abs: string): string {
  * est synchrone (Observable), les fichiers sont locaux et petits.
  * Seed + résumé compact en un appel.
  *
- * Le résumé est un index compact (fichier : première ligne) au lieu du
- * contenu complet des index.md — l'agent lit le détail via brain_read
- * quand il en a besoin. memories.md est exclu (déjà injecté via
- * slimMemories dans le prompt, source live = SQLite).
+ * Le résumé est un index compact (fichier : libellé — description du
+ * frontmatter sinon premier titre) au lieu du contenu complet des
+ * index.md — l'agent lit le détail via brain_read quand il en a besoin.
+ * memories.md est exclu (déjà injecté via slimMemories dans le prompt,
+ * source live = SQLite). Le résumé total est plafonné à CONSULT_BUDGET.
  */
 export function consultBrainSync(memories: string[]): string {
   const root = userPartitionRoot();
@@ -309,6 +352,11 @@ export function consultBrainSync(memories: string[]): string {
     parts.push(lines.join('\n'));
   }
   const summary = parts.length ? parts.join('\n\n') : 'aucun';
-  brainCacheSlot = { fingerprint, summary };
-  return summary;
+  let capped = summary;
+  if (summary.length > CONSULT_BUDGET) {
+    const cut = summary.lastIndexOf('\n', CONSULT_BUDGET);
+    capped = `${summary.slice(0, cut > 0 ? cut : CONSULT_BUDGET)}\n…[tronqué — brain_read pour le reste]`;
+  }
+  brainCacheSlot = { fingerprint, summary: capped };
+  return capped;
 }
