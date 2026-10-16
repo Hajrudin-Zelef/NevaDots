@@ -51,6 +51,7 @@ import { Composer } from './Composer';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
 import { useAgentSteps } from './useAgentSteps';
+import { useHeldMascotState } from './useHeldMascotState';
 import { StepCard } from './StepCard';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
@@ -648,7 +649,22 @@ export function Chat({
     /computer_(navigate|snapshot|screenshot|read|click|scroll|key)/.test(
       activeToolName,
     );
-  const mascotState =
+  // Text is streaming into the *current* assistant message: show the writing
+  // clip. `writingNow` only covers write-tools; this covers plain generation,
+  // which otherwise never leaves the reasoning "analyzing" state. Scoping to
+  // messages after the last user turn avoids picking up the previous reply.
+  const lastUserIndex = agent.messages.findLastIndex(
+    (message) => message.role === 'user',
+  );
+  const runAssistant = agent.messages
+    .slice(lastUserIndex + 1)
+    .filter((message) => message.role === 'assistant')
+    .at(-1);
+  const streamingText =
+    running &&
+    typeof runAssistant?.content === 'string' &&
+    runAssistant.content.trim().length > 0;
+  const rawMascotState =
     voice.status === 'active'
       ? 'listening'
       : flash
@@ -658,12 +674,13 @@ export function Chat({
           : running
             ? searchingNow
               ? 'searching'
-              : writingNow
+              : writingNow || streamingText
                 ? 'writing'
                 : reasonPanel?.live
                   ? 'analyzing'
                   : 'thinking'
             : 'idle';
+  const mascotState = useHeldMascotState(rawMascotState);
   useRenderTool(
     {
       name: '*',
