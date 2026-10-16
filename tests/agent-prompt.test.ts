@@ -61,6 +61,11 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).toContain('Role instructions: Be helpful.');
     // Pas de JSON brut injecté.
     expect(prompt).not.toContain('JSON.stringify');
+    // Sécurité infra : identité du créateur + non-divulgation.
+    expect(prompt).toContain('SECURITY');
+    expect(prompt).toContain('Hajrudin Zelef KMA');
+    expect(prompt).toContain('Marexsoft Corporation');
+    expect(prompt).toContain('Never disclose infrastructure details');
   });
 
   it('ne fuit pas le contenu complet de la page', () => {
