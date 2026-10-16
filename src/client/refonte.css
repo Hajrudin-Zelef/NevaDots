@@ -4989,3 +4989,136 @@ textarea::placeholder {
   border-width: 0;
 }
 
+/* Dots & Espaces : gestion premium */
+.settings-body:has(.settings-list) {
+  max-width: 720px;
+  gap: 16px;
+}
+
+.settings-body:has(.settings-list)::before {
+  content: 'Votre espace de travail';
+  display: block;
+  margin-bottom: -8px;
+  color: var(--nd-text);
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.settings-body:has(.settings-list)::after {
+  content: 'Gérez vos assistants et les espaces auxquels ils appartiennent.';
+  display: block;
+  margin-bottom: 4px;
+  color: var(--nd-text-secondary);
+  font-size: 13px;
+}
+
+.settings-body .settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  border: 1px solid var(--nd-border);
+  border-radius: 18px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--nd-accent) 5%, var(--nd-bg)),
+    var(--nd-bg)
+  );
+  box-shadow:
+    0 10px 28px rgba(20, 24, 32, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.settings-body .settings-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0 2px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--nd-border);
+}
+
+.settings-body .settings-list-head:first-child {
+  margin-top: 0;
+}
+
+.settings-body .settings-list-head strong {
+  color: var(--nd-text);
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.settings-body .settings-list-head .text-button {
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--nd-accent) 10%, transparent);
+  color: var(--nd-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-body .settings-list-head .text-button:hover {
+  background: var(--nd-accent);
+  color: #fff;
+}
+
+.settings-body .settings-list-row {
+  min-height: 52px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--nd-bg-hover) 45%, transparent);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.settings-body .settings-list-row:hover {
+  border-color: color-mix(in srgb, var(--nd-accent) 24%, var(--nd-border));
+  background: color-mix(in srgb, var(--nd-accent) 7%, var(--nd-bg));
+  transform: translateX(2px);
+}
+
+.settings-body .settings-list-row > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--nd-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-body .settings-list-row > span::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--nd-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--nd-accent) 12%, transparent);
+}
+
+.settings-body .settings-list-row .text-button {
+  padding: 7px 11px;
+  border-radius: 8px;
+  color: var(--nd-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-body .settings-list-row .text-button:hover {
+  background: color-mix(in srgb, var(--nd-accent) 12%, transparent);
+}
+
+@media (max-width: 640px) {
+  .settings-body:has(.settings-list)::before {
+    font-size: 19px;
+  }
+
+  .settings-body .settings-list {
+    padding: 15px;
+  }
+}
