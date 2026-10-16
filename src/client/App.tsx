@@ -894,7 +894,7 @@ export function App() {
                       <Mascot
                         avatar={dot.avatar}
                         name={dot.name}
-                        state={busy ? 'working' : 'idle'}
+                        state={busy ? 'thinking' : 'idle'}
                       />
                       <span className="welcome-halo" aria-hidden="true" />
                       <h1>Par où commencer ?</h1>
@@ -928,7 +928,7 @@ export function App() {
                       small
                       animate
                       decorative
-                      state={busy ? 'working' : 'idle'}
+                      state={busy ? 'thinking' : 'idle'}
                     />
                     <span className="chat-token-info">
                       ↑ 0 (entrée) · ↓ 0 (sortie) Tokens · Coût estimé : $0,0000

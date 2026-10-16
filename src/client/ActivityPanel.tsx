@@ -44,6 +44,7 @@ export function ActivityPanel({
   liveEvents,
   running,
   paused,
+  mascotState,
   tasks,
   settings,
   onOpenConversation,
@@ -60,6 +61,9 @@ export function ActivityPanel({
   liveEvents: ActivityEvent[];
   running: boolean;
   paused: boolean;
+  /** Live mascot state (idle/thinking/writing/searching/listening/…). Falls
+   * back to a running/paused/idle approximation when not provided. */
+  mascotState?: string;
   tasks: Task[];
   settings: Settings;
   onOpenConversation: (id: string) => void;
@@ -159,7 +163,10 @@ export function ActivityPanel({
               identity={dot.id}
               name={dot.name}
               avatar={dot.avatar}
-              state={running ? 'working' : paused ? 'paused' : 'idle'}
+              state={
+                mascotState ??
+                (running ? 'working' : paused ? 'paused' : 'idle')
+              }
             />
             <h2 className="muse-name">{dot.name}</h2>
             <span className={`muse-status ${running ? 'busy' : ''}`}>

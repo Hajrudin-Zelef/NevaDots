@@ -700,7 +700,16 @@ export function Chat({
     [agent.messages],
   );
   useEffect(() => {
-    if (reasonPanel) onRailChange(false);
+    if (!reasonPanel) return;
+    // Tablette/bureau (≥701px, rail docké) : le rail d'activités reste affiché
+    // et le panneau de raisonnement se pose à côté. En dessous, les deux
+    // overlays se recouvriraient : on conserve l'exclusivité d'origine.
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(min-width: 701px)').matches
+    )
+      return;
+    onRailChange(false);
   }, [reasonPanel, onRailChange]);
   // Muse-style: open the browser pane when the agent starts navigating.
   // App collapses the activity rail into the pop-pop bubble while it is open.
@@ -897,6 +906,7 @@ export function Chat({
       <ReasoningPanel
         open={reasonPanel !== null}
         onClose={() => setReasonPanel(null)}
+        docked={railOpen}
         modelName={selectedModel || 'Modèle'}
         live={reasonPanel?.live ?? false}
         text={reasonPanelText}
@@ -918,6 +928,7 @@ export function Chat({
         liveEvents={activity}
         running={running}
         paused={paused}
+        mascotState={mascotState}
         tasks={tasks ?? []}
         settings={
           settings ?? {

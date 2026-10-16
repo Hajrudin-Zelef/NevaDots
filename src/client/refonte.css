@@ -2946,6 +2946,42 @@ textarea::placeholder {
   }
 }
 
+/* Desktop : contenu rapproché — colonnes plus larges et texte du chat un peu
+   plus grand. Le zoom navigateur reste disponible. Mobile/tablette compacte
+   (≤760px) inchangés. */
+@media (min-width: 761px) {
+  .template-app .live-chat {
+    max-width: 1000px;
+  }
+  .template-app .new-conversation {
+    max-width: 900px;
+  }
+  .template-app .chat-welcome {
+    max-width: 640px;
+  }
+  .template-app .chat-transcript .chat-bubble.user {
+    max-width: min(78%, 760px);
+    font-size: 16px;
+  }
+  .template-app .chat-transcript .chat-bubble.assistant {
+    font-size: 16px;
+  }
+}
+
+/* Rail d'activités permanent (tablette/bureau, dès que le rail est docké :
+   cf. responsive.css ≥701px). Le bouton fermer disparaît, et le panneau de
+   raisonnement se pose à gauche du rail au lieu de l'écraser. Sur téléphone
+   (≤700px, rail plein écran) rien ne change. */
+@media (min-width: 701px) {
+  .muse-close {
+    display: none;
+  }
+  .reasoning-overlay.docked {
+    right: var(--nd-rail-w, 420px);
+    border-right: 1px solid var(--line);
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Phase F — Modal « détail d'activité » (Muse) : timeline à gauche, détail de
    l'étape sélectionnée à droite.

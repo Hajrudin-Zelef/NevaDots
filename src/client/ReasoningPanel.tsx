@@ -15,6 +15,7 @@ function formatTokens(n: number | null): string {
 export function ReasoningPanel({
   open,
   onClose,
+  docked = false,
   modelName,
   live,
   text,
@@ -28,6 +29,8 @@ export function ReasoningPanel({
 }: {
   open: boolean;
   onClose(): void;
+  /** Desktop : se pose à côté du rail d'activités au lieu de l'écraser. */
+  docked?: boolean;
   modelName: string;
   live: boolean;
   text: string;
@@ -49,7 +52,10 @@ export function ReasoningPanel({
   if (!open) return null;
   const shown = showTranslation && translation ? translation : text;
   return (
-    <aside className="reasoning-overlay" aria-label="Raisonnement du modèle">
+    <aside
+      className={`reasoning-overlay${docked ? ' docked' : ''}`}
+      aria-label="Raisonnement du modèle"
+    >
       <div className="reasoning-panel">
         <header className="reasoning-header">
           <div>
