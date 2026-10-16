@@ -35,7 +35,7 @@ export const DEFAULT_AVATAR: AvatarId = 'leo';
  * as a query so the browser (which caches `/dots/` for a day) fetches the new
  * art instead of a stale copy.
  */
-export const AVATAR_ASSET_VERSION = '3';
+export const AVATAR_ASSET_VERSION = '8';
 
 /** Concrete animation tiers, cheapest first. */
 export type AvatarQuality = 'low' | 'standard' | 'high';
@@ -80,7 +80,7 @@ export const AVATAR_FILES: Record<AvatarId, string> = {
   orange: 'classic/orange.png',
   purple: 'classic/purple.png',
   sam: 'sam/idle.webp',
-  leo: 'leo/idle.webp',
+  leo: 'leo/idle-1.webp',
   aline: 'aline/idle.png',
 };
 
@@ -134,16 +134,40 @@ export const AVATAR_STATE_FILES: Partial<
     working: 'sam/writing.webp',
     complete: 'sam/idle.webp',
   },
-  // Leo ships two interchangeable variants for listening/thinking/writing; the
-  // client picks one at random per state entry so successive requests differ.
+  // Leo ships several interchangeable variants per state (idle ×5, others ×2-3);
+  // the client picks one at random per state entry so successive requests
+  // differ. `complete` reuses the first idle pose (green "Valider" badge).
   leo: {
-    listening: ['leo/listening-1.webp', 'leo/listening-2.webp'],
-    thinking: ['leo/thinking-1.webp', 'leo/thinking-2.webp'],
+    idle: [
+      'leo/idle-1.webp',
+      'leo/idle-2.webp',
+      'leo/idle-3.webp',
+      'leo/idle-4.webp',
+      'leo/idle-5.webp',
+    ],
+    listening: [
+      'leo/listening-1.webp',
+      'leo/listening-2.webp',
+      'leo/listening-3.webp',
+    ],
+    thinking: [
+      'leo/thinking-1.webp',
+      'leo/thinking-2.webp',
+      'leo/thinking-3.webp',
+    ],
     writing: ['leo/writing-1.webp', 'leo/writing-2.webp'],
-    analyzing: ['leo/thinking-1.webp', 'leo/thinking-2.webp'],
-    searching: ['leo/thinking-1.webp', 'leo/thinking-2.webp'],
+    analyzing: [
+      'leo/thinking-1.webp',
+      'leo/thinking-2.webp',
+      'leo/thinking-3.webp',
+    ],
+    searching: [
+      'leo/thinking-1.webp',
+      'leo/thinking-2.webp',
+      'leo/thinking-3.webp',
+    ],
     working: ['leo/writing-1.webp', 'leo/writing-2.webp'],
-    complete: 'leo/idle.webp',
+    complete: 'leo/idle-1.webp',
   },
 };
 
