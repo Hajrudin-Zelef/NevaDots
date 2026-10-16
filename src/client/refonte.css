@@ -4503,3 +4503,135 @@ textarea::placeholder {
     width: 100%;
   }
 }
+
+/* Réglages : présentation premium */
+.settings-body:has(.permission-row) {
+  gap: 14px;
+}
+
+.settings-body .permission-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 70px;
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--nd-border);
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--nd-accent) 5%, var(--nd-bg)),
+    var(--nd-bg)
+  );
+  box-shadow:
+    0 6px 18px rgba(20, 24, 32, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.settings-body .permission-row:hover {
+  border-color: color-mix(in srgb, var(--nd-accent) 42%, var(--nd-border));
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(20, 24, 32, 0.07);
+}
+
+.settings-body .permission-row > span {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-body .permission-row strong {
+  color: var(--nd-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.settings-body .permission-row small {
+  max-width: 620px;
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-body .permission-row input {
+  order: 2;
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  accent-color: var(--nd-accent);
+}
+
+.settings-body .permission-row:has(input:checked) {
+  border-color: color-mix(in srgb, var(--nd-accent) 42%, var(--nd-border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--nd-accent) 10%, var(--nd-bg)),
+    var(--nd-bg)
+  );
+}
+
+.settings-body .permission-row:has(input:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--nd-accent) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.settings-body .config-note {
+  margin: 2px 0 0;
+  padding: 20px;
+  border: 1px solid var(--nd-border);
+  border-radius: 16px;
+  background: var(--nd-bg);
+  box-shadow:
+    0 8px 22px rgba(20, 24, 32, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.settings-body .config-note > strong {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--nd-text);
+  font-size: 16px;
+}
+
+.settings-body .config-note p {
+  margin: 8px 0 0;
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.settings-body .config-note code {
+  padding: 3px 7px;
+  border: 1px solid var(--nd-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--nd-bg-hover) 70%, transparent);
+  color: var(--nd-text);
+  font-size: 11px;
+}
+
+.settings-modal .settings-save {
+  min-height: 46px;
+  margin-top: 4px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--nd-accent) 22%, transparent);
+}
+
+@media (max-width: 640px) {
+  .settings-body .permission-row {
+    padding: 14px;
+  }
+
+  .settings-body .config-note {
+    padding: 16px;
+  }
+}
