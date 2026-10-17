@@ -100,7 +100,7 @@ vi.mock('../src/client/api', () => ({
     return {};
   },
   authHeaders: () => ({}),
-  authToken: () => '',
+  hasToken: () => false,
   setToken: () => {},
 }));
 

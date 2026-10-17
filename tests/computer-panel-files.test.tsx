@@ -5,7 +5,7 @@ const api = vi.hoisted(() => vi.fn());
 vi.mock('../src/client/api', () => ({
   api,
   authHeaders: () => ({}),
-  authToken: () => '',
+  hasToken: () => false,
 }));
 import { ComputerPanel } from '../src/client/ComputerPanel';
 import type { Dot } from '../src/shared/types';

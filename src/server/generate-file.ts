@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import { defineTool } from '@copilotkit/runtime/v2';
 import { z } from 'zod';
 import {
+  ATTACHMENTS_DIR,
   categorizeAttachment,
   type AttachmentMeta,
 } from './attachment-routes.js';
 
-const ATTACHMENTS_DIR = 'data/attachments';
 /** Taille max d'un fichier généré : le modèle produit du texte. */
 const MAX_GENERATED_SIZE = 5 * 1024 * 1024; // 5 Mo
 

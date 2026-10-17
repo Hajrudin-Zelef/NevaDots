@@ -196,7 +196,15 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     // server default model. The provider registry holds the UI-configured
     // keys; env vars remain as a last-resort fallback.
     const settings = readDeepThink();
-    const targetLang = parsed.data.targetLang?.toLowerCase() || settings.lang;
+    const requested = parsed.data.targetLang?.toLowerCase() || settings.lang;
+    // Whitelist stricte : une langue hors liste est refusée (jamais injectée
+    // telle quelle dans le prompt du traducteur).
+    if (!(DEEPTHINK_LANGS as readonly string[]).includes(requested))
+      return c.json(
+        { error: `Unsupported target language (${requested}).` },
+        400,
+      );
+    const targetLang = requested;
     const registry = platform.config.providerRegistry;
     const fallbackDefault = registry?.effectiveDefault();
     const providerId = settings.provider || fallbackDefault?.provider || '';
@@ -228,7 +236,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         es: 'Spanish',
         de: 'German',
         it: 'Italian',
-      }[targetLang] ?? targetLang;
+      }[targetLang] ?? 'English';
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',

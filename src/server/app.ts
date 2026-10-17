@@ -33,6 +33,26 @@ export function createApp({
   platform,
 }: AppOptions) {
   const app = new Hono();
+  // Simple per-IP fixed-window rate limit for the API. Generous by default
+  // (the UI polls), configurable/tunable via RATE_LIMIT_PER_MIN (0 disables).
+  const rateLimit = Number.parseInt(
+    process.env.RATE_LIMIT_PER_MIN ?? '1000',
+    10,
+  );
+  const buckets = new Map<string, { count: number; resetAt: number }>();
+  app.use('/api/*', async (c, next) => {
+    if (Number.isFinite(rateLimit) && rateLimit > 0) {
+      const key =
+        c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+      const now = Date.now();
+      const bucket = buckets.get(key);
+      if (!bucket || now > bucket.resetAt)
+        buckets.set(key, { count: 1, resetAt: now + 60_000 });
+      else if (++bucket.count > rateLimit)
+        return c.json({ error: 'Too many requests.' }, 429);
+    }
+    await next();
+  });
   const jsonLimit = bodyLimit({
     maxSize: 1_000_000,
     onError: (c) => c.json({ error: 'Request is too large.' }, 413),

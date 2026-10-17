@@ -29,7 +29,7 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
-import { api, ApiError, authHeaders, authToken, setToken } from './api';
+import { api, ApiError, authHeaders, hasToken, setToken } from './api';
 import { trackSetupStep } from './setup-telemetry';
 import {
   applyCaptureResult,
@@ -453,7 +453,7 @@ export function App() {
   if (!state || !workspace || !dot)
     return (
       <main className="unlock">
-        {authToken() ? (
+        {hasToken() ? (
           <Mascot state="working" />
         ) : (
           <img className="unlock-logo" src="/logo.png" alt="" />

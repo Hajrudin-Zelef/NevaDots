@@ -6,6 +6,20 @@
 
 **An open-source template for persistent AI agents, each with its own computer. Available on Web and Mobile.**
 
+</div>
+
+> **Fork note (NevaDots / self-hosted runtime).** This fork runs **without
+> CopilotKit Intelligence**: conversations are persisted locally in SQLite by
+> a durable SSE agent runner, and provider keys are configured per provider in
+> the app. Anywhere the upstream documentation below mentions "Intelligence",
+> "`copilotkit project select`", `CPK_INTELLIGENCE_API_KEY`,
+> `INTELLIGENCE_*`, managed Slack Channels, or hosted Automatic Learning, read
+> it as **upstream-template behaviour that this fork does not use**. For the
+> actual runtime, see `docs/SETUP.md` and `.env.example`. Sections that still
+> describe the hosted flow are marked inline.
+
+<div align="center">
+
 Built with [CopilotKit](https://github.com/CopilotKit/CopilotKit) and [AG-UI](https://docs.ag-ui.com/introduction). · [Get started](#get-started) · [Overview](#overview) · [Architecture](#architecture) · [Features](#features) · [Contributing](CONTRIBUTING.md)
 
 [![CI](https://github.com/CopilotKit/OpenDots/actions/workflows/ci.yml/badge.svg)](https://github.com/CopilotKit/OpenDots/actions/workflows/ci.yml)

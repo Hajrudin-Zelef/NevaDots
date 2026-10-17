@@ -1,7 +1,7 @@
 {
-  "name": "opendots",
+  "name": "nevadots",
   "version": "0.1.0",
-  "description": "A self-hosted personal-agent template with CopilotKit Intelligence, Threads, and Channels.",
+  "description": "NevaDots — self-hosted personal-agent fork of OpenDots (local SSE runtime + SQLite; no hosted Intelligence).",
   "main": "index.js",
   "directories": {
     "doc": "docs",

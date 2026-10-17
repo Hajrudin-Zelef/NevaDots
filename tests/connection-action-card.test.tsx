@@ -16,7 +16,7 @@ vi.mock('../src/client/api', () => ({
   },
   api,
   authHeaders: () => ({}),
-  authToken: () => '',
+  hasToken: () => false,
   setToken: () => {},
 }));
 

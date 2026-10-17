@@ -3,9 +3,12 @@ import { promises as fs } from 'node:fs';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const ATTACHMENTS_DIR = 'data/attachments';
+/** Configurable so attachments can live on a separate volume in production. */
+export const ATTACHMENTS_DIR =
+  process.env.ATTACHMENTS_DIR?.trim() || 'data/attachments';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 Mo
 const PREVIEW_LIMIT = 5 * 1024 * 1024; // 5 Mo (aperçu inline)
+const MAX_FILES_PER_UPLOAD = 20;
 
 export type AttachmentCategory = 'text' | 'code' | 'image' | 'pdf' | 'other';
 
@@ -104,6 +107,14 @@ export function attachmentRoutes() {
     );
     if (!files.length) {
       return c.json({ error: 'Aucun fichier reçu.' }, 400);
+    }
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+      return c.json(
+        {
+          error: `Trop de fichiers (max ${MAX_FILES_PER_UPLOAD} par envoi).`,
+        },
+        413,
+      );
     }
     await fs.mkdir(ATTACHMENTS_DIR, { recursive: true });
     const saved: AttachmentMeta[] = [];

@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineTool } from '@copilotkit/runtime/v2';
 import { z } from 'zod';
-import { readMeta, type AttachmentMeta } from './attachment-routes.js';
+import {
+  ATTACHMENTS_DIR,
+  readMeta,
+  type AttachmentMeta,
+} from './attachment-routes.js';
 import {
   parsePageSpec,
   pdfcraftCliPath,
@@ -22,7 +26,6 @@ import { saveBinaryAttachment } from './generate-file.js';
  * confinement sous data/attachments, sorties bornées.
  */
 
-const ATTACHMENTS_DIR = 'data/attachments';
 const OCRMYPDF_PATH = () => process.env.OCRMYPDF_PATH ?? '/usr/bin/ocrmypdf';
 const EDIT_TIMEOUT_MS = 60_000;
 const OCR_TIMEOUT_MS = 300_000;

@@ -1,5 +1,12 @@
 # Intelligence signup and OpenDots usage tracking
 
+> **Fork note.** `CPK_INTELLIGENCE_API_KEY` and the `copilotkit project select`
+> flow belong to the **upstream hosted-Intelligence template**. This fork does
+> not use Intelligence for conversation persistence — conversations live in the
+> local SQLite database, and there is no project key to select. The optional
+> `CPK_TELEMETRY_ID` installation identity still works on its own; the rest of
+> this document is upstream reference.
+
 OpenDots uses the CopilotKit SDK's existing telemetry transport. There is no
 separate PostHog SDK or PostHog key to configure in this application.
 

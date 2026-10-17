@@ -62,7 +62,7 @@ export async function api<T>(
 export function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
-/** Raw owner token, for the WebSocket URL (browsers cannot set WS headers). */
-export function authToken(): string {
-  return token;
+/** Whether an owner token is stored (the raw token is never exported). */
+export function hasToken(): boolean {
+  return token.length > 0;
 }
