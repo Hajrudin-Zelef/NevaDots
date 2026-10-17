@@ -2,7 +2,11 @@ import { createElement } from 'react';
 import { act, create } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-import { ThinkingOrb, orbKindForStepLabel } from '../src/client/ThinkingOrb';
+import {
+  ThinkingOrb,
+  orbKindForActivityKind,
+  orbKindForStepLabel,
+} from '../src/client/ThinkingOrb';
 import type { ThinkingKind } from '../src/client/ThinkingOrb';
 
 vi.mock('thinking-orbs', () => ({
@@ -62,4 +66,15 @@ it('orbKindForStepLabel classe les libellés FR des étapes', () => {
   expect(orbKindForStepLabel('Ordinateur : exec')).toBe('writing');
   expect(orbKindForStepLabel("Lecture d'une page")).toBe('working');
   expect(orbKindForStepLabel('Truc inconnu')).toBe('thinking');
+});
+
+it('orbKindForActivityKind mappe les kinds du feed activité', () => {
+  expect(orbKindForActivityKind('search')).toBe('searching');
+  expect(orbKindForActivityKind('web')).toBe('searching');
+  expect(orbKindForActivityKind('reasoning')).toBe('analyzing');
+  expect(orbKindForActivityKind('typing')).toBe('writing');
+  expect(orbKindForActivityKind('command')).toBe('working');
+  expect(orbKindForActivityKind('file')).toBe('working');
+  expect(orbKindForActivityKind('tool')).toBe('working');
+  expect(orbKindForActivityKind('task')).toBe('working');
 });

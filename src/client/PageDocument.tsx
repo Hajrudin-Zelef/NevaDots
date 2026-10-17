@@ -7,16 +7,11 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  ArrowLeft,
-  PanelLeft,
-  Check,
-  LoaderCircle,
-  FileCode2,
-} from 'lucide-react';
+import { ArrowLeft, PanelLeft, Check, FileCode2 } from 'lucide-react';
 import type { Page } from '../server/pages';
 import type { WorkspaceState } from '../shared/types';
 import { api } from './api';
+import { ThinkingOrb } from './ThinkingOrb';
 import { usePageAutosave } from './editor/use-page-autosave';
 import { inspectMarkdown } from './editor/markdown';
 import { DocumentMenu } from './editor/DocumentMenu';
@@ -177,7 +172,7 @@ export function PageDocument({
             {state.status === 'saved' ? (
               <Check size={13} />
             ) : state.status === 'saving' ? (
-              <LoaderCircle size={13} className="saving-spinner" />
+              <ThinkingOrb kind="working" label="Enregistrement en cours" />
             ) : null}
             {status}
           </span>

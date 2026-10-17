@@ -1,4 +1,5 @@
 import { ThinkingOrb as BaseOrb, type OrbSize } from 'thinking-orbs';
+import type { ActivityKind } from '../shared/activity';
 
 /** Niveaux de pensée NevaDots mappés sur les états thinking-orbs. */
 export type ThinkingKind =
@@ -64,4 +65,19 @@ export function orbKindForStepLabel(label: string): ThinkingKind {
     return 'writing';
   if (/lect|relecture/i.test(label)) return 'working';
   return 'thinking';
+}
+
+/** Orb adapté au kind d'un événement d'activité (`shared/activity`). */
+export function orbKindForActivityKind(kind: ActivityKind): ThinkingKind {
+  switch (kind) {
+    case 'search':
+    case 'web':
+      return 'searching';
+    case 'reasoning':
+      return 'analyzing';
+    case 'typing':
+      return 'writing';
+    default:
+      return 'working';
+  }
 }

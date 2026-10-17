@@ -6,7 +6,6 @@ import {
   FileText,
   Globe,
   Keyboard,
-  Loader2,
   Search,
   Terminal,
   Wrench,
@@ -19,6 +18,7 @@ import {
   type ActivityKind,
 } from '../shared/activity';
 import { api } from './api';
+import { ThinkingOrb, orbKindForActivityKind } from './ThinkingOrb';
 import type { Conversation } from '../shared/types';
 
 const kindIcons: Record<ActivityKind, LucideIcon> = {
@@ -131,7 +131,7 @@ export function ActivityDetailModal({
           <div className="ad-timeline">
             {events === null ? (
               <p className="ad-empty">
-                <Loader2 size={15} className="spin" /> Chargement…
+                <ThinkingOrb kind="loading" /> Chargement…
               </p>
             ) : list.length === 0 ? (
               <p className="ad-empty">Aucune action enregistrée.</p>
@@ -158,7 +158,9 @@ export function ActivityDetailModal({
                         </span>
                         <span className={`ad-step-state ${item.status}`}>
                           {item.status === 'running' ? (
-                            <Loader2 size={12} className="spin" />
+                            <ThinkingOrb
+                              kind={orbKindForActivityKind(item.kind)}
+                            />
                           ) : item.status === 'ok' ? (
                             <Check size={12} />
                           ) : (
