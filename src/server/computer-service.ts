@@ -1,4 +1,5 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { RE2 } from 're2';
 import { z } from 'zod';
 import { validateUrl } from './net-security.js';
 import {
@@ -48,6 +49,12 @@ function boundText(value: unknown, max: number): string {
   const text = typeof value === 'string' ? value : '';
   return text.length > max ? `${text.slice(0, max)}…[tronqué]` : text;
 }
+/** Empreinte du contenu lu : atténuation TOCTOU pour files_edit (pas un
+ * CAS atomique — le conteneur n'offre pas d'écriture conditionnelle ;
+ * documenté comme tel). */
+function contentSha(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
 /** Abonné au flux d'activité live d'un Dot. En mémoire, mono-processus. */
 export type ComputerActivityListener = (event: ComputerActivityEvent) => void;
 /**
@@ -71,6 +78,9 @@ const STREAM_TICKET_CAP = 1000;
  * workspace dans son contexte via des lectures en boucle. */
 const SEARCH_MAX_FILES = 20;
 const SEARCH_MAX_LINE_CHARS = 500;
+/** Cap disque post-clone (octets). Contrôle postérieur au téléchargement :
+ * un remplissage transitoire pendant le clone reste possible (résiduel). */
+const CLONE_MAX_BYTES = 500 * 1024 * 1024;
 function snapshotRequired(payload: unknown): boolean {
   return (
     !!payload &&
@@ -584,11 +594,14 @@ export class ComputerService {
       to,
       totalLines: lines.length,
       truncated: read.truncated === true || to < lines.length,
+      sha: contentSha(text),
     };
   }
-  /** Recherche regex dans le workspace, composée de /files/list (récursif
-   * côté conteneur) + /files/read. Fichiers illisibles ignorés, pas d'échec
-   * global. Entrées et sorties bornées. */
+  /** Recherche dans le workspace, composée de /files/list (récursif côté
+   * conteneur) + /files/read. Fichiers illisibles comptés dans `skipped`,
+   * pas d'échec global. Moteur RE2 (temps linéaire) : aucune syntaxe non
+   * supportée ne retombe silencieusement sur RegExp — elle lève une erreur
+   * claire. Entrées et sorties bornées. */
   private async searchFiles(
     url: string,
     id: string,
@@ -596,11 +609,14 @@ export class ComputerService {
     signal: AbortSignal,
   ): Promise<unknown> {
     const scope = input.path ?? '';
-    let pattern: RegExp;
+    let pattern: { test(text: string): boolean };
     try {
-      pattern = new RegExp(input.query, 'm');
-    } catch {
-      throw new Error('Regex invalide.');
+      pattern = new RE2(input.query, 'm');
+    } catch (error) {
+      throw new Error(
+        `Regex non supportée (moteur linéaire RE2) : ${error instanceof Error ? error.message.split('\n')[0] : 'syntaxe refusée'}.`,
+        { cause: error },
+      );
     }
     const maxResults = input.maxResults ?? 30;
     const list = (await this.json(
@@ -616,6 +632,9 @@ export class ComputerService {
     const files = (list.entries ?? []).filter((e) => e.kind === 'file');
     const matches: Array<{ path: string; line: number; text: string }> = [];
     let truncated = list.truncated === true;
+    // Fichiers illisibles : comptés dans `skipped`, visibles par l'agent
+    // dans le résultat (pas seulement logués serveur).
+    let skipped = 0;
     for (const file of files.slice(0, SEARCH_MAX_FILES)) {
       if (matches.length >= maxResults) {
         truncated = true;
@@ -632,9 +651,13 @@ export class ComputerService {
           id,
         )) as { text?: unknown };
       } catch {
-        continue; // illisible → ignoré, pas d'échec global
+        skipped += 1;
+        continue;
       }
-      if (typeof read.text !== 'string') continue;
+      if (typeof read.text !== 'string') {
+        skipped += 1;
+        continue;
+      }
       const lines = read.text.split('\n');
       for (let i = 0; i < lines.length && matches.length < maxResults; i++) {
         if (pattern.test(lines[i]))
@@ -646,17 +669,20 @@ export class ComputerService {
       }
     }
     if (files.length > SEARCH_MAX_FILES) truncated = true;
-    return { path: scope, query: input.query, matches, truncated };
+    return { path: scope, query: input.query, matches, truncated, skipped };
   }
   /** Édition chirurgicale : read → remplacements (match unique sauf
    * replaceAll) → write. Refuse si le read est tronqué (on n'édite pas un
-   * fichier qu'on n'a pas lu en entier) ou si oldText est absent/ambigu. */
+   * fichier qu'on n'a pas lu en entier) ou si oldText est absent/ambigu.
+   * Avec expectedSha : refuse si le fichier a changé depuis le read
+   * (atténuation TOCTOU, pas un CAS atomique — documenté). */
   private async editFile(
     url: string,
     id: string,
     input: {
       path: string;
       edits: Array<{ oldText: string; newText: string; replaceAll?: boolean }>;
+      expectedSha?: string;
     },
     signal: AbortSignal,
   ): Promise<unknown> {
@@ -672,6 +698,13 @@ export class ComputerService {
     if (read.truncated === true)
       throw new Error(
         'Fichier tronqué au read : édition refusée, lisez par plages.',
+      );
+    if (
+      input.expectedSha !== undefined &&
+      contentSha(read.text) !== input.expectedSha
+    )
+      throw new Error(
+        `Fichier modifié depuis votre lecture (${input.path}) : relisez-le avant d'éditer.`,
       );
     let text = read.text;
     let applied = 0;
@@ -706,7 +739,11 @@ export class ComputerService {
   }
   /** Git sandboxé : construit une commande canonique `git -C …` à partir
    * d'args validés (jamais de shell libre), puis l'exécute via /exec.
-   * push/pull/fetch exclus : pas de credentials dans le sandbox. */
+   * push/pull/fetch exclus : pas de credentials dans le sandbox.
+   * Clone : hôte validé (SSRF), `--depth 1 --single-branch` systématique,
+   * neutralisation `.git/config` (hooks/pager/fsmonitor), et cap disque
+   * 500 Mo post-clone (le remplissage transitoire pendant le clone reste
+   * un résiduel documenté). */
   private async runGit(
     id: string,
     input: {
@@ -753,10 +790,74 @@ export class ComputerService {
         break;
       case 'clone': {
         if (!input.url) throw new Error('clone exige url.');
+        // SSRF : le risque est l'hôte (ports custom légitimes pour les
+        // forges self-hosted) — même motif que validateMcpUrl.
+        try {
+          await validateUrl(input.url, { ports: 'any' });
+        } catch (error) {
+          throw new Error(
+            `Clone bloqué (${input.url}) : ${error instanceof Error ? error.message : 'hôte non public'}.`,
+            { cause: error },
+          );
+        }
         const target =
           input.path && input.path.length > 0 ? input.path : 'repo';
-        command = `git clone ${q(input.url)} ${q(target)}`;
-        break;
+        // Shallow systématique : borne le disque téléchargé. Tradeoff
+        // documenté dans la description de l'outil (log tronqué).
+        command = `git clone --depth 1 --single-branch ${q(input.url)} ${q(target)}`;
+        const cloned = (await this.action(
+          id,
+          'exec',
+          { command, timeoutMs: 300000 },
+          actor,
+          signal,
+        )) as { exitCode?: unknown; stderr?: unknown };
+        if (
+          typeof cloned !== 'object' ||
+          cloned === null ||
+          cloned.exitCode !== 0
+        )
+          return cloned;
+        // Neutralise ce que le distant pourrait activer via .git/config :
+        // hooks exécutables, pager arbitraire, fsmonitor. `|| true` : unset
+        // échoue (code 5) quand la clé est absente, ce n'est pas une erreur.
+        const neutralize =
+          `git -C ${q(target)} config --local core.pager cat && ` +
+          `(git -C ${q(target)} config --local unset-all core.hooksPath || true) && ` +
+          `(git -C ${q(target)} config --local unset-all core.fsmonitor || true) && ` +
+          `git -C ${q(target)} config --local core.fsmonitor false`;
+        await this.action(
+          id,
+          'exec',
+          { command: neutralize, timeoutMs: 60000 },
+          actor,
+          signal,
+        );
+        // Borne disque post-clone (résiduel transitoire documenté).
+        const sized = (await this.action(
+          id,
+          'exec',
+          { command: `du -sb ${q(target)}`, timeoutMs: 60000 },
+          actor,
+          signal,
+        )) as { stdout?: unknown };
+        const bytes = Number.parseInt(
+          String(sized?.stdout ?? '').split(/\s/)[0] ?? '',
+          10,
+        );
+        if (Number.isFinite(bytes) && bytes > CLONE_MAX_BYTES) {
+          await this.action(
+            id,
+            'exec',
+            { command: `rm -rf ${q(target)}`, timeoutMs: 60000 },
+            actor,
+            signal,
+          );
+          throw new Error(
+            `Clone trop volumineux (${bytes} octets, cap ${CLONE_MAX_BYTES}) : supprimé.`,
+          );
+        }
+        return cloned;
       }
       default:
         throw new Error(`Op git inconnue : ${input.op}.`);
@@ -792,6 +893,7 @@ export class ComputerService {
       } catch (error) {
         throw new Error(
           `Navigation blocked (${url}): ${error instanceof Error ? error.message : 'not a public web address'}. Provide a public https:// URL.`,
+          { cause: error },
         );
       }
     }
@@ -846,6 +948,7 @@ export class ComputerService {
                 newText: string;
                 replaceAll?: boolean;
               }>;
+              expectedSha?: string;
             },
             activeSignal,
           );
@@ -893,6 +996,35 @@ export class ComputerService {
           deadline,
         );
         this.allowed(id, kind, actor);
+        if (
+          action === 'files_read' &&
+          result &&
+          typeof result === 'object' &&
+          typeof (result as { text?: unknown }).text === 'string'
+        )
+          // Atténuation TOCTOU : l'agent peut renvoyer ce sha dans
+          // files_edit.expectedSha (refus si le fichier a changé).
+          return {
+            ...(result as Record<string, unknown>),
+            sha: contentSha((result as { text: string }).text),
+          };
+        if (action === 'exec' && result && typeof result === 'object') {
+          const copy = { ...result } as Record<string, unknown>;
+          delete copy.command;
+          // Borne UNIQUE des sorties exec (même constante que le journal
+          // d'activité) : UI, modèle et API reçoivent pareil.
+          for (const key of ['stdout', 'stderr'] as const) {
+            if (
+              typeof copy[key] === 'string' &&
+              (copy[key] as string).length > ACTIVITY_OUTPUT_MAX
+            ) {
+              copy[key] =
+                `${(copy[key] as string).slice(0, ACTIVITY_OUTPUT_MAX)}…[tronqué]`;
+              copy.truncated = true;
+            }
+          }
+          return copy;
+        }
         return result;
       };
       // Each branch retries at most once so a persistent failure cannot loop.
@@ -956,6 +1088,8 @@ export class ComputerService {
         const result = await runWithRecovery();
         watch?.end(result);
         if (action === 'exec' && result && typeof result === 'object') {
+          // La commande est déjà retirée et les sorties bornées dans
+          // perform() ; ici on ne fait que garantir l'absence de `command`.
           const copy = { ...result } as Record<string, unknown>;
           delete copy.command;
           return copy;

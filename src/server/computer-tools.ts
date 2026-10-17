@@ -24,8 +24,8 @@ const TOOL_DESCRIPTIONS: Partial<Record<keyof typeof computerInputs, string>> =
     files_read:
       'Read a workspace file. Without offset/limit: whole file. With offset (1-based) and limit: a line range — prefer ranges for large files.',
     files_edit:
-      'Surgical file edit: replaces oldText with newText (unique match required unless replaceAll). Refused if oldText is missing, ambiguous, or the file was truncated on read. Never rewrite whole files with this.',
-    git: 'Version control in the workspace: status, diff, log, commit, add, branches, checkout, init, clone (public https repos only). No push/pull/fetch. Paths are relative to the workspace.',
+      'Surgical file edit: replaces oldText with newText (unique match required unless replaceAll). Refused if oldText is missing, ambiguous, or the file was truncated on read. Pass the sha from your last read as expectedSha to refuse on concurrent change. Never rewrite whole files with this.',
+    git: 'Version control in the workspace: status, diff, log, commit, add, branches, checkout, init, clone (public https repos only, shallow: history truncated to one commit). No push/pull/fetch. Paths are relative to the workspace.',
   };
 export function computerTools(
   service: ComputerService,

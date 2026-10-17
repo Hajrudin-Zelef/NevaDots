@@ -190,6 +190,7 @@ export async function parallelSources(
       } catch (error) {
         throw new Error(
           `Source URL blocked (${url}): ${error instanceof Error ? error.message : 'not a public web address'}. Provide a public https:// URL.`,
+          { cause: error },
         );
       }
     }

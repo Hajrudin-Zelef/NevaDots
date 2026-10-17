@@ -141,7 +141,7 @@ it('status never provisions and actions use per-Dot derived credentials with aud
   });
   expect(
     await f.service.action(f.id, 'files_read', { path: 'note.txt' }, 'agent'),
-  ).toEqual({ text: '[redacted]' });
+  ).toEqual({ text: '[redacted]', sha: expect.any(String) });
   const request = f.calls.find((call) => call.url.endsWith('/files/read'))!;
   expect(new Headers(request.init?.headers).get('authorization')).toBe(
     `Bearer ${createHmac('sha256', 'master-secret').update(`opendots-computer:${f.id}`).digest('hex')}`,
@@ -744,4 +744,213 @@ it('n’expose computer_git que si la permission shell est active', () => {
     shell: true,
   });
   expect(on.some((t) => t.name === 'computer_git')).toBe(true);
+});
+it('clone : hôte privé refusé, shallow + neutralisation + cap taille', async () => {
+  const f = fixture();
+  await expect(
+    f.service.action(
+      f.id,
+      'git',
+      { op: 'clone', url: 'https://169.254.169.254/r.git', path: 'x' },
+      'owner',
+    ),
+  ).rejects.toThrow('bloqué');
+  // Le conteneur n'a jamais été contacté (seul le superviseur l'a été).
+  expect(f.calls.filter((c) => c.url.endsWith('/exec'))).toHaveLength(0);
+  // Clone nominal : --depth 1, neutralisation .git/config, du sous le cap.
+  const commands: string[] = [];
+  f.handle(async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    if (String(url).endsWith('/exec')) {
+      commands.push(String((body as { command?: unknown }).command ?? ''));
+      if (commands.length === 1)
+        return Response.json({ exitCode: 0, stdout: '', stderr: '' });
+      if (commands.length === 2)
+        return Response.json({ exitCode: 0, stdout: '', stderr: '' });
+      return Response.json({ exitCode: 0, stdout: '100\tnvclone\n' });
+    }
+    return Response.json({ text: 'result' });
+  });
+  await f.service.action(
+    f.id,
+    'git',
+    { op: 'clone', url: 'https://example.com/r.git', path: 'nvclone' },
+    'owner',
+  );
+  expect(commands[0]).toContain('--depth 1 --single-branch');
+  expect(commands[0]).toContain('https://example.com/r.git');
+  expect(commands[1]).toContain('core.pager');
+  expect(commands[1]).toContain('core.hooksPath');
+  expect(commands[2]).toContain('du -sb');
+  // Dépassement : rm + erreur, pas de résultat.
+  commands.length = 0;
+  f.handle(async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    if (String(url).endsWith('/exec')) {
+      commands.push(String((body as { command?: unknown }).command ?? ''));
+      if (commands.length <= 2)
+        return Response.json({ exitCode: 0, stdout: '', stderr: '' });
+      return Response.json({ exitCode: 0, stdout: '999999999\tnvclone\n' });
+    }
+    return Response.json({ text: 'result' });
+  });
+  await expect(
+    f.service.action(
+      f.id,
+      'git',
+      { op: 'clone', url: 'https://example.com/big.git', path: 'nvclone' },
+      'owner',
+    ),
+  ).rejects.toThrow('trop volumineux');
+  expect(commands[3]).toContain('rm -rf');
+});
+it('search RE2 : motif malveillant rapide, syntaxe non supportée refusée', async () => {
+  const f = fixture();
+  const evil = `start\n${'a'.repeat(5000)}\nfin\n`;
+  f.handle(async (url) => {
+    if (String(url).endsWith('/files/list'))
+      return Response.json({
+        path: '',
+        entries: [{ path: 'a.txt', kind: 'file' }],
+        truncated: false,
+      });
+    return Response.json({ path: 'a.txt', text: evil, truncated: false });
+  });
+  const found = (await f.service.action(
+    f.id,
+    'files_search',
+    { query: '(a+)+$', maxResults: 5 },
+    'owner',
+  )) as { matches: unknown[]; skipped: number };
+  expect(found.matches).toHaveLength(1);
+  expect(found.skipped).toBe(0);
+  await expect(
+    f.service.action(f.id, 'files_search', { query: '(a)\\1' }, 'owner'),
+  ).rejects.toThrow('RE2');
+});
+it('read renvoie sha, edit refuse sur sha périmé (TOCTOU)', async () => {
+  const f = fixture();
+  let content = 'alpha\n';
+  const writes: string[] = [];
+  f.handle(async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    if (String(url).endsWith('/files/read'))
+      return Response.json({ path: 'a.txt', text: content, truncated: false });
+    if (String(url).endsWith('/files/write')) {
+      writes.push(String(body.contents ?? ''));
+      return Response.json({ path: 'a.txt', bytes: 1 });
+    }
+    return Response.json({ text: 'result' });
+  });
+  const read = (await f.service.action(
+    f.id,
+    'files_read',
+    { path: 'a.txt' },
+    'owner',
+  )) as { sha: string; text: string };
+  expect(read.sha).toMatch(/^[0-9a-f]{64}$/);
+  // Fichier changé entre-temps (autre acteur) : refusé, rien écrit.
+  content = 'alpha\nbeta\n';
+  await expect(
+    f.service.action(
+      f.id,
+      'files_edit',
+      {
+        path: 'a.txt',
+        edits: [{ oldText: 'alpha', newText: 'ALPHA' }],
+        expectedSha: read.sha,
+      },
+      'owner',
+    ),
+  ).rejects.toThrow('modifié');
+  expect(writes).toHaveLength(0);
+  // Sha frais : appliqué.
+  const fresh = (await f.service.action(
+    f.id,
+    'files_read',
+    { path: 'a.txt' },
+    'owner',
+  )) as { sha: string };
+  await expect(
+    f.service.action(
+      f.id,
+      'files_edit',
+      {
+        path: 'a.txt',
+        edits: [{ oldText: 'alpha', newText: 'ALPHA' }],
+        expectedSha: fresh.sha,
+      },
+      'owner',
+    ),
+  ).resolves.toMatchObject({ applied: 1 });
+  expect(writes).toHaveLength(1);
+});
+it('exec borne stdout/stderr à 8000 car (constante unique)', async () => {
+  const f = fixture();
+  f.handle(async (url) => {
+    if (String(url).endsWith('/exec'))
+      return Response.json({
+        exitCode: 0,
+        stdout: 'x'.repeat(20000),
+        stderr: 'e'.repeat(9000),
+        truncated: false,
+        timedOut: false,
+        elapsedMs: 1,
+      });
+    return Response.json({ text: 'result' });
+  });
+  const out = (await f.service.action(
+    f.id,
+    'exec',
+    { command: 'yes' },
+    'owner',
+  )) as { stdout: string; stderr: string; truncated: boolean };
+  expect(out.stdout.length).toBeLessThanOrEqual(8000 + '…[tronqué]'.length);
+  expect(out.stdout).toContain('[tronqué]');
+  expect(out.stderr).toContain('[tronqué]');
+  expect(out.truncated).toBe(true);
+  expect(out).not.toHaveProperty('command');
+});
+it('search compte les fichiers illisibles dans skipped', async () => {
+  const f = fixture();
+  // ko.txt échoue : on le simule en refusant la 2e lecture via compteur.
+  let reads = 0;
+  f.handle(async (url) => {
+    if (String(url).endsWith('/files/list'))
+      return Response.json({
+        path: '',
+        entries: [
+          { path: 'ok.txt', kind: 'file' },
+          { path: 'ko.txt', kind: 'file' },
+        ],
+        truncated: false,
+      });
+    if (String(url).endsWith('/files/read')) {
+      reads += 1;
+      if (reads === 2) return Response.json({ error: 'gone' }, { status: 500 });
+      return Response.json({
+        path: 'ok.txt',
+        text: 'hello\n',
+        truncated: false,
+      });
+    }
+    return Response.json({ text: 'result' });
+  });
+  const res = (await f.service.action(
+    f.id,
+    'files_search',
+    { query: 'hello', maxResults: 5 },
+    'owner',
+  )) as { matches: unknown[]; skipped: number; truncated: boolean };
+  expect(res.matches).toHaveLength(1);
+  expect(res.skipped).toBe(1);
 });

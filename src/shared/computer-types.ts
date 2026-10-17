@@ -114,6 +114,12 @@ export const computerInputs = {
         )
         .min(1)
         .max(8),
+      /** Empreinte `sha` d'un read précédent : refus si le fichier a changé
+       * entre-temps. Atténuation TOCTOU, pas un CAS atomique (documenté). */
+      expectedSha: z
+        .string()
+        .regex(/^[0-9a-f]{64}$/)
+        .optional(),
     })
     .strict(),
   /** Git sandboxé, composé côté serveur en commandes canoniques `git -C …`
