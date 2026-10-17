@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { decryptSecret, encryptSecret, isLegacySecret } from './secrets.js';
+import { safeJsonParse } from './safe-json.js';
 import type {
   Connection,
   ConnectionActionResult,
@@ -125,7 +126,15 @@ export class ConnectionStore {
       .all(...(dotId ? [dotId] : [])) as unknown as Row[];
   }
   private view({ token, tools, ...row }: Row): Connection {
-    return { ...row, hasToken: !!token, tools: JSON.parse(tools) };
+    return {
+      ...row,
+      hasToken: !!token,
+      tools: safeJsonParse<ConnectionTool[]>(
+        tools,
+        [],
+        `mcp_connections.tools:${row.id}`,
+      ),
+    };
   }
   list(dotId: string): Connection[] {
     return this.rows(dotId).map((row) => this.view(row));
@@ -237,7 +246,11 @@ export class ConnectionStore {
       dotId: String(row.dotId),
       connectionId: String(row.connectionId),
       tool: String(row.tool),
-      arguments: JSON.parse(String(row.arguments)) as Record<string, unknown>,
+      arguments: safeJsonParse<Record<string, unknown>>(
+        String(row.arguments),
+        {},
+        'mcp_approvals.arguments',
+      ),
       createdAt: Number(row.createdAt),
     };
   }
@@ -253,7 +266,11 @@ export class ConnectionStore {
       status: String(row.status) as 'running' | 'done',
       result:
         typeof row.result === 'string'
-          ? (JSON.parse(row.result) as ConnectionActionResult)
+          ? safeJsonParse<ConnectionActionResult>(
+              row.result,
+              null as never,
+              'mcp_actions.result',
+            )
           : null,
     };
   }

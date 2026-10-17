@@ -1,9 +1,16 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { safeJsonParse } from './safe-json.js';
 import type {
   ComputerAudit,
   ComputerPermissions,
 } from '../shared/computer-types.js';
+const DEFAULT_PERMISSIONS: ComputerPermissions = {
+  enabled: false,
+  browser: false,
+  files: false,
+  shell: false,
+};
 export class ComputerStore {
   constructor(private db: DatabaseSync) {
     db.exec(`CREATE TABLE IF NOT EXISTS computer_permissions(dotId TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -14,8 +21,12 @@ export class ComputerStore {
       .prepare('SELECT value FROM computer_permissions WHERE dotId=?')
       .get(id);
     return row
-      ? JSON.parse(String(row.value))
-      : { enabled: false, browser: false, files: false, shell: false };
+      ? safeJsonParse(
+          String(row.value),
+          DEFAULT_PERMISSIONS,
+          `computer_permissions:${id}`,
+        )
+      : DEFAULT_PERMISSIONS;
   }
   patch(id: string, patch: Partial<ComputerPermissions>) {
     const value = { ...this.permissions(id), ...patch };

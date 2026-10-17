@@ -2,6 +2,7 @@ import { ComputerStore } from './computer-store.js';
 import { ConnectionStore } from './connection-store.js';
 import { Pages } from './pages.js';
 import { resolveSecretKey } from './secrets.js';
+import { safeJsonParse } from './safe-json.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -537,6 +538,8 @@ export class WorkspaceStore {
     const row = this.db
       .prepare('SELECT value FROM captures WHERE threadId=?')
       .get(threadId);
-    return typeof row?.value === 'string' ? JSON.parse(row.value) : null;
+    return typeof row?.value === 'string'
+      ? safeJsonParse<unknown>(row.value, null, 'captures.value')
+      : null;
   }
 }

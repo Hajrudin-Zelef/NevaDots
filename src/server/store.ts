@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
+import { safeJsonParse } from './safe-json.js';
 import { dirname } from 'node:path';
 import type {
   Action,
@@ -99,25 +100,41 @@ export class Store {
     try {
       return { ...defaults, ...(JSON.parse(row.value) as Partial<Settings>) };
     } catch {
-      // Ligne corrompue : mise de côté (jamais supprimée) + boot avec les
-      // défauts + avertissement explicite. Restauration manuelle possible en
-      // recopiant settings_quarantine.value vers settings.
-      try {
-        this.db.exec(
-          'CREATE TABLE IF NOT EXISTS settings_quarantine(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL)',
-        );
-        this.db
-          .prepare(
-            'INSERT OR REPLACE INTO settings_quarantine VALUES (1, ?, ?)',
-          )
-          .run(row.value, Date.now());
-      } catch {
-        /* mise de côté best-effort */
-      }
+      // Ligne corrompue : mise de côté append-only (jamais supprimée) puis
+      // réinitialisation de la ligne aux défauts, pour que l'avertissement ne
+      // se répète pas à chaque boot. Restauration manuelle possible depuis
+      // settings_quarantine (la plus récente en dernier).
+      this.quarantineSettings(row.value, 'unreadable settings JSON');
+      this.db
+        .prepare('UPDATE settings SET value=? WHERE id=1')
+        .run(JSON.stringify(defaults));
       console.warn(
         'Store: ligne settings illisible, défauts appliqués (original mis de côté dans settings_quarantine pour restauration manuelle).',
       );
       return { ...defaults };
+    }
+  }
+  /** Append-only quarantine: a second corruption never overwrites the first. */
+  private quarantineSettings(value: string, reason: string) {
+    try {
+      const existing = this.db
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type='table' AND name='settings_quarantine'",
+        )
+        .get() as { sql: string } | undefined;
+      // Legacy single-row schema (id CHECK(id=1)): recreate as append-only.
+      if (existing && !/AUTOINCREMENT/i.test(existing.sql))
+        this.db.exec('DROP TABLE settings_quarantine');
+      this.db.exec(
+        'CREATE TABLE IF NOT EXISTS settings_quarantine(id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL, reason TEXT)',
+      );
+      this.db
+        .prepare(
+          'INSERT INTO settings_quarantine(value, quarantinedAt, reason) VALUES (?, ?, ?)',
+        )
+        .run(value, Date.now(), reason);
+    } catch {
+      /* mise de côté best-effort */
     }
   }
   updateSettings(patch: Partial<Settings>): Settings {
@@ -189,7 +206,9 @@ export class Store {
       task,
       runs: rows.map((row) => ({
         ...row,
-        result: row.result ? (JSON.parse(row.result) as Result) : null,
+        result: row.result
+          ? safeJsonParse<Result>(row.result, null as never, 'runs.result')
+          : null,
       })),
       events: this.db
         .prepare('SELECT * FROM events WHERE taskId=? ORDER BY id')

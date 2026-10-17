@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
+import { safeJsonParse } from './safe-json.js';
 import {
   pageReviewSchema,
   type PageReviewDraft,
@@ -154,9 +155,17 @@ export class Pages {
       ? {
           pageId: String(row.pageId),
           spaceId: String(row.spaceId),
-          draft: row.draft
-            ? pageReviewSchema.parse(JSON.parse(String(row.draft)))
-            : null,
+          draft: (() => {
+            if (!row.draft) return null;
+            const parsed = safeJsonParse<unknown>(
+              String(row.draft),
+              null,
+              'page_reviews.draft',
+            );
+            return parsed === null
+              ? null
+              : (pageReviewSchema.safeParse(parsed).data ?? null);
+          })(),
         }
       : null;
   }

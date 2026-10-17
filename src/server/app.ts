@@ -275,6 +275,15 @@ export function createApp({
   );
   // Aggregated model usage for the settings cockpit.
   app.get('/api/usage', (c) => c.json(store.usageSummary()));
+  // Unauthenticated liveness probe: cheap, proves the DB is reachable.
+  app.get('/health', (c) => {
+    try {
+      store.settings();
+      return c.json({ status: 'ok' });
+    } catch {
+      return c.json({ status: 'error' }, 503);
+    }
+  });
   app.onError((error, c) => {
     console.error('API request failed:', error.name);
     return c.json(

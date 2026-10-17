@@ -57,7 +57,7 @@ describe('createShutdown', () => {
 });
 
 describe('boot tolérant (quarantaine, jamais de suppression)', () => {
-  it('settings corrompu : défauts + mise de côté + warning, boot OK', () => {
+  it('settings corrompu : défauts + mise de côté append-only + warning, boot OK', () => {
     const path = tmpFile('store.sqlite');
     const seed = new Store(path);
     expect(seed.settings()).toBeTruthy();
@@ -75,22 +75,49 @@ describe('boot tolérant (quarantaine, jamais de suppression)', () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('settings_quarantine'),
     );
-    // Quarantaine présente, ligne d'origine intacte (restauration possible).
     const check = new DatabaseSync(path);
+    // Original preserved for manual restoration.
     const quarry = check
-      .prepare('SELECT value FROM settings_quarantine WHERE id=1')
+      .prepare('SELECT value FROM settings_quarantine ORDER BY id DESC LIMIT 1')
       .get() as { value: string };
     expect(quarry.value).toBe('!!!pas-du-json!!!');
+    // The settings row is reset to defaults so the warning does not repeat.
     const kept = check
       .prepare('SELECT value FROM settings WHERE id=1')
       .get() as { value: string };
-    expect(kept.value).toBe('!!!pas-du-json!!!');
+    expect(() => JSON.parse(kept.value)).not.toThrow();
     check.close();
-    // Idempotent : rouvrir ne duplique ni n'écrase.
+    // Idempotent: reopening neither re-quarantines nor duplicates.
     const again = new Store(path);
     expect(again.settings()).toBeTruthy();
     again.close();
+    const recount = new DatabaseSync(path);
+    const count = recount
+      .prepare('SELECT COUNT(*) c FROM settings_quarantine')
+      .get() as { c: number };
+    expect(count.c).toBe(1);
+    recount.close();
     reopened.close();
+  });
+
+  it('une seconde corruption ajoute une ligne, sans écraser la première', () => {
+    const path = tmpFile('store2.sqlite');
+    const seed = new Store(path);
+    seed.close();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (const bad of ['!!!one!!!', '!!!two!!!']) {
+      const raw = new DatabaseSync(path);
+      raw.prepare('UPDATE settings SET value=? WHERE id=1').run(bad);
+      raw.close();
+      new Store(path).settings();
+    }
+    const check = new DatabaseSync(path);
+    const rows = check
+      .prepare('SELECT value FROM settings_quarantine ORDER BY id')
+      .all() as { value: string }[];
+    expect(rows.map((r) => r.value)).toEqual(['!!!one!!!', '!!!two!!!']);
+    check.close();
+    warn.mockRestore();
   });
 
   it('runner corrompu : lignes ignorées avec warning, boot OK, close idempotent', () => {
