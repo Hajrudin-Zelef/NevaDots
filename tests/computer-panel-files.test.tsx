@@ -2,7 +2,11 @@ import { createElement } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const api = vi.hoisted(() => vi.fn());
-vi.mock('../src/client/api', () => ({ api }));
+vi.mock('../src/client/api', () => ({
+  api,
+  authHeaders: () => ({}),
+  authToken: () => '',
+}));
 import { ComputerPanel } from '../src/client/ComputerPanel';
 import type { Dot } from '../src/shared/types';
 import {
@@ -255,4 +259,79 @@ it('append → append:true, écrasement confirmé puis rafraîchi', async () => 
   await clickButton(root as never, 'Enregistrer (remplacer)');
   expect(confirm).toHaveBeenCalledWith('Écraser « notes.txt » ?');
   expect(calls.filter((c) => c.action === 'files_write').length).toBe(writes);
+});
+
+it('le journal terminal affiche la commande live puis sa sortie', async () => {
+  const encoder = new TextEncoder();
+  const start = {
+    dotId: 'd1',
+    action: 'exec',
+    actor: 'agent',
+    phase: 'start',
+    at: 1,
+    command: 'echo hi',
+  };
+  const end = {
+    ...start,
+    phase: 'end',
+    at: 2,
+    exitCode: 0,
+    stdout: 'hi\n',
+    stderr: '',
+    truncated: false,
+    timedOut: false,
+    elapsedMs: 120,
+  };
+  // Flux laissé ouvert : pas de close → pas de reconnexion pendant le test.
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(`${JSON.stringify(start)}\n`));
+      controller.enqueue(encoder.encode(`${JSON.stringify(end)}\n`));
+    },
+  });
+  const fetchMock = vi.fn(
+    async () =>
+      new Response(stream, {
+        headers: { 'content-type': 'application/x-ndjson' },
+      }),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  const dot = { id: 'd1', name: 'Test' } as unknown as Dot;
+  await act(async () => {
+    roots.push(create(createElement(ComputerPanel, { dot })));
+  });
+  await act(async () => {});
+  const root = roots[roots.length - 1].root;
+  const termTab = root
+    .findAllByType('button')
+    .find((b) => textOf(b) === 'Terminal');
+  expect(termTab).toBeTruthy();
+  await act(async () => {
+    termTab!.props.onClick();
+  });
+  await act(async () => {});
+  await act(async () => {});
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining('/dots/d1/computer/activity'),
+    expect.anything(),
+  );
+  const codes = root
+    .findAllByType('code')
+    .map((c) => (Array.isArray(c.children) ? c.children.join('') : ''));
+  expect(codes).toContain('$ echo hi');
+  const badge = root.findAllByProps({
+    className: 'computer-terminal-actor agent',
+  });
+  expect(badge).toHaveLength(1);
+  const meta = root.findAllByProps({ className: 'computer-terminal-meta' });
+  expect(
+    (Array.isArray(meta[0].children) ? meta[0].children.join('') : '').replace(
+      /\s+/g,
+      ' ',
+    ),
+  ).toContain('Sortie 0');
+  const pres = root
+    .findAllByType('pre')
+    .map((p) => (Array.isArray(p.children) ? p.children.join('') : ''));
+  expect(pres).toContain('hi\n');
 });

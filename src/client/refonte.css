@@ -502,6 +502,53 @@ textarea::placeholder {
   background: var(--nd-bg-hover);
   color: var(--nd-text);
 }
+/* --- Journal live du terminal --- */
+.computer-terminal-log {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.computer-terminal-log > li {
+  border: 1px solid var(--nd-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.computer-terminal-cmd {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.computer-terminal-cmd code {
+  word-break: break-all;
+}
+.computer-terminal-actor {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--nd-bg-hover);
+}
+.computer-terminal-actor.agent {
+  background: var(--nd-accent);
+  color: #fff;
+}
+.computer-terminal-meta {
+  font-size: 12px;
+  color: var(--nd-text-secondary);
+  margin: 4px 0;
+}
+.computer-terminal-running {
+  color: var(--nd-text-secondary);
+}
+.computer-terminal-stderr {
+  color: var(--nd-danger);
+}
 
 /* --- Connexions --- */
 .connection {

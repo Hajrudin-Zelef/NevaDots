@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   computerInputs,
   computerPermissionsSchema,
+  type ComputerActivityEvent,
   type ComputerAction,
   type ComputerControl,
   type ComputerStatus,
@@ -37,6 +38,16 @@ export class ComputerTimeoutError extends Error {
  * must not be replayed blindly.
  */
 const REFLESS_BROWSER_MUTATIONS = new Set(['navigate', 'key', 'scroll']);
+/** Bornes du flux d'activité : le terminal live montre la commande et une
+ * sortie bornée, jamais un dump de 64 Ko. */
+const ACTIVITY_COMMAND_MAX = 1024;
+const ACTIVITY_OUTPUT_MAX = 8000;
+function boundText(value: unknown, max: number): string {
+  const text = typeof value === 'string' ? value : '';
+  return text.length > max ? `${text.slice(0, max)}…[tronqué]` : text;
+}
+/** Abonné au flux d'activité live d'un Dot. En mémoire, mono-processus. */
+export type ComputerActivityListener = (event: ComputerActivityEvent) => void;
 /**
  * How long to wait on a single action once its computer is running. Above the
  * computer's own `NAVIGATION_TIMEOUT_MS` (30s) so a slow page cannot trip it,
@@ -308,6 +319,82 @@ export class ComputerService {
       };
     }
   }
+  private activityListeners = new Map<string, Set<ComputerActivityListener>>();
+  /** S'abonner aux événements live d'un Dot. En mémoire, mono-processus :
+   * le déploiement n'exécute qu'un seul serveur, donc aucun bus externe. */
+  subscribeActivity(
+    dotId: string,
+    listener: ComputerActivityListener,
+  ): () => void {
+    let set = this.activityListeners.get(dotId);
+    if (!set) {
+      set = new Set();
+      this.activityListeners.set(dotId, set);
+    }
+    set.add(listener);
+    return () => {
+      set.delete(listener);
+      if (set.size === 0) this.activityListeners.delete(dotId);
+    };
+  }
+  private emitActivity(event: ComputerActivityEvent): void {
+    const set = this.activityListeners.get(event.dotId);
+    if (!set || set.size === 0) return;
+    for (const listener of [...set]) {
+      try {
+        listener(event);
+      } catch {
+        // Un abonné ne casse jamais l'action en cours.
+      }
+    }
+  }
+  /** Journal live du terminal : `start` dès le lancement, `end` au retour.
+   * Périmètre `exec` uniquement (ni screenshots ni snapshots). */
+  private beginActivity(
+    id: string,
+    actor: 'owner' | 'agent',
+    parsed: unknown,
+  ): { end(result: unknown): void; fail(error: unknown): void } {
+    const command = boundText(
+      (parsed as { command?: unknown } | null)?.command,
+      ACTIVITY_COMMAND_MAX,
+    );
+    const base = { dotId: id, action: 'exec' as const, actor, command };
+    this.emitActivity({ ...base, phase: 'start', at: Date.now() });
+    return {
+      end: (result: unknown) => {
+        const shell =
+          result && typeof result === 'object'
+            ? (result as Record<string, unknown>)
+            : {};
+        const asNumber = (value: unknown): number | undefined =>
+          typeof value === 'number' && Number.isFinite(value)
+            ? value
+            : undefined;
+        const asBool = (value: unknown): boolean | undefined =>
+          typeof value === 'boolean' ? value : undefined;
+        this.emitActivity({
+          ...base,
+          phase: 'end',
+          at: Date.now(),
+          exitCode: asNumber(shell.exitCode),
+          stdout: boundText(shell.stdout, ACTIVITY_OUTPUT_MAX),
+          stderr: boundText(shell.stderr, ACTIVITY_OUTPUT_MAX),
+          truncated: asBool(shell.truncated),
+          timedOut: asBool(shell.timedOut),
+          elapsedMs: asNumber(shell.elapsedMs),
+        });
+      },
+      fail: (error: unknown) => {
+        this.emitActivity({
+          ...base,
+          phase: 'end',
+          at: Date.now(),
+          error: error instanceof Error ? error.message : 'Échec.',
+        });
+      },
+    };
+  }
   private async audited<T>(
     id: string,
     action: string,
@@ -421,6 +508,11 @@ export class ComputerService {
     if (!Object.hasOwn(computerInputs, action))
       throw new Error('Unknown computer action.');
     const parsed = computerInputs[action].parse(input);
+    // Journal live du terminal (start dès le lancement, end au retour).
+    // Le `start` part avant les contrôles : un refus émet `start` puis `end`
+    // avec l'erreur, ce qui reste informatif dans le journal.
+    const watch =
+      action === 'exec' ? this.beginActivity(id, actor, parsed) : null;
     return this.audited(id, action, actor, async () => {
       if (actor === 'agent' && action.startsWith('human_'))
         throw new Error('Human controls are owner-only.');
@@ -519,6 +611,7 @@ export class ComputerService {
       };
       try {
         const result = await runWithRecovery();
+        watch?.end(result);
         if (action === 'exec' && result && typeof result === 'object') {
           const copy = { ...result } as Record<string, unknown>;
           delete copy.command;
@@ -528,6 +621,12 @@ export class ComputerService {
       } finally {
         clearInterval(watcher);
       }
-    });
+    }).then(
+      (result) => result,
+      (error: unknown) => {
+        watch?.fail(error);
+        throw error;
+      },
+    );
   }
 }

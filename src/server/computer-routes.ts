@@ -1,7 +1,11 @@
 import { Hono } from 'hono';
+import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import type { ComputerService } from './computer-service.js';
-import type { ComputerAction } from '../shared/computer-types.js';
+import type {
+  ComputerAction,
+  ComputerActivityEvent,
+} from '../shared/computer-types.js';
 export function computerRoutes(computers: ComputerService) {
   const app = new Hono();
   app.onError((error, c) =>
@@ -33,6 +37,43 @@ export function computerRoutes(computers: ComputerService) {
   app.post('/dots/:id/computer/release', async (c) =>
     c.json(await computers.control(c.req.param('id'), 'release')),
   );
+  // Journal live du terminal (NDJSON) : `start` dès le lancement d'un exec,
+  // `end` avec sortie bornée au retour. Couvert par le même middleware
+  // owner-token que le reste de /api ; le client passe le Bearer en en-tête.
+  app.get('/dots/:id/computer/activity', async (c) => {
+    const dotId = c.req.param('id');
+    // Le dot doit exister avant de souscrire (requireDot lève sinon).
+    await computers.status(dotId);
+    c.header('Content-Type', 'application/x-ndjson');
+    c.header('Cache-Control', 'no-cache');
+    return stream(c, async (writer) => {
+      const rawSignal: AbortSignal | undefined = c.req.raw.signal;
+      await writer.write(`:${' '.repeat(2048)}\n`);
+      const unsubscribe = computers.subscribeActivity(dotId, (event) => {
+        void writer
+          .write(`${JSON.stringify(event satisfies ComputerActivityEvent)}\n`)
+          .catch(() => {});
+      });
+      const heartbeat = setInterval(() => {
+        void writer.write('\n').catch(() => {});
+      }, 20000);
+      try {
+        await new Promise<void>((resolve) => {
+          writer.onAbort(() => resolve());
+          if (rawSignal) {
+            if (rawSignal.aborted) resolve();
+            else
+              rawSignal.addEventListener('abort', () => resolve(), {
+                once: true,
+              });
+          }
+        });
+      } finally {
+        clearInterval(heartbeat);
+        unsubscribe();
+      }
+    });
+  });
   app.post('/dots/:id/computer/actions', async (c) => {
     const body = z
       .object({ action: z.string(), input: z.unknown() })

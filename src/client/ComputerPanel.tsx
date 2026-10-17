@@ -4,6 +4,7 @@ import type { Dot } from '../shared/types';
 import type { ComputerAction, ComputerStatus } from '../shared/computer-types';
 import { api } from './api';
 import { BrowserScreen } from './BrowserScreen';
+import { useComputerActivity } from './useComputerActivity';
 import {
   fileBasename,
   formatFileSize,
@@ -42,8 +43,6 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
   const [path, setPath] = useState('');
   const [contents, setContents] = useState('');
   const [command, setCommand] = useState('');
-  const [output, setOutput] = useState('');
-  const [outputError, setOutputError] = useState('');
   const [screenError, setScreenError] = useState('');
   // Navigateur de fichiers : état dédié, jamais dans la « Sortie » brute.
   const [filesDir, setFilesDir] = useState('');
@@ -147,18 +146,12 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
       clearTimeout(timer);
     };
   }, [refresh]);
-  const run = async (
-    endpoint: string,
-    body: unknown = {},
-    method = 'POST',
-    showOutput = false,
-  ) => {
+  const run = async (endpoint: string, body: unknown = {}, method = 'POST') => {
     if (lifecycle.current.busy) return;
     lifecycle.current.busy = true;
     lifecycle.current.revision++;
     setBusy(true);
     setError('');
-    if (showOutput) setOutputError('');
     try {
       const result = await api<unknown>(
         `${base}${endpoint}`,
@@ -167,29 +160,20 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
         controller.current?.signal,
       );
       if (!lifecycle.current.active) return;
-      if (showOutput)
-        setOutput(
-          typeof result === 'string' ? result : JSON.stringify(result, null, 2),
-        );
       await refresh();
       return result;
     } catch (cause) {
       if (!lifecycle.current.active) return;
-      const message =
-        cause instanceof Error ? cause.message : 'Computer action failed.';
-      // Status polling clears the panel error, so keep output action failures
-      // next to the output they replace.
-      if (showOutput) {
-        setOutput('');
-        setOutputError(message);
-      } else setError(message);
+      setError(
+        cause instanceof Error ? cause.message : 'Computer action failed.',
+      );
     } finally {
       lifecycle.current.busy = false;
       if (lifecycle.current.active) setBusy(false);
     }
   };
-  const action = (action: ComputerAction, input: unknown, showOutput = false) =>
-    run('/actions', { action, input }, 'POST', showOutput);
+  const action = (action: ComputerAction, input: unknown) =>
+    run('/actions', { action, input }, 'POST');
   // Appels fichiers : même garde anti-concurrence que `run`, mais les erreurs
   // vont dans le bandeau de l'onglet Fichiers (pas dans la « Sortie » brute).
   const fileAction = async (
@@ -279,6 +263,8 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
   const human =
     status?.control?.holder === 'human' && !status.control.transitioning;
   const browser = !!running && !!status?.permissions.browser;
+  // Journal live du terminal (commandes owner + agent) quand l'onglet est ouvert.
+  const terminal = useComputerActivity(dot.id, tab === 'Terminal');
   return (
     <section
       className="computer-panel"
@@ -711,12 +697,70 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                 <summary>Terminal</summary>
                 <p>
                   S’exécute dans l’ordinateur de ce Dot. Les commandes
-                  s’arrêtent après 30 secondes.
+                  s’arrêtent après 30 secondes. Le journal ci-dessous suit en
+                  direct vos commandes et celles du Dot.
                 </p>
+                {terminal.error && (
+                  <p className="computer-error" role="alert">
+                    {terminal.error}
+                  </p>
+                )}
+                <p role="status">
+                  {terminal.connected
+                    ? 'Journal en direct.'
+                    : 'Connexion au journal…'}
+                </p>
+                <ol
+                  className="computer-terminal-log"
+                  aria-label="Journal terminal"
+                >
+                  {terminal.runs.map((run) => (
+                    <li key={run.key}>
+                      <div className="computer-terminal-cmd">
+                        <span
+                          className={`computer-terminal-actor ${run.actor}`}
+                        >
+                          {run.actor === 'agent' ? 'Dot' : 'Vous'}
+                        </span>
+                        <code>$ {run.command}</code>
+                      </div>
+                      {run.running ? (
+                        <p className="computer-terminal-running" role="status">
+                          En cours…
+                        </p>
+                      ) : run.error ? (
+                        <p className="computer-error" role="alert">
+                          {run.error}
+                        </p>
+                      ) : (
+                        <>
+                          <p className="computer-terminal-meta">
+                            {typeof run.exitCode === 'number'
+                              ? `Sortie ${run.exitCode}`
+                              : 'Terminé'}
+                            {typeof run.elapsedMs === 'number' &&
+                              ` · ${(run.elapsedMs / 1000).toFixed(1)} s`}
+                            {run.timedOut && ' · délai dépassé'}
+                            {run.truncated && ' · sortie tronquée'}
+                          </p>
+                          {run.stdout && <pre>{run.stdout}</pre>}
+                          {run.stderr && (
+                            <pre className="computer-terminal-stderr">
+                              {run.stderr}
+                            </pre>
+                          )}
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+                {!terminal.runs.length && (
+                  <p>Aucune commande pour l’instant.</p>
+                )}
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();
-                    void action('exec', { command, timeoutMs: 30000 }, true);
+                    void action('exec', { command, timeoutMs: 30000 });
                   }}
                 >
                   <textarea
@@ -745,25 +789,6 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                   </p>
                 )}
               </details>
-              {(output || outputError) && tab === 'Terminal' && (
-                <section className="computer-section">
-                  <h3>Sortie</h3>
-                  {outputError && (
-                    <p className="computer-error" role="alert">
-                      {outputError}
-                    </p>
-                  )}
-                  {output && <pre tabIndex={0}>{output}</pre>}
-                  <button
-                    onClick={() => {
-                      setOutput('');
-                      setOutputError('');
-                    }}
-                  >
-                    Effacer
-                  </button>
-                </section>
-              )}
             </>
           )}
           <details

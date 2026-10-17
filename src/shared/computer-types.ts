@@ -104,3 +104,25 @@ export const computerInputs = {
     .strict(),
 };
 export type ComputerAction = keyof typeof computerInputs;
+/** A live lifecycle event for a computer shell run (owner or agent). The
+ * container only returns exec output when the command finishes, so the UI
+ * shows `start` the moment the command launches and `end` with bounded output
+ * when it returns. Emitted in-process only (single server process). */
+export interface ComputerActivityEvent {
+  dotId: string;
+  action: 'exec';
+  actor: 'owner' | 'agent';
+  phase: 'start' | 'end';
+  /** Unix epoch ms when the event was emitted. */
+  at: number;
+  /** The shell command (bounded server-side). */
+  command: string;
+  exitCode?: number;
+  /** Bounded stdout/stderr chunks attached on `end`. */
+  stdout?: string;
+  stderr?: string;
+  truncated?: boolean;
+  timedOut?: boolean;
+  elapsedMs?: number;
+  error?: string;
+}
