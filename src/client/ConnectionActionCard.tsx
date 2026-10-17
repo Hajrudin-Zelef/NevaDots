@@ -14,6 +14,21 @@ type Receipt = {
 };
 const conversation = (threadId: string) =>
   `/conversations/${encodeURIComponent(threadId)}`;
+/**
+ * Réponse à un refus alors qu'un reçu existe déjà (appel tardif ou rejoué) :
+ * jamais de POST, jamais d'approbation — le modèle reçoit un refus explicite.
+ * Testée directement : ce chemin est inatteignable via l'UI (le bouton
+ * Refuser est masqué dès qu'un reçu existe), c'est une garde défensive.
+ */
+export async function respondToLateDecline(
+  respond: (result: unknown) => Promise<void>,
+) {
+  await respond({
+    approved: false,
+    message:
+      'The owner declined this action after it ran. Do not act on its result.',
+  });
+}
 const display = (value: unknown) =>
   typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 export function ConnectionActionCard({
@@ -57,7 +72,7 @@ export function ConnectionActionCard({
           setApprovalError(
             cause instanceof Error
               ? cause.message
-              : 'Could not load this request.',
+              : 'Chargement impossible de cette demande.',
           ),
       );
     return () => {
@@ -81,7 +96,7 @@ export function ConnectionActionCard({
             setError(
               cause instanceof Error
                 ? cause.message
-                : 'Could not check this action.',
+                : 'Vérification impossible de cette action.',
             );
         });
     setError('');
@@ -102,7 +117,13 @@ export function ConnectionActionCard({
     setBusy(true);
     setError('');
     try {
-      if (!approve && !outcome) {
+      // Un reçu existant fige le refus : refuser ne réexécute jamais et
+      // n'annonce jamais une approbation, même sur appel tardif ou rejoué.
+      if (!approve && outcome) {
+        await respondToLateDecline(respond);
+        return;
+      }
+      if (!approve) {
         await respond({
           approved: false,
           message:
@@ -122,7 +143,9 @@ export function ConnectionActionCard({
       await respond({ approved: true, ...value });
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : 'Could not run this action.',
+        cause instanceof Error
+          ? cause.message
+          : 'Exécution impossible de cette action.',
       );
     } finally {
       pending.current = false;
@@ -133,34 +156,34 @@ export function ConnectionActionCard({
   return (
     <section
       className="page-review-card connection-action-card"
-      aria-label="Approve connected-service action"
+      aria-label="Approuver l’action du service connecté"
     >
       <header>
         <PlugZap size={17} />
         <strong>
           {approval
             ? `${approval.connection} · ${approval.title}`
-            : 'Connected service'}
+            : 'Service connecté'}
         </strong>
         <span>
           {approved
             ? outcome?.isError
-              ? 'Failed'
-              : 'Approved'
+              ? 'Échoué'
+              : 'Approuvé'
             : declined
-              ? 'Declined'
+              ? 'Refusé'
               : running
-                ? 'Running'
+                ? 'En cours'
                 : finished
-                  ? 'Ended'
+                  ? 'Terminé'
                   : !ready
-                    ? 'Checking'
-                    : 'Needs your approval'}
+                    ? 'Vérification'
+                    : 'En attente de votre approbation'}
         </span>
       </header>
       <div className="page-review-body">
         <h3>
-          {action.success ? action.data.summary : 'Preparing the action…'}
+          {action.success ? action.data.summary : 'Préparation de l’action…'}
         </h3>
         {entries.length > 0 && (
           <dl className="connection-action-args">
@@ -174,16 +197,16 @@ export function ConnectionActionCard({
         )}
         {mismatch && (
           <div className="connection-action-result failed">
-            <strong>Cannot run</strong>
+            <strong>Exécution impossible</strong>
             <pre>
-              This card’s saved result belongs to a different approval request.
-              Nothing was run for this one.
+              Le résultat enregistré de cette carte appartient à une autre
+              demande d’approbation. Rien n’a été exécuté pour celle-ci.
             </pre>
           </div>
         )}
         {approvalError && !outcome && (
           <div className="connection-action-result failed">
-            <strong>Cannot run</strong>
+            <strong>Exécution impossible</strong>
             <pre>{approvalError}</pre>
           </div>
         )}
@@ -192,7 +215,7 @@ export function ConnectionActionCard({
             className={`connection-action-result ${outcome.isError ? 'failed' : ''}`}
           >
             <strong>
-              {outcome.isError ? 'Service error' : 'Service response'}
+              {outcome.isError ? 'Erreur du service' : 'Réponse du service'}
             </strong>
             <pre>{outcome.text}</pre>
           </div>
@@ -202,7 +225,7 @@ export function ConnectionActionCard({
       <footer>
         {!ready && error && (
           <button type="button" onClick={() => setAttempt((n) => n + 1)}>
-            Retry
+            Réessayer
           </button>
         )}
         {!finished && respond && ready && !running && !mismatch && (
@@ -215,10 +238,10 @@ export function ConnectionActionCard({
             >
               <Check size={15} />
               {busy
-                ? 'Running…'
+                ? 'Exécution…'
                 : outcome
-                  ? 'Continue conversation'
-                  : 'Approve & run'}
+                  ? 'Continuer la conversation'
+                  : 'Approuver et exécuter'}
             </button>
             {!outcome && (
               <button
@@ -226,17 +249,17 @@ export function ConnectionActionCard({
                 disabled={busy}
                 onClick={() => void decide(false)}
               >
-                Decline
+                Refuser
               </button>
             )}
           </>
         )}
         <small>
           {running
-            ? 'This action is still running on the server.'
+            ? 'Cette action est toujours en cours sur le serveur.'
             : approved || declined || finished
               ? ''
-              : 'Nothing runs until you approve. These are the exact arguments.'}
+              : 'Rien ne s’exécute sans votre approbation. Voici les arguments exacts.'}
         </small>
       </footer>
     </section>

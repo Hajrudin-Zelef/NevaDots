@@ -86,7 +86,7 @@ it('allows a transient disconnect to recover within five seconds', async () => {
   expect(ends()).toHaveLength(0);
   expect(voice.status).toBe('active');
 });
-it('ends a persistent disconnect after five seconds, not before', async () => {
+it('rejoint au lieu de finir après cinq secondes de coupure persistante', async () => {
   await act(async () => {
     pc.state('disconnected');
     await vi.advanceTimersByTimeAsync(4999);
@@ -95,28 +95,33 @@ it('ends a persistent disconnect after five seconds, not before', async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(ends()).toHaveLength(1);
-  expect(voice.status).toBe('idle');
+  // Rejoin (pas fin) : nouveau POST de call, pas de POST de fin.
+  expect(ends()).toHaveLength(0);
+  expect(voice.status).toBe('connecting');
+  expect(voice.reconnecting).toBe(true);
 });
-it('does not extend the grace window on repeated disconnected events', async () => {
+it('ne prolonge pas la grâce mais ne relance qu’une seule reprise', async () => {
   await act(async () => {
     pc.state('disconnected');
     await vi.advanceTimersByTimeAsync(3000);
     pc.state('disconnected');
     await vi.advanceTimersByTimeAsync(2000);
   });
-  expect(ends()).toHaveLength(1);
+  // Une seule reprise après la grâce initiale, pas une par événement.
+  expect(ends()).toHaveLength(0);
+  expect(voice.reconnecting).toBe(true);
 });
-it('ends failed connections immediately and cancels a pending grace timer', async () => {
+it('rejoint immédiatement sur échec, sans attendre la grâce', async () => {
   await act(async () => {
     pc.state('disconnected');
     pc.state('failed');
   });
-  expect(ends()).toHaveLength(1);
+  expect(ends()).toHaveLength(0);
+  expect(voice.reconnecting).toBe(true);
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(6000);
+    await vi.advanceTimersByTimeAsync(60000);
   });
-  expect(ends()).toHaveLength(1);
+  expect(ends()).toHaveLength(0);
 });
 it('clears disconnect timers on manual end', async () => {
   await act(async () => {

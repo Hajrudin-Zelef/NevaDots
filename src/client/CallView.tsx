@@ -33,7 +33,7 @@ export function CallView({
     : 0;
   const duration = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const orbKind: ThinkingKind | null =
-    voice.status === 'connecting'
+    voice.reconnecting || voice.status === 'connecting'
       ? 'connecting'
       : voice.status === 'ending' || voice.muted
         ? null
@@ -42,8 +42,9 @@ export function CallView({
           : voice.phase === 'thinking'
             ? 'thinking'
             : 'listening';
-  const label =
-    voice.status === 'connecting'
+  const label = voice.reconnecting
+    ? `Reconnexion… (${voice.reconnectAttempt}/5)`
+    : voice.status === 'connecting'
       ? 'Connecting…'
       : voice.status === 'ending'
         ? 'Saving call…'
@@ -98,6 +99,14 @@ export function CallView({
       {voice.error && (
         <p className="call-warning" role="alert">
           {voice.error}
+        </p>
+      )}
+      {voice.unsentReceipt && (
+        <p className="call-warning" role="alert">
+          Reçu d’appel non enregistré (réseau).{' '}
+          <button type="button" onClick={() => void voice.retryReceipt()}>
+            Renvoyer le reçu
+          </button>
         </p>
       )}
       <div className="call-controls">

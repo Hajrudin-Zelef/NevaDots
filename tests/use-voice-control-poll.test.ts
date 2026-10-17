@@ -107,19 +107,22 @@ it('keeps the call alive when a later poll succeeds before the failure limit', a
   expect(ends()).toHaveLength(0);
   expect(voice.status).toBe('active');
 });
-it('ends the call after three consecutive failed control polls', async () => {
+it('rejoint après trois contrôles en échec au lieu de finir', async () => {
   failPolls(3);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(6000);
   });
-  expect(ends()).toHaveLength(1);
-  expect(voice.status).toBe('idle');
-  expect(voice.error).toBe('Call control connection was lost.');
+  // Rejoin, pas fin : nouveau POST de call, aucun POST de fin.
+  expect(ends()).toHaveLength(0);
+  expect(voice.reconnecting).toBe(true);
+  expect(voice.status).toBe('connecting');
 });
-it('ends a persistently failing control poll exactly once', async () => {
-  failPolls(10);
+it('épuise les 5 reprises sur panne persistante puis finit exactement une fois', async () => {
+  failPolls(1000);
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(20000);
+    await vi.advanceTimersByTimeAsync(200000);
   });
   expect(ends()).toHaveLength(1);
+  expect(voice.status).toBe('idle');
+  expect(voice.reconnecting).toBe(false);
 });

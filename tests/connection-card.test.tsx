@@ -16,7 +16,7 @@ it('shows the summary and waits for the server record before deciding', () => {
     />,
   );
   expect(html).toContain('Email the launch notes to Avery.');
-  expect(html).toContain('Checking');
+  expect(html).toContain('Vérification');
   // Decisions wait until the server confirms the action has not already run.
-  expect(html).not.toContain('Approve &amp; run');
+  expect(html).not.toContain('Approuver et exécuter');
 });
