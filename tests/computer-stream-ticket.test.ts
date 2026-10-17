@@ -100,6 +100,26 @@ it("la route émet un ticket et l'upgrade le valide une fois", async () => {
       consumeNone,
     ).status,
   ).toBe('bad-ticket');
+  // Chemin non-UTF8 : 401 sans crasher, ticket non consommé.
+  const fresh = service.mintStreamTicket(id);
+  expect(
+    checkStreamUpgrade(
+      '/api/dots/%FF/computer/stream',
+      fresh,
+      noHeaders,
+      undefined,
+      (t) => service.consumeStreamTicket(t),
+    ).status,
+  ).toBe('bad-ticket');
+  expect(
+    checkStreamUpgrade(
+      `/api/dots/${id}/computer/stream`,
+      fresh,
+      noHeaders,
+      undefined,
+      (t) => service.consumeStreamTicket(t),
+    ),
+  ).toEqual({ status: 'ok', dotId: id });
 });
 
 it("un ticket d'un autre Dot ne passe pas sur ce chemin", () => {

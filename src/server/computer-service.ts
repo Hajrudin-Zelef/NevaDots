@@ -821,18 +821,36 @@ export class ComputerService {
         // Neutralise ce que le distant pourrait activer via .git/config :
         // hooks exécutables, pager arbitraire, fsmonitor. `|| true` : unset
         // échoue (code 5) quand la clé est absente, ce n'est pas une erreur.
+        // Échec réel (exit non-zéro) = clone refusé + cible supprimée : jamais
+        // de clone retourné comme succès avec une config non neutralisée.
         const neutralize =
           `git -C ${q(target)} config --local core.pager cat && ` +
           `(git -C ${q(target)} config --local unset-all core.hooksPath || true) && ` +
           `(git -C ${q(target)} config --local unset-all core.fsmonitor || true) && ` +
           `git -C ${q(target)} config --local core.fsmonitor false`;
-        await this.action(
+        const neutralized = (await this.action(
           id,
           'exec',
           { command: neutralize, timeoutMs: 60000 },
           actor,
           signal,
-        );
+        )) as { exitCode?: unknown; stderr?: unknown };
+        if (
+          typeof neutralized !== 'object' ||
+          neutralized === null ||
+          neutralized.exitCode !== 0
+        ) {
+          await this.action(
+            id,
+            'exec',
+            { command: `rm -rf ${q(target)}`, timeoutMs: 60000 },
+            actor,
+            signal,
+          );
+          throw new Error(
+            `Neutralisation .git/config impossible (${target}) : clone supprimé.`,
+          );
+        }
         // Borne disque post-clone (résiduel transitoire documenté).
         const sized = (await this.action(
           id,

@@ -809,6 +809,31 @@ it('clone : hôte privé refusé, shallow + neutralisation + cap taille', async 
     ),
   ).rejects.toThrow('trop volumineux');
   expect(commands[3]).toContain('rm -rf');
+  // Neutralisation en échec : clone refusé + cible supprimée, jamais de
+  // succès avec une config non neutralisée.
+  commands.length = 0;
+  f.handle(async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    if (String(url).endsWith('/exec')) {
+      commands.push(String((body as { command?: unknown }).command ?? ''));
+      if (commands.length === 2)
+        return Response.json({ exitCode: 1, stdout: '', stderr: 'boom' });
+      return Response.json({ exitCode: 0, stdout: '', stderr: '' });
+    }
+    return Response.json({ text: 'result' });
+  });
+  await expect(
+    f.service.action(
+      f.id,
+      'git',
+      { op: 'clone', url: 'https://example.com/r.git', path: 'nvclone' },
+      'owner',
+    ),
+  ).rejects.toThrow('Neutralisation');
+  expect(commands.at(-1)).toContain('rm -rf');
 });
 it('search RE2 : motif malveillant rapide, syntaxe non supportée refusée', async () => {
   const f = fixture();

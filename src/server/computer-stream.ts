@@ -49,9 +49,15 @@ export function checkStreamUpgrade(
   }
   if (headers.fetchSite === 'cross-site') return { status: 'bad-origin' };
   if (!ticket) return { status: 'bad-ticket' };
-  const bound = consumeTicket(ticket);
-  if (!bound || bound !== decodeURIComponent(match[1]))
+  // Chemin non-UTF8 ou % malformé : 401, ticket non consommé.
+  let pathDot: string;
+  try {
+    pathDot = decodeURIComponent(match[1]);
+  } catch {
     return { status: 'bad-ticket' };
+  }
+  const bound = consumeTicket(ticket);
+  if (!bound || bound !== pathDot) return { status: 'bad-ticket' };
   return { status: 'ok', dotId: bound };
 }
 
