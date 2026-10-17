@@ -9,4 +9,12 @@ The computer service is unchanged. The supervisor keeps its narrow ensure/stop/r
 
 If the pinned upstream line changes, the patches refuse to build. Upgrades require reviewing the API contracts, ownership/volume behavior, and these patches together. On the next ensure request after a master-token change, the pinned supervisor replaces owned containers with the new credential while retaining their volumes. Do not delete profile or workspace volumes during normal updates.
 
+## Dev toolchain image (P4, agentic coding)
+
+`computer-dev.Dockerfile` extends the pinned `opendots-computer:b6932d3` image with one apt layer: `git python3 python3-pip python3-venv build-essential ripgrep jq less`. The base stays byte-identical to upstream; only this additive layer diverges. The supervisor runs the `opendots-computer:b6932d3-dev` tag (`COMPUTER_IMAGE` in `compose.computers.yml`).
+
+Build order matters (the dev image resolves its `FROM` from local images):
+`docker compose -f compose.computers.yml build computer-image computer-image-dev`,
+then `up -d` the supervisor and recreate computers (`docker rm -f opendots-computer-<id>` + `POST /dots/:id/computer/start`) — volumes are retained.
+
 See [computer setup](../../docs/COMPUTERS.md). OpenBot's MIT license is included in [LICENSE.openbot](LICENSE.openbot).

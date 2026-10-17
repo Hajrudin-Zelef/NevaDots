@@ -9,6 +9,16 @@ services:
       context: https://github.com/CopilotKit/OpenBot.git#b6932d31a8d6e7896c15139dfc27a6c6911deb27
       dockerfile: agent-computer/Dockerfile
     command: ['true']
+  # Dev toolchain for agentic coding (P4): same pinned base plus git,
+  # python3, build tools, ripgrep, jq. Built AFTER computer-image; the
+  # supervisor below runs this tag. See deployment/computers/README.md.
+  computer-image-dev:
+    profiles: [build-computers]
+    image: opendots-computer:b6932d3-dev
+    build:
+      context: .
+      dockerfile: deployment/computers/computer-dev.Dockerfile
+    command: ['true']
   computer-supervisor:
     image: opendots-supervisor:b6932d3-dot-auth
     build:
@@ -23,7 +33,8 @@ services:
       SUPERVISOR_TOKEN: ${COMPUTER_SUPERVISOR_TOKEN:?Set COMPUTER_SUPERVISOR_TOKEN in .env}
       COMPUTER_TOKEN: ${COMPUTER_TOKEN:?Set COMPUTER_TOKEN in .env}
       COMPUTER_NAMESPACE: ${COMPUTER_NAMESPACE:-opendots}
-      COMPUTER_IMAGE: opendots-computer:b6932d3
+      # Dev toolchain image (P4): pinned base + git/python3/build-essential/ripgrep/jq.
+      COMPUTER_IMAGE: opendots-computer:b6932d3-dev
       COMPUTER_BROWSER_MODE: headless
       # 0 keeps each Dot's Chromium resident (fast, no idle-close relaunch hang).
       # Set a millisecond value to reclaim idle browsers instead (e.g. 21600000 = 6h).

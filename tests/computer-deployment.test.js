@@ -122,3 +122,22 @@ it('refuses missing or ambiguous CPU patch targets', () => {
     /contract changed/,
   );
 });
+it('pins the dev image on the exact base and lists the toolchain', async () => {
+  const { readFileSync } = await import('node:fs');
+  const dockerfile = readFileSync(
+    new URL('../deployment/computers/computer-dev.Dockerfile', import.meta.url),
+    'utf8',
+  );
+  expect(dockerfile).toMatch(/^FROM opendots-computer:b6932d3\n/m);
+  for (const pkg of [
+    'git',
+    'python3',
+    'python3-pip',
+    'python3-venv',
+    'build-essential',
+    'ripgrep',
+    'jq',
+  ])
+    expect(dockerfile).toContain(pkg);
+  expect(dockerfile).toContain('rm -rf /var/lib/apt/lists');
+});
