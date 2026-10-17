@@ -172,7 +172,8 @@ it('rejects foreign targets, nonexistent Dots, traversal, unexpected inputs and 
   ])
     expect(computerInputs.files_read.safeParse({ path }).success).toBe(false);
   expect(
-    computerInputs.exec.safeParse({ command: 'pwd', timeoutMs: 60001 }).success,
+    computerInputs.exec.safeParse({ command: 'pwd', timeoutMs: 600001 })
+      .success,
   ).toBe(false);
   expect(
     computerInputs.read.safeParse({ url: 'http://elsewhere' }).success,
@@ -380,4 +381,49 @@ it('recovers a wedged browser by resetting the computer and retrying once', asyn
   expect(f.calls.some((call) => call.url.endsWith('/stop'))).toBe(true);
   expect(f.calls.some((call) => call.url.endsWith('/ensure'))).toBe(true);
   expect(f.workspace.computers.audit(f.id)[0].outcome).toBe('succeeded');
+});
+it('lets exec outlive the short wedge-recovery deadline (P1)', async () => {
+  expect(
+    computerInputs.exec.safeParse({ command: 'make', timeoutMs: 600000 })
+      .success,
+  ).toBe(true);
+  expect(
+    computerInputs.exec.safeParse({ command: 'make', timeoutMs: 600001 })
+      .success,
+  ).toBe(false);
+  const f = fixture(1000);
+  // Superviseur rapide, ordinateur lent (1,5 s) : l'exec a son propre délai
+  // long (600 s) alors que les fichiers gardent le plafond court (1 s ici).
+  // Le transport respecte le signal, comme un vrai fetch avorté.
+  f.handle(
+    async (url, init) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve(
+            Response.json({
+              exitCode: 0,
+              stdout: 'done',
+              stderr: '',
+              truncated: false,
+              timedOut: false,
+              elapsedMs: 1500,
+            }),
+          );
+        }, 1500);
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new Error('aborted by test'));
+          },
+          { once: true },
+        );
+      }),
+  );
+  await expect(
+    f.service.action(f.id, 'exec', { command: 'sleep 1.5' }, 'owner'),
+  ).resolves.toMatchObject({ exitCode: 0, stdout: 'done' });
+  await expect(
+    f.service.action(f.id, 'files_list', { path: '' }, 'owner'),
+  ).rejects.toThrow(/timed out/);
 });

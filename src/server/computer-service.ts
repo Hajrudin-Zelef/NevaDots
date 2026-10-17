@@ -54,6 +54,11 @@ export type ComputerActivityListener = (event: ComputerActivityEvent) => void;
  * but well under the supervisor deadline so a wedged browser is recovered fast.
  */
 const ACTION_DEADLINE_MS = 45_000;
+/** Longest a single shell command may take. The sandbox accepts timeoutMs up
+ * to 600 s, so the app deadline must cover it. Browser/files keep the short
+ * wedge-recovery deadline above: a wedged browser must reset fast, and the
+ * 50 ms permission-watcher still kills a revoked run mid-command. */
+const EXEC_DEADLINE_MS = 600_000;
 function snapshotRequired(payload: unknown): boolean {
   return (
     !!payload &&
@@ -541,13 +546,19 @@ export class ComputerService {
         const path = action
           .replace(/^files_/, 'files/')
           .replace(/^human_/, 'human/');
+        // Exec alone gets the long deadline (installs, builds, tests);
+        // everything else keeps the short wedge-recovery deadline.
+        const deadline =
+          action === 'exec'
+            ? EXEC_DEADLINE_MS
+            : Math.min(ACTION_DEADLINE_MS, this.deadlineMs);
         const result = await this.json(
           `${url}/${path}`,
           this.token(id),
           ['read', 'screenshot'].includes(action) ? undefined : parsed,
           activeSignal,
           id,
-          Math.min(ACTION_DEADLINE_MS, this.deadlineMs),
+          deadline,
         );
         this.allowed(id, kind, actor);
         return result;

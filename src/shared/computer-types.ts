@@ -87,8 +87,10 @@ export const computerInputs = {
     .strict(),
   exec: z
     .object({
+      // Cap aligné sur le conteneur (MAX_TIMEOUT_MS 600 s) ; l'app applique
+      // EXEC_DEADLINE_MS pour que builds/installs/tests tiennent.
       command: z.string().trim().min(1).max(8000),
-      timeoutMs: z.number().int().min(1000).max(60000).default(30000),
+      timeoutMs: z.number().int().min(1000).max(600000).default(30000),
     })
     .strict(),
   human_click: z
