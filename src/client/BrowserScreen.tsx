@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { authToken } from './api';
+import { api } from './api';
 
 type Frame = { type: 'frame'; data: string; width: number; height: number };
 
@@ -42,10 +42,25 @@ export function BrowserScreen({
     let closed = false;
     let socket: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout>;
-    const connect = () => {
+    const connect = async () => {
+      // Ticket à usage unique (30 s) via l'API authentifiée : le token
+      // owner ne transite jamais par l'URL du WebSocket.
+      let ticket: string;
+      try {
+        ({ ticket } = await api<{ ticket: string }>(
+          `/dots/${encodeURIComponent(dotId)}/computer/stream-ticket`,
+          'POST',
+        ));
+      } catch {
+        if (closed) return;
+        setError('Flux indisponible');
+        retry = setTimeout(connect, 1500);
+        return;
+      }
+      if (closed) return;
       const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
       socket = new WebSocket(
-        `${scheme}://${location.host}/api/dots/${encodeURIComponent(dotId)}/computer/stream?token=${encodeURIComponent(authToken())}`,
+        `${scheme}://${location.host}/api/dots/${encodeURIComponent(dotId)}/computer/stream?ticket=${encodeURIComponent(ticket)}`,
       );
       socketRef.current = socket;
       socket.onopen = () => setError('');
@@ -83,6 +98,7 @@ export function BrowserScreen({
         retry = setTimeout(connect, 1500);
       };
       socket.onerror = () => {
+        if (closed) return;
         setError('Flux indisponible');
         try {
           socket?.close();
@@ -91,7 +107,7 @@ export function BrowserScreen({
         }
       };
     };
-    connect();
+    void connect();
     return () => {
       closed = true;
       clearTimeout(retry);

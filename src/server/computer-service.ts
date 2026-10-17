@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {
   computerInputs,
@@ -60,6 +60,12 @@ const ACTION_DEADLINE_MS = 45_000;
  * wedge-recovery deadline above: a wedged browser must reset fast, and the
  * 50 ms permission-watcher still kills a revoked run mid-command. */
 const EXEC_DEADLINE_MS = 600_000;
+/** Stream tickets: short-lived, single-use, dot-bound. The browser cannot set
+ * upgrade headers, so it fetches a ticket over the authenticated API and
+ * presents it once in the WS query — the owner token never lands in a URL,
+ * proxy log, or browser history. */
+const STREAM_TICKET_TTL_MS = 30_000;
+const STREAM_TICKET_CAP = 1000;
 /** Bornes du search/offset côté serveur : le modèle ne doit pas vider le
  * workspace dans son contexte via des lectures en boucle. */
 const SEARCH_MAX_FILES = 20;
@@ -330,6 +336,40 @@ export class ComputerService {
     }
   }
   private activityListeners = new Map<string, Set<ComputerActivityListener>>();
+  private streamTickets = new Map<
+    string,
+    { dotId: string; expiresAt: number }
+  >();
+  /**
+   * Mint a single-use stream ticket for a Dot's browser view. Tickets live
+   * 30 s and are consumed atomically on upgrade, so a leaked URL dies
+   * almost immediately and cannot be replayed.
+   */
+  mintStreamTicket(id: string): string {
+    this.requireDot(id);
+    const now = Date.now();
+    for (const [ticket, entry] of this.streamTickets)
+      if (entry.expiresAt <= now) this.streamTickets.delete(ticket);
+    while (this.streamTickets.size >= STREAM_TICKET_CAP) {
+      const oldest = this.streamTickets.keys().next();
+      if (oldest.done) break;
+      this.streamTickets.delete(oldest.value);
+    }
+    const ticket = randomBytes(32).toString('hex');
+    this.streamTickets.set(ticket, {
+      dotId: id,
+      expiresAt: now + STREAM_TICKET_TTL_MS,
+    });
+    return ticket;
+  }
+  /** Consume a ticket once; returns the bound dotId, or null when unknown, expired, or replayed. */
+  consumeStreamTicket(ticket: string): string | null {
+    const entry = this.streamTickets.get(ticket);
+    if (!entry) return null;
+    this.streamTickets.delete(ticket);
+    if (entry.expiresAt <= Date.now()) return null;
+    return entry.dotId;
+  }
   /** S'abonner aux événements live d'un Dot. En mémoire, mono-processus :
    * le déploiement n'exécute qu'un seul serveur, donc aucun bus externe. */
   subscribeActivity(

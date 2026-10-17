@@ -37,6 +37,12 @@ export function computerRoutes(computers: ComputerService) {
   app.post('/dots/:id/computer/release', async (c) =>
     c.json(await computers.control(c.req.param('id'), 'release')),
   );
+  // Ticket WS à usage unique (30 s) : le navigateur le récupère ici, en-tête
+  // Bearer via le middleware owner-token, puis le présente une fois dans la
+  // query de l'upgrade. Le token owner ne transite plus jamais par l'URL.
+  app.post('/dots/:id/computer/stream-ticket', async (c) =>
+    c.json({ ticket: computers.mintStreamTicket(c.req.param('id')) }),
+  );
   // Journal live du terminal (NDJSON) : `start` dès le lancement d'un exec,
   // `end` avec sortie bornée au retour. Couvert par le même middleware
   // owner-token que le reste de /api ; le client passe le Bearer en en-tête.

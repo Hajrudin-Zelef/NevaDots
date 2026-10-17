@@ -110,12 +110,16 @@ const runner = new Runner(
     return { text, sources: [], sample: false };
   },
 );
+const appOrigins = resolveAppOrigins(
+  process.env.APP_ORIGIN,
+  process.env.NODE_ENV,
+);
 const app = createApp({
   store,
   runner,
   config: researchConfig,
   ownerToken,
-  origin: resolveAppOrigins(process.env.APP_ORIGIN, process.env.NODE_ENV),
+  origin: appOrigins,
   platform,
 });
 app.use('*', async (c, next) => {
@@ -200,8 +204,8 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
       ),
     );
 });
-// Live CDP screencast proxy for the Dot browser (owner-authenticated WebSocket).
-attachComputerStream(server, platform.computers, ownerToken);
+// Live CDP screencast proxy for the Dot browser (ticket-authenticated WebSocket).
+attachComputerStream(server, platform.computers, appOrigins);
 const shutdown = createShutdown({
   stopRunner: () => runner.stop(),
   stopPlatform: () => platform.stop(),
