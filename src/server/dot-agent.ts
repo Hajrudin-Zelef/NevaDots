@@ -53,6 +53,7 @@ import { injectAttachedImages } from './attached-images.js';
 import { screenshotMiddleware } from './screenshot-middleware.js';
 import { brainTools } from './brain-tools.js';
 import { generateFileTool } from './generate-file.js';
+import { pdfTools } from './pdf-tools.js';
 import { consultBrainSync } from './operator-brain.js';
 const channelError = () => ({
   type: EventType.RUN_ERROR,
@@ -605,6 +606,7 @@ export class DotAgent extends AbstractAgent {
           ...pageTools(pages),
           ...brainTools(),
           ...generateFileTool(),
+          ...pdfTools(dot.id, controller.signal),
           ...(computer.configured
             ? computerTools(computer, dot.id, check, controller.signal)
             : []),

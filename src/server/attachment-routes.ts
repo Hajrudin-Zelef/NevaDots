@@ -74,11 +74,16 @@ export function categorizeAttachment(
   return 'other';
 }
 
-function attachmentDir(id: string): string {
+/** Id de pièce jointe = UUID strict ; tout le reste est rejeté (anti-traversal `:id`). */
+const ATTACHMENT_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function attachmentDir(id: string): string {
   return join(ATTACHMENTS_DIR, id);
 }
 
-async function readMeta(id: string): Promise<AttachmentMeta | null> {
+export async function readMeta(id: string): Promise<AttachmentMeta | null> {
+  if (!ATTACHMENT_ID_RE.test(id)) return null;
   try {
     const raw = await fs.readFile(join(attachmentDir(id), 'meta.json'), 'utf8');
     return JSON.parse(raw) as AttachmentMeta;
@@ -177,10 +182,9 @@ export function attachmentRoutes() {
 
   // Suppression.
   app.delete('/attachments/:id', async (c) => {
-    const id = c.req.param('id');
-    const meta = await readMeta(id);
+    const meta = await readMeta(c.req.param('id'));
     if (!meta) return c.json({ error: 'Fichier introuvable.' }, 404);
-    await fs.rm(attachmentDir(id), { recursive: true, force: true });
+    await fs.rm(attachmentDir(meta.id), { recursive: true, force: true });
     return c.json({ ok: true });
   });
 
