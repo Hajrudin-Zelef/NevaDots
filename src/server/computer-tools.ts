@@ -13,6 +13,7 @@ const GATED_BY_PERMISSION: Partial<
 > = {
   files_search: 'files',
   files_edit: 'files',
+  git: 'shell',
 };
 
 /** Descriptions précises (le générique ne dit pas comment appeler). */
@@ -24,6 +25,7 @@ const TOOL_DESCRIPTIONS: Partial<Record<keyof typeof computerInputs, string>> =
       'Read a workspace file. Without offset/limit: whole file. With offset (1-based) and limit: a line range — prefer ranges for large files.',
     files_edit:
       'Surgical file edit: replaces oldText with newText (unique match required unless replaceAll). Refused if oldText is missing, ambiguous, or the file was truncated on read. Never rewrite whole files with this.',
+    git: 'Version control in the workspace: status, diff, log, commit, add, branches, checkout, init, clone (public https repos only). No push/pull/fetch. Paths are relative to the workspace.',
   };
 export function computerTools(
   service: ComputerService,

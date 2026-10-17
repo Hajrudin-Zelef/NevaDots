@@ -612,7 +612,7 @@ it('édite par remplacements uniques, fail-closed sinon (P2)', async () => {
 });
 it('refuse d’éditer un fichier tronqué au read', async () => {
   const f = fixture();
-  f.handle(async (url, init) => {
+  f.handle(async (url) => {
     if (String(url).endsWith('/files/read'))
       return Response.json({
         path: 'big.txt',
@@ -630,4 +630,95 @@ it('refuse d’éditer un fichier tronqué au read', async () => {
       'owner',
     ),
   ).rejects.toThrow('tronqué');
+});
+it('git construit des commandes canoniques échappées, jamais de shell libre (P5)', async () => {
+  const f = fixture();
+  const execBodies: Array<Record<string, unknown>> = [];
+  f.handle(async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    if (String(url).endsWith('/exec')) {
+      execBodies.push(body);
+      return Response.json({
+        exitCode: 0,
+        stdout: 'ok',
+        stderr: '',
+        truncated: false,
+        timedOut: false,
+        elapsedMs: 5,
+      });
+    }
+    throw new Error(`unexpected ${url}`);
+  });
+  await expect(
+    f.service.action(f.id, 'git', { op: 'status', path: 'proj' }, 'agent'),
+  ).resolves.toMatchObject({ exitCode: 0 });
+  expect(execBodies.at(-1)).toEqual({
+    command: `git -C 'proj' status --porcelain=v1 -b`,
+    timeoutMs: 300000,
+  });
+  // Message avec apostrophe échappé : pas d'injection, pas de split.
+  await f.service.action(
+    f.id,
+    'git',
+    { op: 'commit', message: `c'est "ok"; rm -rf /` },
+    'agent',
+  );
+  expect(execBodies.at(-1)?.command).toBe(
+    `git -C '.' add -A && git -C '.' commit -m 'c'\\''est "ok"; rm -rf /'`,
+  );
+  // Refs et URL validées par le schéma : rien ne part vers le conteneur.
+  const before = execBodies.length;
+  await expect(
+    f.service.action(f.id, 'git', { op: 'checkout', ref: 'a; rm' }, 'agent'),
+  ).rejects.toThrow();
+  await expect(
+    f.service.action(
+      f.id,
+      'git',
+      { op: 'clone', url: 'http://evil/x.git' },
+      'agent',
+    ),
+  ).rejects.toThrow();
+  await expect(
+    f.service.action(
+      f.id,
+      'git',
+      { op: 'clone', url: 'https://user:pw@h/x.git' },
+      'agent',
+    ),
+  ).rejects.toThrow();
+  await expect(
+    f.service.action(f.id, 'git', { op: 'commit' }, 'agent'),
+  ).rejects.toThrow('message');
+  expect(execBodies.length).toBe(before);
+  // push/pull/fetch n'existent pas au contrat.
+  expect(computerInputs.git.safeParse({ op: 'push' }).success).toBe(false);
+  // Le conteneur n'a vu que des /exec canoniques.
+  const nonExec = f.calls.filter(
+    (c) => !c.url.endsWith('/exec') && !c.url.includes('/computers'),
+  );
+  expect(nonExec).toEqual([]);
+});
+it('n’expose computer_git que si la permission shell est active', () => {
+  const f = fixture();
+  const check = vi.fn();
+  const signal = new AbortController().signal;
+  const off = computerTools(f.service, f.id, check, signal, {
+    enabled: true,
+    browser: true,
+    files: true,
+    shell: false,
+  });
+  expect(off.some((t) => t.name === 'computer_git')).toBe(false);
+  expect(off.some((t) => t.name === 'computer_exec')).toBe(true);
+  const on = computerTools(f.service, f.id, check, signal, {
+    enabled: true,
+    browser: true,
+    files: true,
+    shell: true,
+  });
+  expect(on.some((t) => t.name === 'computer_git')).toBe(true);
 });

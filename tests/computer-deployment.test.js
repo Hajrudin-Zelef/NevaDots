@@ -125,7 +125,7 @@ it('refuses missing or ambiguous CPU patch targets', () => {
 it('pins the dev image on the exact base and lists the toolchain', async () => {
   const { readFileSync } = await import('node:fs');
   const dockerfile = readFileSync(
-    new URL('../deployment/computers/computer-dev.Dockerfile', import.meta.url),
+    'deployment/computers/computer-dev.Dockerfile',
     'utf8',
   );
   expect(dockerfile).toMatch(/^FROM opendots-computer:b6932d3\n/m);

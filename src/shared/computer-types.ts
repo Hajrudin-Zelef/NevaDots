@@ -116,6 +116,49 @@ export const computerInputs = {
         .max(8),
     })
     .strict(),
+  /** Git sandboxé, composé côté serveur en commandes canoniques `git -C …`
+   * (jamais de shell libre). push/pull/fetch exclus : pas de credentials
+   * dans le sandbox. */
+  git: z
+    .object({
+      op: z.enum([
+        'status',
+        'diff',
+        'log',
+        'commit',
+        'add',
+        'branches',
+        'checkout',
+        'init',
+        'clone',
+      ]),
+      /** Sous-dossier de travail ('' = racine du workspace). */
+      path: path.default(''),
+      /** Message de commit (op commit uniquement). */
+      message: z.string().trim().min(1).max(500).optional(),
+      /** Branche/ref, caractères sûrs uniquement (checkout). */
+      ref: z
+        .string()
+        .regex(/^[A-Za-z0-9._/@{}^-]{1,200}$/)
+        .optional(),
+      /** Dépôt https:// sans identifiants (clone uniquement). */
+      url: z
+        .string()
+        .refine((s) => {
+          try {
+            const parsed = new URL(s);
+            return (
+              parsed.protocol === 'https:' &&
+              !parsed.username &&
+              !parsed.password
+            );
+          } catch {
+            return false;
+          }
+        }, 'URL https:// sans identifiants uniquement.')
+        .optional(),
+    })
+    .strict(),
   files_write: z
     .object({
       path: path.refine((p) => p.length > 0),

@@ -663,6 +663,73 @@ export class ComputerService {
       bytes: typeof written.bytes === 'number' ? written.bytes : null,
     };
   }
+  /** Git sandboxé : construit une commande canonique `git -C …` à partir
+   * d'args validés (jamais de shell libre), puis l'exécute via /exec.
+   * push/pull/fetch exclus : pas de credentials dans le sandbox. */
+  private async runGit(
+    id: string,
+    input: {
+      op: string;
+      path?: string;
+      message?: string;
+      ref?: string;
+      url?: string;
+    },
+    actor: 'owner' | 'agent',
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const dir = input.path && input.path.length > 0 ? input.path : '.';
+    // Guillemet simple shell : seul échappement nécessaire (ref/url déjà
+    // restreints par le schéma à des caractères sûrs).
+    const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+    let command: string;
+    switch (input.op) {
+      case 'status':
+        command = `git -C ${q(dir)} status --porcelain=v1 -b`;
+        break;
+      case 'diff':
+        command = `git -C ${q(dir)} diff --no-color`;
+        break;
+      case 'log':
+        command = `git -C ${q(dir)} log --oneline -n 20`;
+        break;
+      case 'add':
+        command = `git -C ${q(dir)} add -A`;
+        break;
+      case 'branches':
+        command = `git -C ${q(dir)} branch -a`;
+        break;
+      case 'commit':
+        if (!input.message) throw new Error('commit exige message.');
+        command = `git -C ${q(dir)} add -A && git -C ${q(dir)} commit -m ${q(input.message)}`;
+        break;
+      case 'checkout':
+        if (!input.ref) throw new Error('checkout exige ref.');
+        command = `git -C ${q(dir)} checkout ${q(input.ref)}`;
+        break;
+      case 'init':
+        command = `git init ${q(dir)}`;
+        break;
+      case 'clone': {
+        if (!input.url) throw new Error('clone exige url.');
+        const target =
+          input.path && input.path.length > 0 ? input.path : 'repo';
+        command = `git clone ${q(input.url)} ${q(target)}`;
+        break;
+      }
+      default:
+        throw new Error(`Op git inconnue : ${input.op}.`);
+    }
+    // Via exec : permission shell re-vérifiée, activité émise dans le
+    // journal terminal, timeout 5 min (clones volumineux).
+    return this.action(
+      id,
+      'exec',
+      { command, timeoutMs: 300000 },
+      actor,
+      signal,
+    );
+  }
   async action(
     id: string,
     action: ComputerAction,
@@ -682,7 +749,7 @@ export class ComputerService {
       if (actor === 'agent' && action.startsWith('human_'))
         throw new Error('Human controls are owner-only.');
       const kind =
-        action === 'exec'
+        action === 'exec' || action === 'git'
           ? 'shell'
           : action.startsWith('files_')
             ? 'files'
@@ -740,6 +807,19 @@ export class ComputerService {
               activeSignal,
             );
         }
+        if (action === 'git')
+          return this.runGit(
+            id,
+            parsed as {
+              op: string;
+              path?: string;
+              message?: string;
+              ref?: string;
+              url?: string;
+            },
+            actor,
+            activeSignal,
+          );
         const path = action
           .replace(/^files_/, 'files/')
           .replace(/^human_/, 'human/');
