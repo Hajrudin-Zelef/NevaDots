@@ -10,9 +10,45 @@ type Row = Omit<Connection, 'hasToken' | 'tools'> & {
   token: string | null;
   tools: string;
 };
+/** Marqueur de la migration one-shot ci-dessous. */
+const REGATE_MARKER = 'mcp_regated_v1';
 /** Prefix for AES-GCM tokens (see secrets.ts). Bare values are legacy
  * plaintext, migrated on open. */
 const ENC_PREFIX = 'enc1:';
+/**
+ * One-shot Lot 1 (fail-open `readOnlyHint`) : re-gate les outils restés
+ * `requiresApproval: false` par l'ancien défaut. Retourne le nombre d'outils
+ * re-gatés. Idempotent : un second passage ne change rien.
+ */
+export function regateLegacyMcpTools(db: DatabaseSync): number {
+  let flipped = 0;
+  const rows = db
+    .prepare('SELECT id, tools FROM mcp_connections')
+    .all() as unknown as Array<{ id: string; tools: string }>;
+  for (const row of rows) {
+    let tools: ConnectionTool[];
+    try {
+      tools = JSON.parse(row.tools) as ConnectionTool[];
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(tools)) continue;
+    let changed = false;
+    for (const tool of tools) {
+      if (tool.requiresApproval === false) {
+        tool.requiresApproval = true;
+        changed = true;
+        flipped += 1;
+      }
+    }
+    if (changed)
+      db.prepare('UPDATE mcp_connections SET tools=? WHERE id=?').run(
+        JSON.stringify(tools),
+        row.id,
+      );
+  }
+  return flipped;
+}
 export class ConnectionStore {
   constructor(
     private db: DatabaseSync,
@@ -34,6 +70,22 @@ export class ConnectionStore {
     db.exec(
       `CREATE TABLE IF NOT EXISTS mcp_approval_claims(approvalId TEXT PRIMARY KEY, threadId TEXT NOT NULL, toolCallId TEXT NOT NULL, createdAt INTEGER NOT NULL)`,
     );
+    // Re-gating Lot 1, une seule fois par base (marqueur) : les choix owner
+    // postérieurs sont respectés. `app_config` peut ne pas exister sur une
+    // base nue de test → on saute silencieusement dans ce cas.
+    try {
+      const marked = this.db
+        .prepare('SELECT value FROM app_config WHERE key=?')
+        .get(REGATE_MARKER);
+      if (!marked) {
+        regateLegacyMcpTools(this.db);
+        this.db
+          .prepare('INSERT INTO app_config(key, value) VALUES (?, ?)')
+          .run(REGATE_MARKER, '1');
+      }
+    } catch {
+      /* bare DatabaseSync without app_config (unit scope): skip */
+    }
     this.migrateTokens();
   }
   /** Encrypt-at-rest for MCP bearer tokens. Legacy plaintext rows are

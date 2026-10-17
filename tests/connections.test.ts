@@ -663,3 +663,65 @@ it('accepts a loopback MCP endpoint on a custom port', async () => {
   expect(connection.url).toBe('http://localhost:4312/mcp');
   expect(connection.tools).toHaveLength(2);
 });
+it('regate en une fois les outils hérités du fail-open, puis respecte le choix owner', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { ConnectionStore, regateLegacyMcpTools } =
+    await import('../src/server/connection-store.js');
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(
+      `CREATE TABLE mcp_connections(id TEXT PRIMARY KEY, dotId TEXT NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL, token TEXT, tools TEXT NOT NULL, error TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
+       CREATE TABLE app_config(key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+    );
+    const legacy = [
+      { name: 'open', requiresApproval: false },
+      { name: 'gated', requiresApproval: true },
+    ];
+    db.prepare(
+      'INSERT INTO mcp_connections VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)',
+    ).run(
+      'c1',
+      'd1',
+      'Old',
+      'https://old.example/mcp',
+      null,
+      JSON.stringify(legacy),
+      1,
+      1,
+    );
+    // Fonction pure : flip idempotent.
+    expect(regateLegacyMcpTools(db)).toBe(1);
+    expect(regateLegacyMcpTools(db)).toBe(0);
+    // Constructeur : applique puis pose le marqueur, une seule fois.
+    const once = () => new ConnectionStore(db, () => 'test-secret');
+    once();
+    const marked = db
+      .prepare('SELECT value FROM app_config WHERE key=?')
+      .get('mcp_regated_v1') as { value: string } | undefined;
+    expect(marked?.value).toBe('1');
+    // Choix owner postérieur (false volontaire) : respecté aux ouvertures suivantes.
+    const kept = [{ name: 'owner-open', requiresApproval: false }];
+    db.prepare(
+      'INSERT INTO mcp_connections VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)',
+    ).run(
+      'c2',
+      'd1',
+      'New',
+      'https://new.example/mcp',
+      null,
+      JSON.stringify(kept),
+      2,
+      2,
+    );
+    once();
+    const row = db
+      .prepare('SELECT tools FROM mcp_connections WHERE id=?')
+      .get('c2') as { tools: string };
+    expect(
+      (JSON.parse(row.tools) as Array<{ requiresApproval: boolean }>)[0]
+        .requiresApproval,
+    ).toBe(false);
+  } finally {
+    db.close();
+  }
+});
