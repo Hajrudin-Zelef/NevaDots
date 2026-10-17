@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
+import { validateMcpUrl } from './net-security.js';
 import type {
   Connection,
   ConnectionActionResult,
@@ -208,6 +209,14 @@ export class ConnectionService {
   }
   async add(dotId: string, input: ConnectionInput) {
     const value = connectionInput.parse(input);
+    // SSRF au montage : un hôte privé est refusé avant toute découverte.
+    // Loopback exempté (serveur MCP local de l'owner, tout port) ; le résiduel
+    // rebinding DNS est documenté (le SDK re-résout à chaque appel).
+    try {
+      await validateMcpUrl(value.url);
+    } catch (error) {
+      throw new Error(failure(error), { cause: error });
+    }
     let tools: ConnectionTool[];
     try {
       tools = await this.discover({ url: value.url, token: value.token });
@@ -220,7 +229,9 @@ export class ConnectionService {
     const connection = this.store.get(id);
     if (!connection) throw new Error('Connection not found.');
     try {
-      const discovered = await this.discover(this.store.credentials(id));
+      const target = this.store.credentials(id);
+      await validateMcpUrl(target.url);
+      const discovered = await this.discover(target);
       // Owner changes made while discovery ran win: merge against the
       // settings as they are now, not as they were when it started.
       const current = this.store.get(id);

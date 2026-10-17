@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
+import { validateUrl } from './net-security.js';
 import {
   computerInputs,
   computerPermissionsSchema,
@@ -780,6 +781,20 @@ export class ComputerService {
     if (!Object.hasOwn(computerInputs, action))
       throw new Error('Unknown computer action.');
     const parsed = computerInputs[action].parse(input);
+    if (action === 'navigate') {
+      // SSRF pré-proxy : le conteneur fetch directement, sans pinning
+      // possible — un hôte privé est donc refusé ici, avant tout appel.
+      // Résiduel documenté : rebinding DNS entre ce contrôle et le fetch
+      // conteneur (voir specs/computer.md).
+      const { url } = parsed as { url: string };
+      try {
+        await validateUrl(url);
+      } catch (error) {
+        throw new Error(
+          `Navigation blocked (${url}): ${error instanceof Error ? error.message : 'not a public web address'}. Provide a public https:// URL.`,
+        );
+      }
+    }
     // Journal live du terminal (start dès le lancement, end au retour).
     // Le `start` part avant les contrôles : un refus émet `start` puis `end`
     // avec l'erreur, ce qui reste informatif dans le journal.

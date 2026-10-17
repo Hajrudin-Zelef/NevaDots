@@ -20,6 +20,15 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
 vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
   StreamableHTTPClientTransport: class {},
 }));
+// No real DNS in tests: public example hosts pass, private IPs fail.
+vi.mock('../src/server/net-security.js', () => ({
+  validateUrl: async (input: string) => {
+    const url = new URL(input);
+    if (/169\.254|127\.|^(10|192\.168)\.|localhost/i.test(url.hostname))
+      throw new Error('Private or special network addresses are blocked.');
+    return { url, address: '93.184.216.34', family: 4 };
+  },
+}));
 const page = (url = 'https://example.com') => ({
   title: 'Evidence',
   url,
@@ -94,6 +103,34 @@ describe('Parallel research', () => {
       undefined,
       expect.anything(),
     );
+  });
+  it('refuses private source URLs before calling web_fetch', async () => {
+    await expect(
+      parallelSources(
+        { objective: 'Read', urls: ['http://169.254.169.254/latest'] },
+        {},
+        signal,
+      ),
+    ).rejects.toThrow('blocked');
+    expect(mcp.callTool).not.toHaveBeenCalled();
+    expect(mcp.close).toHaveBeenCalledOnce();
+  });
+  it('filters provider-returned private URLs with a warning', async () => {
+    mcp.callTool
+      .mockResolvedValueOnce(result(page('http://169.254.169.254/x'), page()))
+      .mockResolvedValueOnce(result(page()));
+    const warn = vi.fn();
+    const sources = await parallelSources(
+      { objective: 'Read', onWarning: warn },
+      {},
+      signal,
+    );
+    expect(sources).toHaveLength(1);
+    expect(sources[0].url).toBe('https://example.com');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('non-public'));
+    expect(mcp.callTool.mock.calls[1][0].arguments.urls).toEqual([
+      'https://example.com',
+    ]);
   });
   it('filters malformed sources, duplicate URLs and unsafe citation schemes', () => {
     expect(

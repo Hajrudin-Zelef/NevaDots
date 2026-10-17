@@ -9,6 +9,21 @@ import {
   normalizeResult,
   type McpTransportFactory,
 } from '../src/server/connections.js';
+// No real DNS in tests: example hosts pass, private IPs fail, loopback passes.
+vi.mock('../src/server/net-security.js', () => ({
+  validateUrl: async (input: string) => {
+    const url = new URL(input);
+    if (/169\.254|127\.|^(10|192\.168)\./i.test(url.hostname))
+      throw new Error('Private or special network addresses are blocked.');
+    return { url, address: '93.184.216.34', family: 4 };
+  },
+  validateMcpUrl: async (input: string) => {
+    const url = new URL(input);
+    if (/169\.254|^(10|192\.168)\./i.test(url.hostname))
+      throw new Error('Private or special network addresses are blocked.');
+    return { url, address: '127.0.0.1', family: 4 };
+  },
+}));
 import { connectionTools } from '../src/server/connection-tools.js';
 import { connectionRoutes } from '../src/server/connection-routes.js';
 import type { Connection } from '../src/shared/connection-types.js';
@@ -623,4 +638,28 @@ it('fails closed on an unreadable stored credential', async () => {
   } finally {
     db.close();
   }
+});
+it('refuses private MCP endpoints without contacting them (SSRF)', async () => {
+  const { dot, request, tokens } = fixture();
+  const response = await request(`/dots/${dot.id}/connections`, 'POST', {
+    name: 'Evil',
+    url: 'http://169.254.169.254/mcp',
+  });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({
+    error: expect.stringContaining('Could not reach'),
+  });
+  // Discovery never ran: no token left the server.
+  expect(tokens).toHaveLength(0);
+});
+it('accepts a loopback MCP endpoint on a custom port', async () => {
+  const { dot, request } = fixture();
+  const response = await request(`/dots/${dot.id}/connections`, 'POST', {
+    name: 'Local',
+    url: 'http://localhost:4312/mcp',
+  });
+  expect(response.status).toBe(201);
+  const connection = (await response.json()) as Connection;
+  expect(connection.url).toBe('http://localhost:4312/mcp');
+  expect(connection.tools).toHaveLength(2);
 });

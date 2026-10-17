@@ -7,6 +7,15 @@ import { WorkspaceStore } from '../src/server/workspace.js';
 import { ComputerService } from '../src/server/computer-service.js';
 import { computerInputs } from '../src/shared/computer-types.js';
 import { computerTools } from '../src/server/computer-tools.js';
+// No real DNS in tests: public example hosts pass, private IPs fail.
+vi.mock('../src/server/net-security.js', () => ({
+  validateUrl: async (input: string) => {
+    const url = new URL(input);
+    if (/169\.254|127\.|^(10|192\.168)\.|localhost/i.test(url.hostname))
+      throw new Error('Private or special network addresses are blocked.');
+    return { url, address: '93.184.216.34', family: 4 };
+  },
+}));
 const stores: WorkspaceStore[] = [];
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();
@@ -297,6 +306,20 @@ it('accepts an uppercase namespace while preserving exact container identity', a
     text: 'result',
   });
   expect(f.calls.at(-1)?.url).toBe(`http://mydots-computer-${f.id}:4100/read`);
+});
+
+it('blocks navigation to private hosts before proxying (SSRF)', async () => {
+  const f = fixture();
+  await expect(
+    f.service.action(
+      f.id,
+      'navigate',
+      { url: 'http://169.254.169.254/latest/meta-data/' },
+      'agent',
+    ),
+  ).rejects.toThrow('blocked');
+  // The container was never contacted.
+  expect(f.calls).toHaveLength(0);
 });
 
 it('gives agents a safe recovery instruction for stale browser or control conflicts', async () => {

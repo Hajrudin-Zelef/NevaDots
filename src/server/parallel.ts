@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
+import { validateUrl } from './net-security.js';
 
 export type WebSearchProvider = 'parallel' | 'browser' | 'disabled';
 export interface WebConfig {
@@ -165,8 +166,33 @@ export async function parallelSources(
         throw new Error(
           'Parallel found no usable sources. Try a more specific research request.',
         );
+      // Defense in depth: provider-returned URLs are re-validated before
+      // web_fetch — a poisoned result must not reach a private host.
+      const vetted: string[] = [];
+      for (const url of urls) {
+        try {
+          await validateUrl(url);
+          vetted.push(url);
+        } catch {
+          warn('Skipped a non-public source URL; coverage is limited.');
+        }
+      }
+      urls = vetted;
+      if (!urls.length)
+        throw new Error(
+          'Parallel returned no public sources. Try a more specific research request.',
+        );
     }
-    for (const url of urls) source.shape.url.parse(url);
+    // Agent/user-supplied URLs: strict — a private host is refused, never sent.
+    for (const url of urls) {
+      try {
+        await validateUrl(url);
+      } catch (error) {
+        throw new Error(
+          `Source URL blocked (${url}): ${error instanceof Error ? error.message : 'not a public web address'}. Provide a public https:// URL.`,
+        );
+      }
+    }
     const pages = sourcesFromResult(
       await client.callTool(
         {
