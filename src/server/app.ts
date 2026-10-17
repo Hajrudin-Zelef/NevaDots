@@ -3,6 +3,7 @@ import { connectionRoutes } from './connection-routes.js';
 import { attachmentRoutes } from './attachment-routes.js';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { getCookie } from 'hono/cookie';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { Store } from './store.js';
@@ -81,8 +82,17 @@ export function createApp({
       return c.json({ error: 'Cross-site requests are not allowed.' }, 403);
     if (ownerToken) {
       const expected = Buffer.from(ownerToken);
+      const header = c.req.header('authorization')?.replace(/^Bearer /, '');
+      // Les liens bruts (<a href>, <img src>) ne peuvent pas porter
+      // d'en-tête : le jeton miroir en cookie SameSite=Strict (path
+      // /api/attachments, posé par api.ts) est accepté pour le seul
+      // contenu de pièce jointe en GET — mêmes gardes host/origin/
+      // sec-fetch que le reste de /api, comparaison timing-safe.
+      const cookieOk =
+        c.req.method === 'GET' &&
+        /^\/api\/attachments\/[^/]+\/content$/.test(c.req.path);
       const supplied = Buffer.from(
-        c.req.header('authorization')?.replace(/^Bearer /, '') ?? '',
+        header ?? (cookieOk ? (getCookie(c, 'opendots-auth') ?? '') : ''),
       );
       if (
         expected.length !== supplied.length ||

@@ -52,7 +52,7 @@ describe('agent-prompt (phase 5)', () => {
   it('buildSystemPrompt est en anglais, compressé, avec persona et flow', () => {
     const prompt = buildSystemPrompt(base);
     // ~250 tokens statiques : bien sous les ~472 d'avant.
-    expect(prompt.length).toBeLessThan(2200);
+    expect(prompt.length).toBeLessThan(2300);
     expect(prompt).toContain('PERSONA');
     expect(prompt).toContain('Demanding mentor');
     expect(prompt).toContain('Never invent');

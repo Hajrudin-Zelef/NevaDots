@@ -267,3 +267,57 @@ it('rejects DNS-rebinding Host even with a matching hostile Origin', async () =>
   });
   expect(response.status).toBe(403);
 });
+describe('attachment content auth', () => {
+  it('accepte le cookie miroir en GET, pas les autres routes ni le mauvais cookie', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const sandbox = mkdtempSync(join(tmpdir(), 'app-att-'));
+    const origCwd = process.cwd();
+    process.chdir(sandbox);
+    try {
+      const { app } = fixture('private-token');
+      const form = new FormData();
+      form.append(
+        'files',
+        new File(['bonjour'], 'note.txt', { type: 'text/plain' }),
+      );
+      const up = await app.request('/api/attachments', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer private-token' },
+        body: form,
+      });
+      expect(up.status).toBe(201);
+      const { attachments } = (await up.json()) as {
+        attachments: { id: string }[];
+      };
+      const id = attachments[0].id;
+      const cookie = { headers: { Cookie: 'opendots-auth=private-token' } };
+      // Lien brut <a href> : 200 grace au cookie.
+      expect(
+        (await app.request(`/api/attachments/${id}/content`, cookie)).status,
+      ).toBe(200);
+      // Le cookie ne vaut que pour cette route.
+      expect((await app.request('/api/state', cookie)).status).toBe(401);
+      // Cookie erroné = 401 (timing-safe).
+      expect(
+        (
+          await app.request(`/api/attachments/${id}/content`, {
+            headers: { Cookie: 'opendots-auth=intrus' },
+          })
+        ).status,
+      ).toBe(401);
+      // Bearer classique toujours accepté.
+      expect(
+        (
+          await app.request(`/api/attachments/${id}/content`, {
+            headers: { Authorization: 'Bearer private-token' },
+          })
+        ).status,
+      ).toBe(200);
+    } finally {
+      process.chdir(origCwd);
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+});
