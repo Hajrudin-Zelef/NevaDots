@@ -11,7 +11,7 @@ If the pinned upstream line changes, the patches refuse to build. Upgrades requi
 
 ## Dev toolchain image (P4, agentic coding)
 
-`computer-dev.Dockerfile` extends the pinned `opendots-computer:b6932d3` image with one apt layer: `git python3 python3-pip python3-venv build-essential ripgrep jq less`. The base stays byte-identical to upstream; only this additive layer diverges. The supervisor runs the `opendots-computer:b6932d3-dev` tag (`COMPUTER_IMAGE` in `compose.computers.yml`).
+`computer-dev.Dockerfile` extends the pinned `opendots-computer:b6932d3` image with one apt layer: `git openssh-client python3 python3-pip python3-venv build-essential pkg-config cmake ripgrep jq tree less`. The base stays byte-identical to upstream; only this additive layer diverges. The supervisor runs the `opendots-computer:b6932d3-dev` tag (`COMPUTER_IMAGE` in `compose.computers.yml`).
 
 Build order matters (the dev image resolves its `FROM` from local images):
 `docker compose -f compose.computers.yml build computer-image computer-image-dev`,
