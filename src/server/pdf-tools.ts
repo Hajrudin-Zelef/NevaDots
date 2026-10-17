@@ -20,6 +20,8 @@ const TEXT_PAGE_CAP = 10;
 const IMAGE_PAGE_CAP = 3;
 const TEXT_BUDGET = 12_000;
 const CLI_TIMEOUT_MS = 15_000;
+/** Un rendu de page au-delà de ce poids n'est pas transmis (cap mémoire). */
+const PNG_SIZE_CAP = 8 * 1024 * 1024;
 
 export function pdfcraftCliPath(): string {
   return process.env.PDFCRAFT_CLI_PATH ?? '/home/sam/.local/bin/pdfcraft-cli';
@@ -32,29 +34,40 @@ function runCli(args: string[], signal?: AbortSignal): Promise<string> {
       args,
       { timeout: CLI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024, signal },
       (err, stdout, stderr) => {
-        if (err)
-          reject(
-            new Error(stderr?.trim().slice(0, 300) || err.message || 'cli'),
-          );
-        else resolve(stdout);
+        if (err) {
+          // Le détail (stderr : chemins internes, argv) reste dans les logs,
+          // jamais dans le résultat d'outil renvoyé au modèle.
+          if (stderr?.trim())
+            console.warn(
+              `[read_pdf] cli failed: ${stderr.trim().slice(0, 300)}`,
+            );
+          reject(new Error('Extraction PDF impossible (outil en échec).'));
+        } else resolve(stdout);
       },
     );
   });
 }
 
-/** "1", "1-5", "2,4" → [1..5] ; null si invalide ou > cap. */
+/** "1", "1-5", "2,4" → [1..5] ; null si invalide ou > cap.
+ * Le cap est vérifié AVANT toute expansion : une plage géante ou un spec
+ * saturé est refusé instantanément (pas de boucle bloquante). */
 export function parsePageSpec(spec: string, cap: number): number[] | null {
-  const out: number[] = [];
-  for (const part of spec.split(',')) {
+  const parts = spec.split(',');
+  // Autant de parties que de pages autorisées : borne le travail total.
+  if (parts.length > cap) return null;
+  const out = new Set<number>();
+  for (const part of parts) {
     const m = /^(\d+)(?:-(\d+))?$/.exec(part.trim());
     if (!m) return null;
     const start = Number(m[1]);
     const end = m[2] === undefined ? start : Number(m[2]);
     if (start < 1 || end < start) return null;
-    for (let n = start; n <= end; n++) out.push(n);
-    if (new Set(out).size > cap) return null;
+    const span = end - start + 1;
+    if (span > cap) return null;
+    for (let n = start; n <= end; n++) out.add(n);
+    if (out.size > cap) return null;
   }
-  return out.length ? [...new Set(out)] : null;
+  return out.size ? [...out].sort((a, b) => a - b) : null;
 }
 
 /** Résout un PDF joint : UUID strict, dossier sous data/attachments, catégorie pdf. */
@@ -112,6 +125,7 @@ export async function readPdfAttachment(
           signal,
         );
         const png = await fs.readFile(out);
+        if (png.length > PNG_SIZE_CAP) continue;
         pushPendingScreenshot(dotId, png.toString('base64'));
         sent++;
       } finally {
@@ -161,6 +175,7 @@ export function pdfTools(dotId: string, signal?: AbortSignal) {
           .describe('The attachment id from the [PDF joint …] marker.'),
         pages: z
           .string()
+          .max(64)
           .optional()
           .describe('Page selection, e.g. "2" or "1-5" or "3,7". Default "1".'),
         mode: z

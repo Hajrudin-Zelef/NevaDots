@@ -4,11 +4,16 @@
  * en texte dans le résultat d'outil ; le middleware `beforeModel` les
  * consomme et les injecte comme parties image multimodales.
  */
+/** Bornes de la file par Dot : évite une croissance mémoire non bornée. */
+const MAX_PENDING_PER_DOT = 8;
 const pending = new Map<string, string[]>();
 
 export function pushPendingScreenshot(dotId: string, base64: string): void {
   const list = pending.get(dotId) ?? [];
   list.push(base64);
+  // Ne garde que les plus récentes : les images périmées n'ont plus d'intérêt.
+  if (list.length > MAX_PENDING_PER_DOT)
+    list.splice(0, list.length - MAX_PENDING_PER_DOT);
   pending.set(dotId, list);
 }
 

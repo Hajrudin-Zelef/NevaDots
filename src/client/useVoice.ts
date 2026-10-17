@@ -415,10 +415,10 @@ export function useVoice(
       reconnects.current += 1;
       const n = reconnects.current;
       const token = rejoinToken.current;
-      carryTranscript.current = [
-        ...carryTranscript.current,
-        ...current.transcript,
-      ];
+      // `current.transcript` est déjà le transcript complet (initialisé depuis
+      // carryTranscript au démarrage/rejoin et accumulé depuis) : on remplace,
+      // on n'ajoute pas — sinon la 2e reprise dupliquerait les lignes portées.
+      carryTranscript.current = [...current.transcript];
       current.cancelled = true;
       closeMedia();
       session.current = undefined;

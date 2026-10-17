@@ -229,3 +229,59 @@ it('reconnectDelayMs suit le backoff 1s → 16s', async () => {
     1000, 2000, 4000, 8000, 16000, 16000,
   ]);
 });
+
+it('ne duplique pas le transcript après plusieurs rejoins', async () => {
+  await mount();
+  await act(async () => {
+    await latest!.start();
+  });
+  await act(async () => {});
+  setPcState(pcs[0], 'connected');
+  await act(async () => {});
+
+  const say = async (text: string) => {
+    const channel = channels[channels.length - 1];
+    await act(async () => {
+      channel.onmessage?.({
+        data: JSON.stringify({
+          type: 'conversation.item.input_audio_transcription.completed',
+          transcript: text,
+        }),
+      });
+    });
+  };
+  await say('A');
+
+  // Deux coupures successives, une ligne prononcée après chacune.
+  setPcState(pcs[0], 'disconnected');
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  setPcState(pcs[pcs.length - 1], 'connected');
+  await act(async () => {});
+  await say('B');
+
+  setPcState(pcs[pcs.length - 1], 'disconnected');
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  setPcState(pcs[pcs.length - 1], 'connected');
+  await act(async () => {});
+  await say('C');
+
+  await act(async () => {
+    await latest!.end();
+  });
+  const endCall = api.mock.calls.find(
+    ([path, method]) => path === '/voice/calls/call-1/end' && method === 'POST',
+  );
+  expect(endCall).toBeTruthy();
+  const body = (endCall![2] ?? {}) as { transcript?: string };
+  expect(body.transcript).toBe('You: A\nYou: B\nYou: C');
+});

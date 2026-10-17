@@ -14,7 +14,10 @@ import {
   pdfTools,
   readPdfAttachment,
 } from '../src/server/pdf-tools';
-import { takePendingScreenshots } from '../src/server/computer-screenshots';
+import {
+  takePendingScreenshots,
+  pushPendingScreenshot,
+} from '../src/server/computer-screenshots';
 
 // Faux CLI : text → 3000+ car. par page ; render → PNG factice ; autres → échec.
 const CLI = [
@@ -77,6 +80,14 @@ describe('pdf-tools', () => {
     expect(parsePageSpec('1,3', 1)).toBeNull();
   });
 
+  it('refuse instantanément une plage géante sans l’expanser', () => {
+    const t0 = Date.now();
+    expect(parsePageSpec('1-1000000000', 10)).toBeNull();
+    expect(parsePageSpec('1,2,3,4,5,6,7,8,9,10,11', 10)).toBeNull();
+    // Bounded work: a saturated spec must return well under a second.
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+
   it('pdfTools est absent quand le binaire introuvable', () => {
     process.env.PDFCRAFT_CLI_PATH = join(sandbox, 'inexistant');
     expect(pdfTools('dot-x')).toEqual([]);
@@ -119,6 +130,14 @@ describe('pdf-tools', () => {
     expect(Buffer.from(shots[0], 'base64').subarray(0, 4).toString('hex')).toBe(
       '89504e47',
     );
+  });
+
+  it('borne la file de captures par Dot (les plus récentes gardées)', async () => {
+    pushPendingScreenshot('dot-cap', 'a');
+    for (let i = 0; i < 12; i++) pushPendingScreenshot('dot-cap', `b${i}`);
+    const shots = takePendingScreenshots('dot-cap');
+    expect(shots).toHaveLength(8);
+    expect(shots.at(-1)).toBe('b11');
   });
 
   it('rejette id non-UUID, inconnu, non-PDF et pages hors cap images', async () => {
