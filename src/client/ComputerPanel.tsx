@@ -12,6 +12,7 @@ import {
   isFileDir,
   parentDir,
   sortFileEntries,
+  summarizeFiles,
   type ComputerFileEntry,
 } from './computer-files';
 
@@ -601,6 +602,21 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                       <strong>
                         {filesDir ? `/${filesDir}` : '/ (racine)'}
                       </strong>
+                    </p>
+                    <p className="computer-files-usage">
+                      {(() => {
+                        const usage = summarizeFiles(filesEntries);
+                        return (
+                          <>
+                            Espace utilisé : {formatFileSize(usage.bytes)} ·{' '}
+                            {usage.files} fichier(s)
+                            {!usage.sized
+                              ? ' (partiel : tailles manquantes)'
+                              : ''}
+                            {filesTruncated ? ' · liste tronquée' : ''}
+                          </>
+                        );
+                      })()}
                     </p>
                     {filesTruncated && (
                       <p role="status">

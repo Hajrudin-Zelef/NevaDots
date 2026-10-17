@@ -10,5 +10,7 @@ RUN bun /tmp/harden-supervisor.mjs /app/src/environment.ts && rm /tmp/harden-sup
 COPY deployment/computers/computer-cpus.ts /app/src/computer-cpus.ts
 COPY deployment/computers/cpu-cap-supervisor.mjs /tmp/cpu-cap-supervisor.mjs
 RUN bun /tmp/cpu-cap-supervisor.mjs /app/src && rm /tmp/cpu-cap-supervisor.mjs
+COPY deployment/computers/logcap-supervisor.mjs /tmp/logcap-supervisor.mjs
+RUN bun /tmp/logcap-supervisor.mjs /app/src/docker.ts && rm /tmp/logcap-supervisor.mjs
 EXPOSE 4300
 CMD ["bun", "src/index.ts"]

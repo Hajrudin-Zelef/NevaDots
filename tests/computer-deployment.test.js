@@ -145,3 +145,13 @@ it('pins the dev image on the exact base and lists the toolchain', async () => {
     expect(dockerfile).toContain(pkg);
   expect(dockerfile).toContain('rm -rf /var/lib/apt/lists');
 });
+it('borne les logs des computers (logcap)', async () => {
+  const { patchDockerLogCap } =
+    await import('../deployment/computers/logcap-supervisor.mjs');
+  const patched = patchDockerLogCap('    ShmSize: 1_073_741_824,');
+  expect(patched).toContain('"max-size": "10m"');
+  expect(patched).toContain('"max-file": "3"');
+  expect(() => patchDockerLogCap('changed upstream')).toThrow(
+    /contract changed/,
+  );
+});

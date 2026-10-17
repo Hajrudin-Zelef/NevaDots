@@ -15,6 +15,7 @@ import {
   isFileDir,
   parentDir,
   sortFileEntries,
+  summarizeFiles,
 } from '../src/client/computer-files';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -152,6 +153,9 @@ it('trie dossiers-d’abord, basename et tailles FR', () => {
   expect(parentDir('a')).toBe('');
   expect(parentDir('')).toBe('');
   // Le conteneur renvoie kind:'folder' (l'UI historique disait 'dir').
+  expect(summarizeFiles(ROOT_LIST.entries).files).toBe(2);
+  expect(summarizeFiles(ROOT_LIST.entries).bytes).toBe(1115 + 7);
+  expect(summarizeFiles(ROOT_LIST.entries).sized).toBe(true);
   expect(isFileDir({ kind: 'folder' })).toBe(true);
   expect(isFileDir({ kind: 'dir' })).toBe(true);
   expect(isFileDir({ kind: 'file' })).toBe(false);
@@ -181,6 +185,9 @@ it('liste cliquable sans JSON brut, clic dossier et fichier', async () => {
     fileButtons.indexOf('notes.txt'),
   );
   expect(r.findAllByType('pre').length).toBe(0);
+  // Usage disque affiché (somme client-side des tailles listées).
+  const usage = r.findAllByProps({ className: 'computer-files-usage' });
+  expect(usage).toHaveLength(1);
   // Clic dossier → descend avec le bon path + bandeau troncature.
   const docsBtn = r.findAllByProps({ title: 'docs' })[0];
   await act(async () => {

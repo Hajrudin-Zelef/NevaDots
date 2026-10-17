@@ -6,6 +6,7 @@ The computer service is unchanged. The supervisor keeps its narrow ensure/stop/r
 
 - `harden-supervisor.mjs`: each computer receives `HMAC-SHA256(COMPUTER_TOKEN, "opendots-computer:" + dotId)` instead of the master token. The application uses the same derivation. No supervisor token, model key, or master computer token is forwarded to a computer.
 - `cpu-cap-supervisor.mjs` + `computer-cpus.ts`: each computer is capped at `COMPUTER_CPUS` CPUs (default `2` in `compose.computers.yml`, as `NanoCpus` in the HostConfig), parsed strictly at supervisor boot — garbage refuses to start rather than running uncapped. RAM keeps its `COMPUTER_MEMORY_BYTES` cap (default 2 GiB).
+- `logcap-supervisor.mjs`: each computer's logs are bounded (`json-file`, `max-size: 10m`, `max-file: 3` → 30 Mo max). Without rotation a chatty Bot grows its log forever and fills the host disk — and ext4/overlayfs offers no per-container disk quota to catch it.
 
 If the pinned upstream line changes, the patches refuse to build. Upgrades require reviewing the API contracts, ownership/volume behavior, and these patches together. On the next ensure request after a master-token change, the pinned supervisor replaces owned containers with the new credential while retaining their volumes. Do not delete profile or workspace volumes during normal updates.
 

@@ -11,6 +11,26 @@ export function isFileDir(entry: { kind: string }): boolean {
   return entry.kind === 'dir' || entry.kind === 'folder';
 }
 
+/** Usage disque approximatif de la liste (bytes renseignés uniquement).
+ * La liste est récursive côté conteneur : le total vaut pour tout le
+ * workspace quel que soit le dossier affiché. */
+export function summarizeFiles(entries: ComputerFileEntry[]): {
+  files: number;
+  bytes: number;
+  sized: boolean;
+} {
+  let files = 0;
+  let bytes = 0;
+  let sized = true;
+  for (const entry of entries) {
+    if (isFileDir(entry)) continue;
+    files++;
+    if (typeof entry.bytes === 'number') bytes += entry.bytes;
+    else sized = false;
+  }
+  return { files, bytes, sized };
+}
+
 /** Dossiers d'abord, puis ordre alphabétique FR insensible à la casse. */
 export function sortFileEntries(
   entries: ComputerFileEntry[],
