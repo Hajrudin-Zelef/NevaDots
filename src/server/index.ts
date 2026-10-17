@@ -28,6 +28,18 @@ if (
   throw new Error(
     'External binding requires an OWNER_TOKEN of at least 24 characters.',
   );
+// Lot 6 (D3) : sur machine partagée, exiger un token même en loopback.
+// Opt-in (défaut off) pour ne pas casser les installs loopback existantes.
+// Sans token, tout processus local peut appeler l'API (host/origin seulement).
+if (!ownerToken && process.env.REQUIRE_OWNER_TOKEN === 'true')
+  throw new Error(
+    'REQUIRE_OWNER_TOKEN is true: set an OWNER_TOKEN of at least 24 characters.',
+  );
+if (!ownerToken)
+  console.warn(
+    'No OWNER_TOKEN set: any local process can call this API (host/origin checks only). ' +
+      'Set REQUIRE_OWNER_TOKEN=true with an OWNER_TOKEN on shared machines.',
+  );
 const database = process.env.DATABASE_PATH ?? 'data/opendots.sqlite';
 const store = new Store(database);
 const workspace = new WorkspaceStore(

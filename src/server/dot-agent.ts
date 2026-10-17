@@ -676,6 +676,12 @@ export class DotAgent extends AbstractAgent {
             check();
             const converted = convertInputToTanStackAI({
               ...ctx.input,
+              // H2 : le convertisseur promeut `context` et `state` en prompts
+              // système (contournement du filtre system/developer ci-dessous).
+              // Supprimés ici : seul le system prompt serveur s'applique ; un
+              // RunAgentInput forgé ne peut rien y injecter.
+              context: [],
+              state: undefined,
               // Match BuiltInAgent's default trust boundary for client messages.
               messages: (withImages as RunAgentInput['messages'])
                 .filter(
