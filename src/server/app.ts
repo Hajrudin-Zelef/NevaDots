@@ -45,6 +45,11 @@ export function createApp({
       const key =
         c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
       const now = Date.now();
+      // Purge opportuniste des fenêtres expirées : une clé forgée (XFF) ne
+      // peut pas faire grossir la Map indéfiniment. Borne dure en taille aussi.
+      if (buckets.size > 10_000) {
+        for (const [k, b] of buckets) if (now > b.resetAt) buckets.delete(k);
+      }
       const bucket = buckets.get(key);
       if (!bucket || now > bucket.resetAt)
         buckets.set(key, { count: 1, resetAt: now + 60_000 });

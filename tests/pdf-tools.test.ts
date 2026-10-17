@@ -25,7 +25,7 @@ const CLI = [
   'const [cmd, pdf, ...rest] = process.argv.slice(2);',
   'const flag = (n) => { const i = rest.indexOf(n); return i >= 0 ? rest[i + 1] : null; };',
   "if (cmd === 'text') { console.log('PAGE ' + flag('--page') + ' ' + 'x'.repeat(3000)); process.exit(0); }",
-  "if (cmd === 'render') { require('fs').writeFileSync(flag('--out'), Buffer.from('89504e470d0a1a0a', 'hex')); process.exit(0); }",
+  "if (cmd === 'render') { const p = flag('--page'); const out = flag('--out'); if (p === '9') { require('fs').writeFileSync(out, Buffer.alloc(9 * 1024 * 1024, 1)); } else { require('fs').writeFileSync(out, Buffer.from('89504e470d0a1a0a', 'hex')); } process.exit(0); }",
   'console.error("usage faux-cli"); process.exit(1);',
 ].join('\n');
 
@@ -130,6 +130,18 @@ describe('pdf-tools', () => {
     expect(Buffer.from(shots[0], 'base64').subarray(0, 4).toString('hex')).toBe(
       '89504e47',
     );
+  });
+
+  it('ignore un rendu au-delà du cap PNG et le signale', async () => {
+    const id = makeAttachment('pdf');
+    const res = await readPdfAttachment('dot-skip', {
+      attachmentId: id,
+      pages: '1,9',
+      mode: 'images',
+    });
+    expect(res.pagesTransmises).toBe(1);
+    expect(res.pagesIgnorees).toEqual([9]);
+    takePendingScreenshots('dot-skip');
   });
 
   it('borne la file de captures par Dot (les plus récentes gardées)', async () => {

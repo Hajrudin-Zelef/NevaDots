@@ -161,4 +161,31 @@ describe('boot tolérant (quarantaine, jamais de suppression)', () => {
     expect(() => store.close()).not.toThrow();
     expect(() => store.close()).not.toThrow();
   });
+
+  it('migre une quarantaine legacy mono-ligne sans perdre la valeur', () => {
+    const path = tmpFile('store3.sqlite');
+    const seed = new Store(path);
+    seed.close();
+    const raw = new DatabaseSync(path);
+    // Ancien schéma mono-ligne + une valeur déjà mise de côté.
+    raw.exec('DROP TABLE IF EXISTS settings_quarantine');
+    raw.exec(
+      'CREATE TABLE settings_quarantine(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL)',
+    );
+    raw
+      .prepare('INSERT INTO settings_quarantine VALUES (1, ?, ?)')
+      .run('!!!legacy!!!', 1);
+    raw.prepare("UPDATE settings SET value='!!!bad!!!' WHERE id=1").run();
+    raw.close();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    new Store(path).settings();
+    warn.mockRestore();
+    const check = new DatabaseSync(path);
+    const rows = check
+      .prepare('SELECT value FROM settings_quarantine ORDER BY id')
+      .all() as { value: string }[];
+    // Legacy préservée, puis la nouvelle corruption ajoutée.
+    expect(rows.map((r) => r.value)).toEqual(['!!!legacy!!!', '!!!bad!!!']);
+    check.close();
+  });
 });

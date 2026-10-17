@@ -122,9 +122,24 @@ export class Store {
           "SELECT sql FROM sqlite_master WHERE type='table' AND name='settings_quarantine'",
         )
         .get() as { sql: string } | undefined;
-      // Legacy single-row schema (id CHECK(id=1)): recreate as append-only.
-      if (existing && !/AUTOINCREMENT/i.test(existing.sql))
-        this.db.exec('DROP TABLE settings_quarantine');
+      // Legacy single-row schema (id CHECK(id=1)): rename + copy so a
+      // previously quarantined value is preserved, never dropped.
+      if (existing && !/AUTOINCREMENT/i.test(existing.sql)) {
+        this.db.exec(
+          'ALTER TABLE settings_quarantine RENAME TO settings_quarantine_legacy',
+        );
+        this.db.exec(
+          'CREATE TABLE settings_quarantine(id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL, reason TEXT)',
+        );
+        try {
+          this.db.exec(
+            "INSERT INTO settings_quarantine(value, quarantinedAt, reason) SELECT value, quarantinedAt, 'legacy' FROM settings_quarantine_legacy",
+          );
+        } catch {
+          /* copy best-effort */
+        }
+        this.db.exec('DROP TABLE settings_quarantine_legacy');
+      }
       this.db.exec(
         'CREATE TABLE IF NOT EXISTS settings_quarantine(id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL, reason TEXT)',
       );

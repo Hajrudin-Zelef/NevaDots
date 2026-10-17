@@ -108,6 +108,7 @@ export async function readPdfAttachment(
     );
   if (mode === 'images') {
     let sent = 0;
+    const skipped: number[] = [];
     for (const page of selection) {
       const out = join(tmpdir(), `nevadots-pdf-${crypto.randomUUID()}.png`);
       try {
@@ -124,8 +125,13 @@ export async function readPdfAttachment(
           ],
           signal,
         );
+        // Stat avant lecture : on ne charge pas un rendu au-delà du cap.
+        const info = await fs.stat(out).catch(() => null);
+        if (!info || info.size === 0 || info.size > PNG_SIZE_CAP) {
+          skipped.push(page);
+          continue;
+        }
         const png = await fs.readFile(out);
-        if (png.length > PNG_SIZE_CAP) continue;
         pushPendingScreenshot(dotId, png.toString('base64'));
         sent++;
       } finally {
@@ -134,7 +140,14 @@ export async function readPdfAttachment(
     }
     return {
       pagesTransmises: sent,
-      note: 'images à la vue du modèle au prochain tour',
+      ...(skipped.length
+        ? {
+            pagesIgnorees: skipped,
+            note: `Rendus trop volumineux ignorés (max ${
+              PNG_SIZE_CAP / (1024 * 1024)
+            } Mo/planche) : pages ${skipped.join(', ')}.`,
+          }
+        : { note: 'images à la vue du modèle au prochain tour' }),
     };
   }
   const chunks: string[] = [];
