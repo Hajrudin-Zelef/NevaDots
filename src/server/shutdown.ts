@@ -2,6 +2,8 @@ export function createShutdown(options: {
   stopRunner: () => void;
   stopPlatform: () => Promise<void>;
   closeServer: () => Promise<void>;
+  /** Ferme les stores SQLite (Store, WorkspaceStore, runner agentique). */
+  closeStores?: () => void;
   exit: (code: number) => void;
   report: (operation: string, error: unknown) => void;
   timeoutMs?: number;
@@ -41,6 +43,16 @@ export function createShutdown(options: {
         deadline,
       ]);
       clearTimeout(timer);
+      // Après l'arrêt du serveur : plus aucune requête n'ouvre de transaction,
+      // les stores peuvent être fermés sans risque. Idempotent via `pending`
+      // (2e appel = même promesse, pas de double-close).
+      if (options.closeStores) {
+        try {
+          options.closeStores();
+        } catch (error) {
+          report('Closing stores failed', error);
+        }
+      }
       options.exit(failed ? 1 : 0);
     })());
 }

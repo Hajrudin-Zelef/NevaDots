@@ -73,7 +73,11 @@ export class Store {
     this.db.prepare('DELETE FROM setup_telemetry').run();
   }
   close() {
-    this.db.close();
+    try {
+      this.db.close();
+    } catch {
+      /* déjà fermé : close idempotent pour un shutdown sans erreur */
+    }
   }
   private transaction<T>(fn: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
@@ -92,7 +96,29 @@ export class Store {
       .get() as { value: string };
     // Merge defaults so settings rows written before a field existed keep a
     // sane value for the new field.
-    return { ...defaults, ...(JSON.parse(row.value) as Partial<Settings>) };
+    try {
+      return { ...defaults, ...(JSON.parse(row.value) as Partial<Settings>) };
+    } catch {
+      // Ligne corrompue : mise de côté (jamais supprimée) + boot avec les
+      // défauts + avertissement explicite. Restauration manuelle possible en
+      // recopiant settings_quarantine.value vers settings.
+      try {
+        this.db.exec(
+          'CREATE TABLE IF NOT EXISTS settings_quarantine(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL)',
+        );
+        this.db
+          .prepare(
+            'INSERT OR REPLACE INTO settings_quarantine VALUES (1, ?, ?)',
+          )
+          .run(row.value, Date.now());
+      } catch {
+        /* mise de côté best-effort */
+      }
+      console.warn(
+        'Store: ligne settings illisible, défauts appliqués (original mis de côté dans settings_quarantine pour restauration manuelle).',
+      );
+      return { ...defaults };
+    }
   }
   updateSettings(patch: Partial<Settings>): Settings {
     return this.transaction(() => {

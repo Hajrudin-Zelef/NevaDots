@@ -91,7 +91,11 @@ export class WorkspaceStore {
     }
   }
   close() {
-    this.db.close();
+    try {
+      this.db.close();
+    } catch {
+      /* déjà fermé : close idempotent pour un shutdown sans erreur */
+    }
   }
   configGet(key: string): string | undefined {
     const row = this.db

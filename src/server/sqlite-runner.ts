@@ -41,6 +41,10 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
     const file = path || ':memory:';
     if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
     this.db = new DatabaseSync(file);
+    // Même régime que les autres stores : WAL + busy_timeout, sinon
+    // « database is locked » dès que le runner et l'UI écrivent ensemble.
+    if (file !== ':memory:')
+      this.db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS runner_runs (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +64,17 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
     this.rehydrate();
   }
 
+  /** Ferme la connexion SQLite (shutdown). Idempotent : double close = no-op. */
+  close() {
+    try {
+      this.db.close();
+    } catch {
+      /* déjà fermé */
+    }
+  }
+
   private rehydrate() {
+    let skipped = 0;
     const threads = this.db
       .prepare(
         'SELECT thread_id, messages FROM runner_threads ORDER BY created_at',
@@ -68,7 +82,15 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
       .all() as Array<Record<string, unknown>>;
     for (const thread of threads) {
       const threadId = String(thread.thread_id);
-      const messages = JSON.parse(String(thread.messages)) as unknown[];
+      let messages: unknown[];
+      try {
+        messages = JSON.parse(String(thread.messages)) as unknown[];
+      } catch {
+        // Ligne corrompue : ignorée (jamais supprimée — restauration manuelle
+        // possible), boot avec avertissement au lieu du crash.
+        skipped += 1;
+        continue;
+      }
       globalStore.getOrCreate(threadId);
       const runs = this.db
         .prepare(
@@ -76,17 +98,28 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
         )
         .all(threadId) as Array<Record<string, unknown>>;
       for (const run of runs) {
+        let events: unknown[];
+        try {
+          events = JSON.parse(String(run.events)) as unknown[];
+        } catch {
+          skipped += 1;
+          continue;
+        }
         globalStore.appendRun(threadId, {
           runId: String(run.run_id),
           agentId: run.agent_id == null ? null : String(run.agent_id),
           parentRunId:
             run.parent_run_id == null ? null : String(run.parent_run_id),
-          events: JSON.parse(String(run.events)) as unknown[],
+          events,
           messages,
           createdAt: Number(run.created_at),
         });
       }
     }
+    if (skipped)
+      console.warn(
+        `SqliteAgentRunner: ${skipped} ligne(s) corrompue(s) ignorée(s) au boot (conservées en DB pour restauration manuelle).`,
+      );
   }
 
   private persist(threadId: string) {

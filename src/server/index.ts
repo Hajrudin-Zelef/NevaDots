@@ -209,6 +209,11 @@ attachComputerStream(server, platform.computers, appOrigins);
 const shutdown = createShutdown({
   stopRunner: () => runner.stop(),
   stopPlatform: () => platform.stop(),
+  closeStores: () => {
+    platform.runner.close();
+    workspace.close();
+    store.close();
+  },
   closeServer: () =>
     new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),

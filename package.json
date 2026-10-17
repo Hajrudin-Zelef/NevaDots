@@ -44,6 +44,7 @@
     "@tiptap/react": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
     "@tiptap/suggestion": "3.31.3",
+    "@types/ws": "^8.18.2",
     "hono": "^4.13.11",
     "lucide-react": "^1.48.0",
     "playwright": "^1.63.0",
@@ -54,6 +55,7 @@
     "remark-gfm": "^4.0.1",
     "rxjs": "^7.8.1",
     "thinking-orbs": "^0.3.2",
+    "ws": "^8.22.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
