@@ -35,6 +35,7 @@ const FAKE_CLI = [
   '  if(process.env.PDFW_FAIL===s.tool){console.error(`pdfcraft-cli: step ${i+1} (${s.tool}): boom`);code=1;break;}',
   '  if(process.env.PDFW_FAIL_SOFT===s.tool){console.log(JSON.stringify({error:"boom douce"}));break;}',
   '  if(s.tool==="doc_open"){console.log(JSON.stringify({doc:1,pages:5,encrypted:false,editable:true},null,2));continue;}',
+  '  if(s.tool==="text_lines"){console.log(JSON.stringify({doc:1,page:s.args.page,lines:[{line:1,text:"Bonjour PDF ligne un"},{line:2,text:"deuxième ligne"},{line:3,text:"BONJOUR truc"}]},null,2));continue;}',
   '  const out=(s.args&&(s.args.out||s.args.path))||null;',
   '  if(out){const abs=path.isAbsolute(out)?out:path.join(root,out);fs.mkdirSync(path.dirname(abs),{recursive:true});fs.writeFileSync(abs,"PDFOUT");}',
   '  console.log(JSON.stringify({doc:1,ok:s.tool,path:out||null},null,2));',
@@ -265,5 +266,63 @@ describe('pdf_write-tools', () => {
     await expect(pdfOcrAttachment({ attachmentId: id })).rejects.toThrow(
       'mémoire',
     );
+  });
+
+  it('replace_text : substitue dans les lignes, une seule passe d’écriture', async () => {
+    const id = makePdfAttachment();
+    const meta = await pdfEditAttachment({
+      attachmentId: id,
+      operations: [{ op: 'replace_text', find: 'bonjour', replace: 'Salut' }],
+    });
+    expect(meta.name).toBe('rapport_final-edite.pdf');
+    expect(meta.attachedAt).toBeGreaterThan(0);
+    const steps = lastSteps();
+    // Sonde (1 doc_open) + passe scan (2ᵉ doc_open + text_lines) + passe
+    // écriture (3ᵉ doc_open + text_edit×2 + doc_save).
+    const opens = steps.filter((s) => s.tool === 'doc_open');
+    expect(opens).toHaveLength(3);
+    const edits = steps.filter((s) => s.tool === 'text_edit');
+    // 5 pages scannées (défaut = toutes), 2 lignes correspondantes chacune.
+    expect(edits).toHaveLength(10);
+    expect(edits[0].args).toMatchObject({
+      doc: 1,
+      page: 1,
+      line: 1,
+      text: 'Salut PDF ligne un',
+    });
+    expect(edits[1].args).toMatchObject({
+      doc: 1,
+      page: 1,
+      line: 3,
+      text: 'Salut truc',
+    });
+    expect(edits[2].args).toMatchObject({ page: 2, line: 1 });
+    expect(steps[steps.length - 1].tool).toBe('doc_save');
+    // Temporaires nettoyés.
+    for (const entry of readdirSync(join(sandbox, 'data', 'attachments')))
+      expect(entry).not.toMatch(/^nevadots-/);
+  });
+
+  it('replace_text : zéro occurrence = erreur claire', async () => {
+    const id = makePdfAttachment();
+    await expect(
+      pdfEditAttachment({
+        attachmentId: id,
+        operations: [{ op: 'replace_text', find: 'absent', replace: 'x' }],
+      }),
+    ).rejects.toThrow('Aucune occurrence');
+  });
+
+  it('replace_text : non combinable avec une autre opération', async () => {
+    const id = makePdfAttachment();
+    await expect(
+      pdfEditAttachment({
+        attachmentId: id,
+        operations: [
+          { op: 'replace_text', find: 'a', replace: 'b' },
+          { op: 'rotate', pages: '1' },
+        ],
+      }),
+    ).rejects.toThrow('passe dédiée');
   });
 });

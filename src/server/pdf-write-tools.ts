@@ -29,6 +29,8 @@ const OCR_TIMEOUT_MS = 300_000;
 const MAX_INPUT_BYTES = 50 * 1024 * 1024; // aligné sur la limite d'upload
 const PAGE_CAP = 100;
 const OPS_CAP = 8;
+const REPLACE_CAP = 50;
+const REPLACE_SCAN_CAP = 50;
 const DOCX_MIME =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const PDF_MIME = 'application/pdf';
@@ -154,6 +156,12 @@ const editOp = z.discriminatedUnion('op', [
     y: z.number().min(0).max(2000).default(100),
     size: z.number().min(6).max(72).default(12),
   }),
+  z.object({
+    op: z.literal('replace_text'),
+    find: z.string().min(1).max(200),
+    replace: z.string().max(200),
+    pages: pageRange.optional(),
+  }),
 ]);
 
 export type PdfEditOperation = z.input<typeof editOp>;
@@ -226,6 +234,10 @@ export async function pdfEditAttachment(
     operations.some((o) => o.op === 'extract' || o.op === 'to_docx')
   )
     throw new Error('compress ne se combine ni avec extract ni avec to_docx.');
+  if (operations.some((o) => o.op === 'replace_text') && operations.length > 1)
+    throw new Error(
+      'replace_text ne se combine pas avec d’autres opérations (passe dédiée).',
+    );
   const newId = randomUUID();
   const tmpOut = `nevadots-${newId}.pdf`;
   const tmpDocx = `nevadots-${newId}.docx`;
@@ -307,6 +319,68 @@ export async function pdfEditAttachment(
             size: op.size ?? 12,
           },
         });
+      } else if (op.op === 'replace_text') {
+        // Passe dédiée : pages cibles bornées (défaut = toutes, plafond 50).
+        const target = op.pages
+          ? parseSelection(op.pages, pageCount, 'remplacement')
+          : Array.from(
+              { length: Math.min(pageCount, REPLACE_SCAN_CAP) },
+              (_, i) => i + 1,
+            );
+        // Passe A : lignes de chaque page cible.
+        const scan: PdfcraftStep[] = [
+          { tool: 'doc_open', args: { path: relIn } },
+        ];
+        for (const page of target)
+          scan.push({ tool: 'text_lines', args: { doc: 1, page } });
+        const scanned = await runPdfcraftScript(scan, signal);
+        const edits: PdfcraftStep[] = [];
+        let replaced = 0;
+        const pagesHit = new Set<number>();
+        for (let i = 1; i < scanned.length; i++) {
+          const page = target[i - 1];
+          const lines = (scanned[i]?.lines ?? []) as Array<{
+            line?: number;
+            text?: string;
+          }>;
+          for (const line of lines) {
+            if (typeof line.line !== 'number' || typeof line.text !== 'string')
+              continue;
+            if (!line.text.toLowerCase().includes(op.find.toLowerCase()))
+              continue;
+            const newText = replaceAllIgnoreCase(
+              line.text,
+              op.find,
+              op.replace,
+            );
+            if (newText === line.text) continue;
+            edits.push({
+              tool: 'text_edit',
+              args: { doc: 1, page, line: line.line, text: newText },
+            });
+            replaced++;
+            pagesHit.add(page);
+            if (replaced >= REPLACE_CAP)
+              throw new Error(
+                `Plus de ${REPLACE_CAP} occurrences — précise l’opération avec « pages ».`,
+              );
+          }
+        }
+        if (!replaced)
+          throw new Error(
+            `Aucune occurrence de « ${op.find.slice(0, 60)} » dans les pages ciblées.`,
+          );
+        // Passe B : réécriture des lignes trouvées, une seule sauvegarde.
+        const writeSteps: PdfcraftStep[] = [
+          { tool: 'doc_open', args: { path: relIn } },
+          ...edits,
+          { tool: 'doc_save', args: { doc: 1, path: tmpOut } },
+        ];
+        await runPdfcraftScript(writeSteps, signal);
+        return finishEdit(attachmentId, operations, tmpOut, tmpDocx, {
+          remplacements: replaced,
+          pages: [...pagesHit].sort((a, b) => a - b),
+        });
       }
     }
     const wantsDocx = operations.some((o) => o.op === 'to_docx');
@@ -316,8 +390,45 @@ export async function pdfEditAttachment(
     if (!isFileOp)
       steps.push({ tool: 'doc_save', args: { doc: 1, path: tmpOut } });
     await runPdfcraftScript(steps, signal);
-    // Le résultat reste à la racine du root (comportement vérifié) :
-    // on le rapatrie dans le dossier de la nouvelle pièce jointe.
+    return finishEdit(
+      attachmentId,
+      operations,
+      tmpOut,
+      tmpDocx,
+      isFileOp ? undefined : undefined,
+    );
+  } finally {
+    await fs.rm(join(ATTACHMENTS_DIR, tmpOut), { force: true }).catch(() => {});
+    await fs
+      .rm(join(ATTACHMENTS_DIR, tmpDocx), { force: true })
+      .catch(() => {});
+  }
+}
+
+/** Substitution insensible à la casse, toutes occurrences. */
+export function replaceAllIgnoreCase(
+  text: string,
+  find: string,
+  replace: string,
+): string {
+  const pattern = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  return text.replace(pattern, () => replace);
+}
+
+/**
+ * Circuit de sortie commun : lit le fichier produit (à la racine du root),
+ * le rattache comme nouvelle pièce jointe, retourne les métadonnées.
+ * `extra` enrichit le résultat (ex. compteurs replace_text).
+ */
+async function finishEdit(
+  attachmentId: string,
+  operations: PdfEditOperation[],
+  tmpOut: string,
+  tmpDocx: string,
+  extra?: Record<string, unknown>,
+): Promise<AttachmentMeta & { extra?: Record<string, unknown> }> {
+  try {
+    const wantsDocx = operations.some((o) => o.op === 'to_docx');
     const produced = wantsDocx ? tmpDocx : tmpOut;
     const producedAbs = join(ATTACHMENTS_DIR, produced);
     if (!existsSync(producedAbs))
@@ -328,7 +439,7 @@ export async function pdfEditAttachment(
     const base = (meta?.name ?? 'document.pdf').replace(/\.[^.]*$/, '');
     const { name, mime } = resultName(base, operations);
     const saved = await saveBinaryAttachment(name, buffer, mime);
-    return saved;
+    return extra ? { ...saved, extra } : saved;
   } finally {
     await fs.rm(join(ATTACHMENTS_DIR, tmpOut), { force: true }).catch(() => {});
     await fs
