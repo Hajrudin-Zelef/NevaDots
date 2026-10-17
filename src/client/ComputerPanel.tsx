@@ -4,6 +4,13 @@ import type { Dot } from '../shared/types';
 import type { ComputerAction, ComputerStatus } from '../shared/computer-types';
 import { api } from './api';
 import { BrowserScreen } from './BrowserScreen';
+import {
+  fileBasename,
+  formatFileSize,
+  parentDir,
+  sortFileEntries,
+  type ComputerFileEntry,
+} from './computer-files';
 
 type Screen = {
   base64: string;
@@ -38,6 +45,14 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
   const [output, setOutput] = useState('');
   const [outputError, setOutputError] = useState('');
   const [screenError, setScreenError] = useState('');
+  // Navigateur de fichiers : état dédié, jamais dans la « Sortie » brute.
+  const [filesDir, setFilesDir] = useState('');
+  const [filesEntries, setFilesEntries] = useState<ComputerFileEntry[]>([]);
+  const [filesTruncated, setFilesTruncated] = useState(false);
+  const [filesListed, setFilesListed] = useState(false);
+  const [filesError, setFilesError] = useState('');
+  const [filesNotice, setFilesNotice] = useState('');
+  const [append, setAppend] = useState(false);
   // True while the user edits the address bar, so the screenshot poll does not
   // overwrite what they are typing.
   const urlDirty = useRef(false);
@@ -175,6 +190,91 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
   };
   const action = (action: ComputerAction, input: unknown, showOutput = false) =>
     run('/actions', { action, input }, 'POST', showOutput);
+  // Appels fichiers : même garde anti-concurrence que `run`, mais les erreurs
+  // vont dans le bandeau de l'onglet Fichiers (pas dans la « Sortie » brute).
+  const fileAction = async (
+    fileActionName: ComputerAction,
+    input: unknown,
+  ): Promise<unknown> => {
+    if (lifecycle.current.busy) return undefined;
+    lifecycle.current.busy = true;
+    lifecycle.current.revision++;
+    setBusy(true);
+    setFilesError('');
+    setFilesNotice('');
+    try {
+      const result = await api<unknown>(
+        `${base}/actions`,
+        'POST',
+        { action: fileActionName, input },
+        controller.current?.signal,
+      );
+      if (!lifecycle.current.active) return undefined;
+      await refresh();
+      return result;
+    } catch (cause) {
+      if (!lifecycle.current.active) return undefined;
+      setFilesError(
+        cause instanceof Error ? cause.message : 'Échec de l’action fichier.',
+      );
+      return undefined;
+    } finally {
+      lifecycle.current.busy = false;
+      if (lifecycle.current.active) setBusy(false);
+    }
+  };
+  const listDir = async (dir: string): Promise<void> => {
+    const result = await fileAction('files_list', { path: dir });
+    if (!lifecycle.current.active || result === undefined) return;
+    if (
+      result &&
+      typeof result === 'object' &&
+      'entries' in result &&
+      Array.isArray(result.entries)
+    ) {
+      setFilesEntries(sortFileEntries(result.entries as ComputerFileEntry[]));
+      setFilesTruncated('truncated' in result && result.truncated === true);
+      setFilesDir(
+        'path' in result && typeof result.path === 'string' ? result.path : dir,
+      );
+      setFilesListed(true);
+    } else {
+      setFilesError('Réponse de liste inattendue.');
+    }
+  };
+  const readFile = async (filePath: string): Promise<void> => {
+    const result = await fileAction('files_read', { path: filePath });
+    if (!lifecycle.current.active || result === undefined) return;
+    if (
+      result &&
+      typeof result === 'object' &&
+      'text' in result &&
+      typeof result.text === 'string'
+    ) {
+      setContents(result.text);
+    } else {
+      setFilesError('Réponse de lecture inattendue.');
+    }
+  };
+  const writeFile = async (): Promise<void> => {
+    const target = path.trim();
+    if (!target) return;
+    if (
+      !append &&
+      filesEntries.some((entry) => entry.path === target) &&
+      !window.confirm(`Écraser « ${target} » ?`)
+    )
+      return;
+    const result = await fileAction('files_write', {
+      path: target,
+      contents,
+      ...(append ? { append: true } : {}),
+    });
+    if (!lifecycle.current.active || result === undefined) return;
+    await listDir(filesDir);
+    if (lifecycle.current.active)
+      setFilesNotice(`Enregistré « ${target} »${append ? ' (ajouté)' : ''}.`);
+  };
   const running = status?.state === 'running' && status.permissions.enabled;
   const human =
     status?.control?.holder === 'human' && !status.control.transitioning;
@@ -477,6 +577,73 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                 <p>
                   Les chemins sont relatifs à l’espace persistant de ce Dot.
                 </p>
+                {filesError && (
+                  <p className="computer-error" role="alert">
+                    {filesError}
+                  </p>
+                )}
+                {filesNotice && <p role="status">{filesNotice}</p>}
+                <div className="computer-actions">
+                  <button
+                    disabled={!running || !status.permissions.files || busy}
+                    onClick={() => void listDir(filesDir)}
+                  >
+                    {filesListed ? 'Actualiser' : 'Lister'}
+                  </button>
+                  {filesDir && (
+                    <button
+                      disabled={!running || !status.permissions.files || busy}
+                      onClick={() => void listDir(parentDir(filesDir))}
+                    >
+                      ↑ Remonter
+                    </button>
+                  )}
+                </div>
+                {filesListed && (
+                  <>
+                    <p>
+                      Dossier :{' '}
+                      <strong>
+                        {filesDir ? `/${filesDir}` : '/ (racine)'}
+                      </strong>
+                    </p>
+                    {filesTruncated && (
+                      <p role="status">
+                        Liste tronquée : affinez le dossier pour tout voir.
+                      </p>
+                    )}
+                    {filesEntries.length === 0 ? (
+                      <p>Dossier vide.</p>
+                    ) : (
+                      <ul className="computer-files">
+                        {filesEntries.map((entry) => (
+                          <li key={entry.path}>
+                            <button
+                              type="button"
+                              title={entry.path}
+                              disabled={
+                                !running || !status.permissions.files || busy
+                              }
+                              onClick={() => {
+                                if (entry.kind === 'dir') {
+                                  void listDir(entry.path);
+                                } else {
+                                  setPath(entry.path);
+                                  void readFile(entry.path);
+                                }
+                              }}
+                            >
+                              {entry.kind === 'dir' ? '📁' : '📄'}{' '}
+                              {fileBasename(entry.path)}
+                              {entry.kind !== 'dir' &&
+                                ` · ${formatFileSize(entry.bytes)}`}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
                 <label>
                   Chemin
                   <input
@@ -488,38 +655,19 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                 </label>
                 <div className="computer-actions">
                   <button
-                    disabled={!running || !status.permissions.files || busy}
-                    onClick={() => void action('files_list', { path }, true)}
-                  >
-                    Lister
-                  </button>
-                  <button
                     disabled={
                       !running ||
                       !status.permissions.files ||
                       busy ||
                       !path.trim()
                     }
-                    onClick={() =>
-                      void action('files_read', { path }, true).then(
-                        (result) => {
-                          if (
-                            lifecycle.current.active &&
-                            result &&
-                            typeof result === 'object' &&
-                            'text' in result &&
-                            typeof result.text === 'string'
-                          )
-                            setContents(result.text);
-                        },
-                      )
-                    }
+                    onClick={() => void readFile(path.trim())}
                   >
                     Lire
                   </button>
                 </div>
                 <label>
-                  Contenu du fichier
+                  Contenu du fichier ({contents.length} caractères)
                   <textarea
                     aria-label="Contenu à enregistrer"
                     value={contents}
@@ -529,6 +677,15 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                     rows={5}
                   />
                 </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={append}
+                    onChange={(event) => setAppend(event.target.checked)}
+                    disabled={!running || !status.permissions.files || busy}
+                  />{' '}
+                  Ajouter à la fin au lieu de remplacer
+                </label>
                 <button
                   disabled={
                     !running ||
@@ -536,11 +693,9 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                     busy ||
                     !path.trim()
                   }
-                  onClick={() =>
-                    void action('files_write', { path, contents }, true)
-                  }
+                  onClick={() => void writeFile()}
                 >
-                  Enregistrer (remplacer)
+                  {append ? 'Ajouter à la fin' : 'Enregistrer (remplacer)'}
                 </button>
                 {!status.permissions.files && (
                   <p>
@@ -590,26 +745,25 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                   </p>
                 )}
               </details>
-              {(output || outputError) &&
-                (tab === 'Files' || tab === 'Terminal') && (
-                  <section className="computer-section">
-                    <h3>Sortie</h3>
-                    {outputError && (
-                      <p className="computer-error" role="alert">
-                        {outputError}
-                      </p>
-                    )}
-                    {output && <pre tabIndex={0}>{output}</pre>}
-                    <button
-                      onClick={() => {
-                        setOutput('');
-                        setOutputError('');
-                      }}
-                    >
-                      Effacer
-                    </button>
-                  </section>
-                )}
+              {(output || outputError) && tab === 'Terminal' && (
+                <section className="computer-section">
+                  <h3>Sortie</h3>
+                  {outputError && (
+                    <p className="computer-error" role="alert">
+                      {outputError}
+                    </p>
+                  )}
+                  {output && <pre tabIndex={0}>{output}</pre>}
+                  <button
+                    onClick={() => {
+                      setOutput('');
+                      setOutputError('');
+                    }}
+                  >
+                    Effacer
+                  </button>
+                </section>
+              )}
             </>
           )}
           <details
