@@ -6,13 +6,18 @@ export interface ComputerFileEntry {
   bytes?: number;
 }
 
+/** Un dossier, que le conteneur nomme `folder` (l'UI historique disait `dir`). */
+export function isFileDir(entry: { kind: string }): boolean {
+  return entry.kind === 'dir' || entry.kind === 'folder';
+}
+
 /** Dossiers d'abord, puis ordre alphabétique FR insensible à la casse. */
 export function sortFileEntries(
   entries: ComputerFileEntry[],
 ): ComputerFileEntry[] {
   return [...entries].sort((a, b) => {
-    const aDir = a.kind === 'dir' ? 0 : 1;
-    const bDir = b.kind === 'dir' ? 0 : 1;
+    const aDir = isFileDir(a) ? 0 : 1;
+    const bDir = isFileDir(b) ? 0 : 1;
     if (aDir !== bDir) return aDir - bDir;
     return a.path.localeCompare(b.path, 'fr', { sensitivity: 'base' });
   });

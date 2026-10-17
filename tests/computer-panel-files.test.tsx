@@ -12,6 +12,7 @@ import type { Dot } from '../src/shared/types';
 import {
   fileBasename,
   formatFileSize,
+  isFileDir,
   parentDir,
   sortFileEntries,
 } from '../src/client/computer-files';
@@ -45,7 +46,7 @@ const ROOT_LIST = {
   path: '',
   entries: [
     { path: 'notes.txt', kind: 'file', bytes: 1115 },
-    { path: 'docs', kind: 'dir' },
+    { path: 'docs', kind: 'folder' },
     { path: 'a.txt', kind: 'file', bytes: 7 },
   ],
   truncated: false,
@@ -150,6 +151,10 @@ it('trie dossiers-d’abord, basename et tailles FR', () => {
   expect(parentDir('a/b')).toBe('a');
   expect(parentDir('a')).toBe('');
   expect(parentDir('')).toBe('');
+  // Le conteneur renvoie kind:'folder' (l'UI historique disait 'dir').
+  expect(isFileDir({ kind: 'folder' })).toBe(true);
+  expect(isFileDir({ kind: 'dir' })).toBe(true);
+  expect(isFileDir({ kind: 'file' })).toBe(false);
 });
 
 it('liste cliquable sans JSON brut, clic dossier et fichier', async () => {

@@ -6,6 +6,7 @@ import {
   type ComputerActivityEvent,
   type ComputerAction,
   type ComputerControl,
+  type ComputerPermissions,
   type ComputerStatus,
 } from '../shared/computer-types.js';
 import type { WorkspaceStore } from './workspace.js';
@@ -59,6 +60,10 @@ const ACTION_DEADLINE_MS = 45_000;
  * wedge-recovery deadline above: a wedged browser must reset fast, and the
  * 50 ms permission-watcher still kills a revoked run mid-command. */
 const EXEC_DEADLINE_MS = 600_000;
+/** Bornes du search/offset côté serveur : le modèle ne doit pas vider le
+ * workspace dans son contexte via des lectures en boucle. */
+const SEARCH_MAX_FILES = 20;
+const SEARCH_MAX_LINE_CHARS = 500;
 function snapshotRequired(payload: unknown): boolean {
   return (
     !!payload &&
@@ -400,6 +405,11 @@ export class ComputerService {
       },
     };
   }
+  /** Permissions du Dot (pour filtrer les outils exposés au modèle). */
+  policy(id: string): ComputerPermissions {
+    this.requireDot(id);
+    return this.workspace.computers.permissions(id);
+  }
   private async audited<T>(
     id: string,
     action: string,
@@ -503,6 +513,100 @@ export class ComputerService {
       await this.supervisor(`/computers/${id}/ensure`, {}, signal),
     );
   }
+  /** Découpe une lecture fichier en plage de lignes (offset 1-based).
+   * Le conteneur ne connaît que {path} : la plage est appliquée ici, après
+   * un read entier, et offset/limit ne lui sont jamais transmis. */
+  private async readFileSlice(
+    url: string,
+    id: string,
+    input: { path: string; offset?: number; limit?: number },
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const read = (await this.json(
+      `${url}/files/read`,
+      this.token(id),
+      { path: input.path },
+      signal,
+      id,
+    )) as { path?: unknown; text?: unknown; truncated?: unknown };
+    const text = typeof read.text === 'string' ? read.text : '';
+    const lines = text.split('\n');
+    const from = Math.max(1, input.offset ?? 1);
+    const to =
+      input.limit === undefined
+        ? lines.length
+        : Math.min(lines.length, from - 1 + input.limit);
+    return {
+      path: input.path,
+      text: lines.slice(Math.max(0, from - 1), Math.max(0, to)).join('\n'),
+      from,
+      to,
+      totalLines: lines.length,
+      truncated: read.truncated === true || to < lines.length,
+    };
+  }
+  /** Recherche regex dans le workspace, composée de /files/list (récursif
+   * côté conteneur) + /files/read. Fichiers illisibles ignorés, pas d'échec
+   * global. Entrées et sorties bornées. */
+  private async searchFiles(
+    url: string,
+    id: string,
+    input: { query: string; path?: string; maxResults?: number },
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const scope = input.path ?? '';
+    let pattern: RegExp;
+    try {
+      pattern = new RegExp(input.query, 'm');
+    } catch {
+      throw new Error('Regex invalide.');
+    }
+    const maxResults = input.maxResults ?? 30;
+    const list = (await this.json(
+      `${url}/files/list`,
+      this.token(id),
+      { path: scope },
+      signal,
+      id,
+    )) as {
+      entries?: Array<{ path?: unknown; kind?: unknown }>;
+      truncated?: unknown;
+    };
+    const files = (list.entries ?? []).filter((e) => e.kind === 'file');
+    const matches: Array<{ path: string; line: number; text: string }> = [];
+    let truncated = list.truncated === true;
+    for (const file of files.slice(0, SEARCH_MAX_FILES)) {
+      if (matches.length >= maxResults) {
+        truncated = true;
+        break;
+      }
+      if (typeof file.path !== 'string' || !file.path) continue;
+      let read: { text?: unknown };
+      try {
+        read = (await this.json(
+          `${url}/files/read`,
+          this.token(id),
+          { path: file.path },
+          signal,
+          id,
+        )) as { text?: unknown };
+      } catch {
+        continue; // illisible → ignoré, pas d'échec global
+      }
+      if (typeof read.text !== 'string') continue;
+      const lines = read.text.split('\n');
+      for (let i = 0; i < lines.length && matches.length < maxResults; i++) {
+        if (pattern.test(lines[i]))
+          matches.push({
+            path: file.path,
+            line: i + 1,
+            text: lines[i].slice(0, SEARCH_MAX_LINE_CHARS),
+          });
+      }
+    }
+    if (files.length > SEARCH_MAX_FILES) truncated = true;
+    return { path: scope, query: input.query, matches, truncated };
+  }
   async action(
     id: string,
     action: ComputerAction,
@@ -543,6 +647,29 @@ export class ComputerService {
         const url = await this.running(id, activeSignal);
         this.allowed(id, kind, actor);
         activeSignal.throwIfAborted();
+        // files_search et les lectures à plage sont composés côté serveur
+        // (le conteneur ne connaît que /files/list + /files/read entiers) —
+        // les champs offset/limit/query ne lui sont jamais transmis.
+        if (action === 'files_search')
+          return this.searchFiles(
+            url,
+            id,
+            parsed as { query: string; path?: string; maxResults?: number },
+            activeSignal,
+          );
+        if (action === 'files_read') {
+          const { offset, limit } = parsed as {
+            offset?: number;
+            limit?: number;
+          };
+          if (offset !== undefined || limit !== undefined)
+            return this.readFileSlice(
+              url,
+              id,
+              parsed as { path: string; offset?: number; limit?: number },
+              activeSignal,
+            );
+        }
         const path = action
           .replace(/^files_/, 'files/')
           .replace(/^human_/, 'human/');

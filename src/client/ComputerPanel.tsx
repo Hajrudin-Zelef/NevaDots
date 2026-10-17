@@ -9,6 +9,7 @@ import { useComputerActivity } from './useComputerActivity';
 import {
   fileBasename,
   formatFileSize,
+  isFileDir,
   parentDir,
   sortFileEntries,
   type ComputerFileEntry,
@@ -619,7 +620,7 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                                 !running || !status.permissions.files || busy
                               }
                               onClick={() => {
-                                if (entry.kind === 'dir') {
+                                if (isFileDir(entry)) {
                                   void listDir(entry.path);
                                 } else {
                                   setPath(entry.path);
@@ -627,9 +628,9 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                                 }
                               }}
                             >
-                              {entry.kind === 'dir' ? '📁' : '📄'}{' '}
+                              {isFileDir(entry) ? '📁' : '📄'}{' '}
                               {fileBasename(entry.path)}
-                              {entry.kind !== 'dir' &&
+                              {!isFileDir(entry) &&
                                 ` · ${formatFileSize(entry.bytes)}`}
                             </button>
                           </li>

@@ -610,7 +610,13 @@ export class DotAgent extends AbstractAgent {
           ...pdfTools(dot.id, controller.signal),
           ...pdfWriteTools(controller.signal),
           ...(computer.configured
-            ? computerTools(computer, dot.id, check, controller.signal)
+            ? computerTools(
+                computer,
+                dot.id,
+                check,
+                controller.signal,
+                computer.policy(dot.id),
+              )
             : []),
           ...(this.config.externalAccounts
             ? externalAccountTools(

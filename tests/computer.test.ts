@@ -427,3 +427,111 @@ it('lets exec outlive the short wedge-recovery deadline (P1)', async () => {
     f.service.action(f.id, 'files_list', { path: '' }, 'owner'),
   ).rejects.toThrow(/timed out/);
 });
+it('lit par plage et cherche côté serveur sans rien transmettre au conteneur (P3)', async () => {
+  const f = fixture();
+  const big = Array.from({ length: 20 }, (_, i) => `ligne ${i + 1}`).join('\n');
+  f.handle(async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    if (String(url).endsWith('/files/list'))
+      return Response.json({
+        path: '',
+        entries: [
+          { path: 'a.txt', kind: 'file', bytes: 100 },
+          { path: 'sub', kind: 'folder' },
+          { path: 'sub/b.txt', kind: 'file', bytes: 50 },
+        ],
+        truncated: false,
+      });
+    if (String(url).endsWith('/files/read')) {
+      if (body.path === 'a.txt')
+        return Response.json({
+          path: 'a.txt',
+          text: big,
+          truncated: false,
+          bytes: big.length,
+        });
+      if (body.path === 'sub/b.txt')
+        return Response.json({
+          path: 'sub/b.txt',
+          text: 'bonjour\nau revoir',
+          truncated: false,
+          bytes: 17,
+        });
+      return new Response('nope', { status: 404 });
+    }
+    throw new Error(`unexpected ${url}`);
+  });
+  // Plage de lignes (offset 1-based).
+  await expect(
+    f.service.action(
+      f.id,
+      'files_read',
+      { path: 'a.txt', offset: 5, limit: 3 },
+      'owner',
+    ),
+  ).resolves.toMatchObject({
+    path: 'a.txt',
+    text: 'ligne 5\nligne 6\nligne 7',
+    from: 5,
+    to: 7,
+    totalLines: 20,
+    truncated: true, // une plage n'est jamais le fichier entier
+  });
+  // Sans plage : fichier entier (comportement historique inchangé).
+  await expect(
+    f.service.action(f.id, 'files_read', { path: 'a.txt' }, 'owner'),
+  ).resolves.toMatchObject({ path: 'a.txt', text: big });
+  // Recherche bornée, dossiers ignorés.
+  await expect(
+    f.service.action(
+      f.id,
+      'files_search',
+      { query: 'ligne (1|2)$', maxResults: 5 },
+      'owner',
+    ),
+  ).resolves.toMatchObject({
+    path: '',
+    query: 'ligne (1|2)$',
+    matches: [
+      { path: 'a.txt', line: 1, text: 'ligne 1' },
+      { path: 'a.txt', line: 2, text: 'ligne 2' },
+    ],
+    truncated: false,
+  });
+  // Regex invalide → erreur claire, pas de crash.
+  await expect(
+    f.service.action(f.id, 'files_search', { query: '([' }, 'owner'),
+  ).rejects.toThrow('Regex');
+  // Le conteneur ne reçoit que {path} : ni offset/limit ni query.
+  const readBodies = f.calls
+    .filter((c) => c.url.endsWith('/files/read'))
+    .map((c) => JSON.parse(String(c.init?.body)) as Record<string, unknown>);
+  expect(readBodies.length).toBeGreaterThan(0);
+  for (const body of readBodies) expect(Object.keys(body)).toEqual(['path']);
+});
+it('n’expose files_search que si la permission fichiers est active (mitigation)', () => {
+  const f = fixture();
+  const check = vi.fn();
+  const signal = new AbortController().signal;
+  const off = computerTools(f.service, f.id, check, signal, {
+    enabled: true,
+    browser: true,
+    files: false,
+    shell: true,
+  });
+  expect(off.some((t) => t.name === 'computer_files_search')).toBe(false);
+  // Existants inchangés, avec ou sans permissions.
+  expect(off.some((t) => t.name === 'computer_files_read')).toBe(true);
+  const on = computerTools(f.service, f.id, check, signal, {
+    enabled: true,
+    browser: true,
+    files: true,
+    shell: true,
+  });
+  expect(on.some((t) => t.name === 'computer_files_search')).toBe(true);
+  const legacy = computerTools(f.service, f.id, check, signal);
+  expect(legacy.some((t) => t.name === 'computer_files_search')).toBe(true);
+});

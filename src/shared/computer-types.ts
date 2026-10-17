@@ -77,7 +77,25 @@ export const computerInputs = {
     .object({ deltaY: z.number().finite().min(-10000).max(10000) })
     .strict(),
   files_list: z.object({ path: path.default('') }).strict(),
-  files_read: z.object({ path: path.refine((p) => p.length > 0) }).strict(),
+  files_read: z
+    .object({
+      path: path.refine((p) => p.length > 0),
+      /** Ligne de départ (1-based). Sans offset/limit : fichier entier (comportement historique). */
+      offset: z.number().int().min(1).max(100000).optional(),
+      /** Nombre max de lignes. */
+      limit: z.number().int().min(1).max(2000).optional(),
+    })
+    .strict(),
+  /** Recherche regex dans le workspace, composée côté serveur (le conteneur
+   * n'expose que /files/list + /files/read). Jamais transmise telle quelle. */
+  files_search: z
+    .object({
+      query: z.string().trim().min(1).max(200),
+      /** Sous-dossier de départ ('' = racine). */
+      path: path.default(''),
+      maxResults: z.number().int().min(1).max(100).default(30),
+    })
+    .strict(),
   files_write: z
     .object({
       path: path.refine((p) => p.length > 0),
