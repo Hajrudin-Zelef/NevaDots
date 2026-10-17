@@ -4,7 +4,6 @@ import {
   Clock,
   Fingerprint,
   ListChecks,
-  Loader2,
   Monitor,
   ShieldCheck,
   X,
@@ -13,6 +12,7 @@ import {
 import { Mascot, AVATARS } from './Mascot';
 import { avatarPoster, isProtectedAvatar } from '../shared/avatars';
 import { api } from './api';
+import { ThinkingOrb } from './ThinkingOrb';
 import type { ActivityEvent } from '../shared/activity';
 import { groupByDay, timeOfDay } from './day-groups';
 import { ActivityDetailModal } from './ActivityDetailModal';
@@ -245,7 +245,7 @@ export function ActivityPanel({
                               className={`muse-card-badge ${doing ? 'busy' : ''}`}
                             >
                               {doing ? (
-                                <Loader2 size={13} className="spin" />
+                                <ThinkingOrb kind="working" />
                               ) : (
                                 <Check size={13} />
                               )}
@@ -306,7 +306,11 @@ export function ActivityPanel({
                     )}
                   </>
                 ) : (
-                  !computerError && <p className="muse-note">Chargement…</p>
+                  !computerError && (
+                    <p className="muse-note">
+                      <ThinkingOrb kind="loading" /> Chargement…
+                    </p>
+                  )
                 )}
                 <h3>Général</h3>
                 <label className="muse-check">
@@ -350,7 +354,7 @@ export function ActivityPanel({
                           aria-label={`Statut : ${task.status}`}
                         >
                           {task.status === 'running' ? (
-                            <Loader2 size={14} className="spin" />
+                            <ThinkingOrb kind="working" />
                           ) : task.status === 'completed' ? (
                             <Check size={14} />
                           ) : (

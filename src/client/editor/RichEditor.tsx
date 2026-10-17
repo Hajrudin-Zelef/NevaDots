@@ -16,6 +16,7 @@ import {
 import { documentExtensions } from './markdown';
 import { SlashCommands } from './slash-commands';
 import { openPageLink } from '../page-navigation';
+import { ThinkingOrb } from '../ThinkingOrb';
 export default function RichEditor({
   value,
   onChange,
@@ -106,7 +107,12 @@ export default function RichEditor({
       });
     }
   }, [editor, value]);
-  if (!editor) return <div className="editor-loading">Loading editor…</div>;
+  if (!editor)
+    return (
+      <div className="editor-loading">
+        <ThinkingOrb kind="loading" /> Chargement de l’éditeur…
+      </div>
+    );
   return (
     <>
       <div

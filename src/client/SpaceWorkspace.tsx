@@ -6,6 +6,7 @@ import { api } from './api';
 import { SpaceLibrary } from './SpaceLibrary';
 import { PageDocument } from './PageDocument';
 import { PageOutline } from './PageOutline';
+import { ThinkingOrb } from './ThinkingOrb';
 export function SpaceWorkspace({
   space,
   pageId,
@@ -145,7 +146,15 @@ export function SpaceWorkspace({
         </div>
       ) : (
         <div className="library-empty">
-          <h2>{loaded ? 'Page not found' : 'Loading page…'}</h2>
+          <h2>
+            {loaded ? (
+              'Page not found'
+            ) : (
+              <>
+                <ThinkingOrb kind="loading" /> Chargement de la page…
+              </>
+            )}
+          </h2>
           {loaded && (
             <button className="document-primary" onClick={() => onPage()}>
               Back to all pages

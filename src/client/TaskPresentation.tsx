@@ -1,9 +1,5 @@
-import {
-  CheckCheck,
-  ChevronRight,
-  LoaderCircle,
-  MessageCircle,
-} from 'lucide-react';
+import { CheckCheck, ChevronRight, MessageCircle } from 'lucide-react';
+import { ThinkingOrb } from './ThinkingOrb';
 import type { Task } from '../shared/types';
 import { Mascot } from './Mascot';
 export const relative = (value: number) => {
@@ -42,7 +38,7 @@ export function TaskRow({
         {task.status === 'completed' ? (
           <CheckCheck size={19} />
         ) : task.status === 'running' ? (
-          <LoaderCircle className="spin" size={19} />
+          <ThinkingOrb kind="working" />
         ) : (
           <MessageCircle size={19} />
         )}

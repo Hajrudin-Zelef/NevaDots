@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ThinkingOrb } from './ThinkingOrb';
 import { api } from './api';
 import type {
   CatalogModel,
@@ -494,6 +495,7 @@ export function ApiProvidersPanel() {
               role="status"
               aria-label="Chargement des modèles…"
             >
+              <ThinkingOrb kind="loading" />
               <div
                 className="motion-skeleton motion-skeleton-line"
                 style={{ width: '60%' }}

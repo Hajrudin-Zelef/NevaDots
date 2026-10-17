@@ -4,6 +4,7 @@ import type { Dot } from '../shared/types';
 import type { ComputerAction, ComputerStatus } from '../shared/computer-types';
 import { api } from './api';
 import { BrowserScreen } from './BrowserScreen';
+import { ThinkingOrb } from './ThinkingOrb';
 import { useComputerActivity } from './useComputerActivity';
 import {
   fileBasename,
@@ -277,7 +278,10 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
         </p>
       )}
       {!status ? (
-        <p role="status">{error ? 'Statut indisponible.' : 'Chargement…'}</p>
+        <p role="status">
+          <ThinkingOrb kind="loading" />{' '}
+          {error ? 'Statut indisponible.' : 'Chargement…'}
+        </p>
       ) : (
         <>
           <div className="computer-status">
@@ -288,11 +292,15 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
               </button>
             )}
             <span>
-              {busy
-                ? 'Travail…'
-                : human
-                  ? 'Vous avez le contrôle'
-                  : `Contrôle de ${dot.name}`}
+              {busy ? (
+                <>
+                  <ThinkingOrb kind="working" /> Travail…
+                </>
+              ) : human ? (
+                'Vous avez le contrôle'
+              ) : (
+                `Contrôle de ${dot.name}`
+              )}
             </span>
           </div>
           {!status.configured && (
@@ -726,7 +734,7 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                       </div>
                       {run.running ? (
                         <p className="computer-terminal-running" role="status">
-                          En cours…
+                          <ThinkingOrb kind="working" /> En cours…
                         </p>
                       ) : run.error ? (
                         <p className="computer-error" role="alert">

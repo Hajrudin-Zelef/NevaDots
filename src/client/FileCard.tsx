@@ -4,12 +4,12 @@ import {
   FileText,
   FileType,
   File as FileIcon,
-  Loader2,
   RotateCcw,
   X,
 } from 'lucide-react';
 import type { Attachment } from './attachments';
 import { attachmentContentUrl, formatSize } from './attachments';
+import { ThinkingOrb } from './ThinkingOrb';
 
 const CATEGORY_ICON = {
   text: FileText,
@@ -62,12 +62,7 @@ export function FileCard({
           <span className="file-card-size">
             {isUploading ? (
               <span className="file-card-status">
-                <Loader2
-                  size={12}
-                  className="spin"
-                  aria-label="Envoi en cours"
-                />{' '}
-                Envoi…
+                <ThinkingOrb kind="working" label="Envoi en cours" /> Envoi…
               </span>
             ) : isError ? (
               <span className="file-card-status error">Échec de l'envoi</span>

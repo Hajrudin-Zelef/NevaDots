@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { FileText, Globe, Terminal } from 'lucide-react';
 import { z } from 'zod';
 import { api } from './api';
+import { ThinkingOrb } from './ThinkingOrb';
 import { computerToolResult } from '../shared/activity';
 
 const screenSchema = z.object({
@@ -169,6 +170,7 @@ export function ComputerToolCard({
             />
           ) : (
             <div className="muse-preview-empty" role="status">
+              <ThinkingOrb kind="connecting" size={32} />
               {screenError || 'Connexion au navigateur…'}
             </div>
           )}

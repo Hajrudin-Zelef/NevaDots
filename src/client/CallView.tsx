@@ -9,6 +9,7 @@ import {
   Maximize2,
 } from 'lucide-react';
 import { Mascot } from './Mascot';
+import { ThinkingOrb, type ThinkingKind } from './ThinkingOrb';
 import type { Dot } from '../shared/types';
 import type { useVoice } from './useVoice';
 
@@ -31,6 +32,16 @@ export function CallView({
     ? Math.max(0, Math.floor((now - voice.startedAt) / 1000))
     : 0;
   const duration = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const orbKind: ThinkingKind | null =
+    voice.status === 'connecting'
+      ? 'connecting'
+      : voice.status === 'ending' || voice.muted
+        ? null
+        : voice.phase === 'speaking'
+          ? 'writing'
+          : voice.phase === 'thinking'
+            ? 'thinking'
+            : 'listening';
   const label =
     voice.status === 'connecting'
       ? 'Connecting…'
@@ -66,7 +77,9 @@ export function CallView({
         <span className="call-timer" aria-label="Call duration">
           {duration}
         </span>
-        <p role="status">{label}</p>
+        <p role="status">
+          {orbKind && <ThinkingOrb kind={orbKind} />} {label}
+        </p>
       </div>
       {!minimized && (
         <div className="call-caption" aria-live="polite">

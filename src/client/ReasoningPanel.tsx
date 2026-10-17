@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { X, Languages } from 'lucide-react';
+import { ThinkingOrb } from './ThinkingOrb';
 import type { ReasoningRunStats } from '../server/reasoning.js';
 
 function formatMs(ms: number): string {
@@ -60,7 +61,12 @@ export function ReasoningPanel({
         <header className="reasoning-header">
           <div>
             <strong>Raisonnement</strong>
-            {live && <span className="reasoning-live">En cours…</span>}
+            {live && (
+              <span className="reasoning-live">
+                <ThinkingOrb kind="analyzing" label="Raisonnement en cours" />{' '}
+                En cours…
+              </span>
+            )}
           </div>
           <button
             type="button"

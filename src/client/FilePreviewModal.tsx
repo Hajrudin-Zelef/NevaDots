@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
+import { ThinkingOrb } from './ThinkingOrb';
 import type { Attachment } from './attachments';
 import {
   PREVIEW_LIMIT,
@@ -129,7 +130,9 @@ export function FilePreviewModal({
             textError ? (
               <p className="file-preview-error">{textError}</p>
             ) : text === null ? (
-              <p className="file-preview-loading">Chargement…</p>
+              <p className="file-preview-loading">
+                <ThinkingOrb kind="loading" /> Chargement…
+              </p>
             ) : (
               <pre className="file-preview-text">{text}</pre>
             )

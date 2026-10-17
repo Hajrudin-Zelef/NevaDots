@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Check, ChevronDown, Loader2 } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import type { AgentStep } from './useAgentSteps';
+import { ThinkingOrb, orbKindForStepLabel } from './ThinkingOrb';
 
 /**
  * Carte de progression des étapes de l'agent (phase 3).
@@ -34,7 +35,9 @@ export function StepCard({
       >
         <span className="step-card-icon">
           {live ? (
-            <Loader2 size={14} className="spin" aria-hidden="true" />
+            <ThinkingOrb
+              kind={current ? orbKindForStepLabel(current.label) : 'thinking'}
+            />
           ) : (
             <Check size={14} aria-hidden="true" />
           )}
@@ -64,7 +67,7 @@ export function StepCard({
                 {step.status === 'done' ? (
                   <Check size={13} />
                 ) : (
-                  <Loader2 size={13} className="spin" />
+                  <ThinkingOrb kind={orbKindForStepLabel(step.label)} />
                 )}
               </span>
               <span className="step-card-step-label">{step.label}</span>
