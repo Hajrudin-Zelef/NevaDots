@@ -85,6 +85,16 @@ export function ReasoningPanel({
             <dd>{stats ? formatTokens(stats.promptTokens) : '—'}</dd>
           </div>
           <div>
+            <dt>En cache</dt>
+            <dd>
+              {stats?.cachedTokens != null && stats.promptTokens
+                ? `${formatTokens(stats.cachedTokens)} · ${Math.round(
+                    (stats.cachedTokens / stats.promptTokens) * 100,
+                  )} %`
+                : '—'}
+            </dd>
+          </div>
+          <div>
             <dt>Output</dt>
             <dd>{stats ? formatTokens(stats.completionTokens) : '—'}</dd>
           </div>

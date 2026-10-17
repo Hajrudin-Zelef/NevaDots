@@ -3,6 +3,9 @@
 // Unknown models render as "—" rather than a guessed number.
 export const MODEL_PRICES_USD_PER_M: Record<string, [number, number]> = {
   'deepseek/deepseek-chat-v3-0324': [0.27, 1.1],
+  // Aliases bruts exposés par la passerelle LiteLLM locale.
+  'deepseek-chat': [0.27, 1.1],
+  'deepseek-reasoner': [0.55, 2.19],
   'deepseek/deepseek-r1-0528': [0.55, 2.19],
   'qwen/qwen3-235b-a22b': [0.2, 0.85],
   'qwen/qwen3-max': [1.2, 6],
@@ -13,9 +16,7 @@ export const MODEL_PRICES_USD_PER_M: Record<string, [number, number]> = {
   'anthropic/claude-sonnet-4.5': [3, 15],
 };
 
-export function priceForModel(
-  modelId: string,
-): [number, number] | undefined {
+export function priceForModel(modelId: string): [number, number] | undefined {
   const id = modelId.toLowerCase();
   if (MODEL_PRICES_USD_PER_M[id]) return MODEL_PRICES_USD_PER_M[id];
   // Suffix match for provider-prefixed ids ("openrouter/deepseek/..." etc.).
@@ -25,15 +26,23 @@ export function priceForModel(
   return undefined;
 }
 
+/** Les tokens relus depuis le cache préfixe du provider sont massivement
+ * moins chers (DeepSeek/OpenAI/Anthropic ≈ 0.1× le prix d'entrée). */
+export const CACHE_HIT_FACTOR = 0.1;
+
 export function estimateCostUsd(
   modelId: string,
   promptTokens: number | null,
   completionTokens: number | null,
+  cachedTokens?: number | null,
 ): number | null {
   if (promptTokens == null || completionTokens == null) return null;
   const price = priceForModel(modelId);
   if (!price) return null;
+  const cached = Math.max(0, Math.min(cachedTokens ?? 0, promptTokens));
   return (
-    (promptTokens * price[0] + completionTokens * price[1]) / 1_000_000
+    ((promptTokens - cached + cached * CACHE_HIT_FACTOR) * price[0] +
+      completionTokens * price[1]) /
+    1_000_000
   );
 }

@@ -48,6 +48,12 @@ export class Store {
     } catch {
       // Column already present — nothing to do.
     }
+    // Provider prompt-cache accounting (2026-10-16): cache-hit input tokens.
+    try {
+      this.db.exec('ALTER TABLE usage ADD COLUMN cachedTokens INTEGER');
+    } catch {
+      // Column already present — nothing to do.
+    }
     this.db
       .prepare('INSERT OR IGNORE INTO settings VALUES (1, ?)')
       .run(JSON.stringify(defaults));
@@ -345,11 +351,12 @@ export class Store {
     model: string;
     promptTokens: number | null;
     completionTokens: number | null;
+    cachedTokens?: number | null;
     costUsd: number | null;
   }): void {
     this.db
       .prepare(
-        'INSERT INTO usage (ts, dotId, model, promptTokens, completionTokens, costUsd) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO usage (ts, dotId, model, promptTokens, completionTokens, cachedTokens, costUsd) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         entry.ts,
@@ -357,6 +364,7 @@ export class Store {
         entry.model,
         entry.promptTokens,
         entry.completionTokens,
+        entry.cachedTokens ?? null,
         entry.costUsd,
       );
   }
@@ -370,6 +378,7 @@ export class Store {
         .prepare(
           `SELECT COUNT(*) AS runs,
                   COALESCE(SUM(promptTokens), 0) AS promptTokens,
+                  COALESCE(SUM(cachedTokens), 0) AS cachedTokens,
                   COALESCE(SUM(completionTokens), 0) AS completionTokens,
                   COALESCE(SUM(costUsd), 0) AS costUsd
              FROM usage WHERE ts >= ?`,
@@ -377,12 +386,14 @@ export class Store {
         .get(since) as {
         runs: number;
         promptTokens: number;
+        cachedTokens: number;
         completionTokens: number;
         costUsd: number;
       };
       return {
         runs: row.runs,
         promptTokens: row.promptTokens,
+        cachedTokens: row.cachedTokens,
         completionTokens: row.completionTokens,
         costUsd: row.costUsd,
       };
@@ -392,6 +403,7 @@ export class Store {
         `SELECT dotId,
                 COUNT(*) AS runs,
                 COALESCE(SUM(promptTokens), 0) AS promptTokens,
+                COALESCE(SUM(cachedTokens), 0) AS cachedTokens,
                 COALESCE(SUM(completionTokens), 0) AS completionTokens,
                 COALESCE(SUM(costUsd), 0) AS costUsd
            FROM usage WHERE ts >= ? AND dotId IS NOT NULL

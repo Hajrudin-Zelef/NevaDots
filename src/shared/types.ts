@@ -24,6 +24,8 @@ export interface Settings {
 export interface UsageSummary {
   costUsd: number;
   promptTokens: number;
+  /** Somme des tokens d'entrée relus depuis le cache provider. */
+  cachedTokens: number;
   completionTokens: number;
   runs: number;
 }

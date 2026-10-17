@@ -167,3 +167,55 @@ it('finalizes stats on [DONE] even when the connection stays open', async () => 
   expect(hooks.onEnd).toHaveBeenCalledTimes(1);
   expect(hooks.onEnd.mock.calls[0][0].durationMs).toBeGreaterThanOrEqual(0);
 });
+
+const cacheFormats: Array<[string, string, number]> = [
+  ['DeepSeek natif', '"prompt_cache_hit_tokens":800', 800],
+  ['OpenAI/OpenRouter', '"prompt_tokens_details":{"cached_tokens":700}', 700],
+  ['Anthropic via LiteLLM', '"cache_read_input_tokens":600', 600],
+];
+it.each(cacheFormats)(
+  'extrait les tokens cache — %s',
+  async (_label, field, expected) => {
+    const chunks = [
+      'data: {"choices":[{"delta":{"reasoning_content":"x"}}]}',
+      `data: {"usage":{"prompt_tokens":1000,"completion_tokens":10,${field}}}`,
+      'data: [DONE]',
+    ];
+    const baseFetch = vi.fn(async () => sseResponse(chunks));
+    const hooks = { onStart: vi.fn(), onDelta: vi.fn(), onEnd: vi.fn() };
+    const wrapped = createReasoningFetch(
+      baseFetch as unknown as typeof fetch,
+      (url) => url.startsWith(CHAT_URL),
+      hooks,
+    );
+    const response = await wrapped(CHAT_URL, { method: 'POST' });
+    await response.text();
+    expect(hooks.onEnd.mock.calls[0][0].cachedTokens).toBe(expected);
+  },
+);
+
+it('facture les hits de cache à 0.1× le prix d’entrée', () => {
+  // 1000 prompt dont 800 relus : 200 plein + 80 × tarif cache.
+  expect(
+    estimateCostUsd('deepseek/deepseek-chat-v3-0324', 1000, 0, 800),
+  ).toBeCloseTo(((200 + 800 * 0.1) * 0.27) / 1e6, 12);
+  const stats = buildReasoningStats('deepseek/deepseek-chat-v3-0324', {
+    promptTokens: 1000,
+    completionTokens: 2000,
+    cachedTokens: 500,
+    durationMs: 1000,
+  });
+  expect(stats.cachedTokens).toBe(500);
+  expect(stats.costUsd).toBeCloseTo(
+    (500 * 0.27 + 500 * 0.1 * 0.27 + 2000 * 1.1) / 1e6,
+    12,
+  );
+  // cachedTokens absent = comportement historique inchangé.
+  expect(
+    buildReasoningStats('deepseek/deepseek-chat-v3-0324', {
+      promptTokens: 1000,
+      completionTokens: 0,
+      durationMs: 100,
+    }).costUsd,
+  ).toBeCloseTo((1000 * 0.27) / 1e6, 12);
+});

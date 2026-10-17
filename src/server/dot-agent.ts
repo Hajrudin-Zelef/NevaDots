@@ -516,6 +516,7 @@ export class DotAgent extends AbstractAgent {
           onEnd: (info: {
             promptTokens: number | null;
             completionTokens: number | null;
+            cachedTokens: number | null;
             durationMs: number;
           }) => {
             const stats = buildReasoningStats(model, info);
@@ -528,6 +529,7 @@ export class DotAgent extends AbstractAgent {
                 model,
                 promptTokens: info.promptTokens,
                 completionTokens: info.completionTokens,
+                cachedTokens: info.cachedTokens,
                 costUsd: stats.costUsd,
               });
             } catch {

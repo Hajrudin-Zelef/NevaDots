@@ -48,6 +48,7 @@ describe('durable task lifecycle', () => {
       model: 'm',
       promptTokens: 100,
       completionTokens: 50,
+      cachedTokens: 80,
       costUsd: 0.01,
     });
     store.recordUsage({
@@ -56,6 +57,7 @@ describe('durable task lifecycle', () => {
       model: 'm',
       promptTokens: 200,
       completionTokens: 100,
+      cachedTokens: 50,
       costUsd: 0.02,
     });
     store.recordUsage({
@@ -69,13 +71,16 @@ describe('durable task lifecycle', () => {
     const { today, week, byDot } = store.usageSummary(now);
     expect(today.runs).toBe(1);
     expect(today.promptTokens).toBe(100);
+    expect(today.cachedTokens).toBe(80);
     expect(today.costUsd).toBeCloseTo(0.01);
     expect(week.runs).toBe(2);
+    expect(week.cachedTokens).toBe(130);
     expect(week.completionTokens).toBe(150);
     // Per-Dot attribution covers the 7-day window only.
     expect(byDot).toHaveLength(1);
     expect(byDot[0].dotId).toBe('dot-a');
     expect(byDot[0].runs).toBe(2);
+    expect(byDot[0].cachedTokens).toBe(130);
   });
   it('forgets every memory at once', () => {
     const { store } = fixture();

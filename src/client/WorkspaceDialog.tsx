@@ -20,6 +20,7 @@ import type {
   Space,
   State,
   UsageReport,
+  UsageSummary,
   WorkspaceState,
 } from '../shared/types';
 import type { ModelsResponse } from '../shared/models';
@@ -78,6 +79,12 @@ function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
+}
+
+/** Taux de hit du cache provider, en suffixe FR ; vide si aucun hit. */
+function cacheLabel(s: UsageSummary): string {
+  if (!s.promptTokens || !s.cachedTokens) return '';
+  return ` · ${Math.round((s.cachedTokens / s.promptTokens) * 100)} % en cache`;
 }
 
 export function WorkspaceDialog({
@@ -946,7 +953,7 @@ export function WorkspaceDialog({
                           </strong>
                           <span>
                             {usage
-                              ? `${fmtTokens(usage.today.promptTokens + usage.today.completionTokens)} jetons · ${usage.today.runs} appel(s)`
+                              ? `${fmtTokens(usage.today.promptTokens + usage.today.completionTokens)} jetons · ${usage.today.runs} appel(s)${cacheLabel(usage.today)}`
                               : ''}
                           </span>
                         </div>
@@ -957,7 +964,7 @@ export function WorkspaceDialog({
                           </strong>
                           <span>
                             {usage
-                              ? `${fmtTokens(usage.week.promptTokens + usage.week.completionTokens)} jetons · ${usage.week.runs} appel(s)`
+                              ? `${fmtTokens(usage.week.promptTokens + usage.week.completionTokens)} jetons · ${usage.week.runs} appel(s)${cacheLabel(usage.week)}`
                               : ''}
                           </span>
                         </div>
@@ -1060,6 +1067,18 @@ export function WorkspaceDialog({
                               {spend && spend.runs > 0 && (
                                 <span title="Coût estimé sur 7 jours">
                                   ${spend.costUsd.toFixed(3)} / 7 j
+                                  {spend.cachedTokens > 0 && (
+                                    <em className="muted">
+                                      {' '}
+                                      ·{' '}
+                                      {Math.round(
+                                        (spend.cachedTokens /
+                                          Math.max(spend.promptTokens, 1)) *
+                                          100,
+                                      )}
+                                      % cache
+                                    </em>
+                                  )}
                                 </span>
                               )}
                             </span>

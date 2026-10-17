@@ -13,6 +13,8 @@ export interface ReasoningRunStats {
   /** Wall-clock ms of the reasoning phase (first delta -> end). */
   durationMs: number;
   promptTokens: number | null;
+  /** Tokens d'entrée relus depuis le cache préfixe du provider (null = inconnu). */
+  cachedTokens: number | null;
   completionTokens: number | null;
   tokensPerSecond: number | null;
   /** USD estimate, null when the model is not in the price table. */
@@ -47,12 +49,22 @@ export interface ReasoningStreamHooks {
   onEnd(info: {
     promptTokens: number | null;
     completionTokens: number | null;
+    cachedTokens: number | null;
     durationMs: number;
   }): void;
 }
 
 function toNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** Tokens cache-hit selon le format du provider (premier trouvé). */
+function extractCachedTokens(usage: SseUsage): number | null {
+  const deepseek = toNumber(usage.prompt_cache_hit_tokens);
+  if (deepseek !== null) return deepseek;
+  const openai = toNumber(usage.prompt_tokens_details?.cached_tokens);
+  if (openai !== null) return openai;
+  return toNumber(usage.cache_read_input_tokens);
 }
 
 interface SseDelta {
@@ -69,6 +81,12 @@ interface SseChoice {
 interface SseUsage {
   prompt_tokens?: unknown;
   completion_tokens?: unknown;
+  /** DeepSeek natif. */
+  prompt_cache_hit_tokens?: unknown;
+  /** OpenAI / OpenRouter / LiteLLM. */
+  prompt_tokens_details?: { cached_tokens?: unknown } | null;
+  /** Anthropic via LiteLLM (relecture de cache_read). */
+  cache_read_input_tokens?: unknown;
 }
 
 interface SseChunk {
@@ -123,8 +141,7 @@ export function createReasoningFetch(
     } catch {
       url = null;
     }
-    if (url === null || !isChatCompletions(url))
-      return baseFetch(input, init);
+    if (url === null || !isChatCompletions(url)) return baseFetch(input, init);
 
     const startedAt = Date.now();
     const response = await baseFetch(input, init);
@@ -138,6 +155,7 @@ export function createReasoningFetch(
     let answerStarted = false;
     let promptTokens: number | null = null;
     let completionTokens: number | null = null;
+    let cachedTokens: number | null = null;
     const finish = () => {
       if (ended) return;
       ended = true;
@@ -145,6 +163,7 @@ export function createReasoningFetch(
         hooks.onEnd({
           promptTokens,
           completionTokens,
+          cachedTokens,
           durationMs: Date.now() - startedAt,
         });
       }
@@ -174,6 +193,8 @@ export function createReasoningFetch(
         const c = toNumber(usage.completion_tokens);
         if (p !== null) promptTokens = p;
         if (c !== null) completionTokens = c;
+        const cached = extractCachedTokens(usage);
+        if (cached !== null) cachedTokens = cached;
       }
       const choice = json.choices?.[0];
       if (!choice) return;
@@ -244,6 +265,7 @@ export function buildReasoningStats(
   info: {
     promptTokens: number | null;
     completionTokens: number | null;
+    cachedTokens?: number | null;
     durationMs: number;
   },
 ): ReasoningRunStats {
@@ -255,12 +277,14 @@ export function buildReasoningStats(
     model,
     durationMs: info.durationMs,
     promptTokens: info.promptTokens,
+    cachedTokens: info.cachedTokens ?? null,
     completionTokens: info.completionTokens,
     tokensPerSecond,
     costUsd: estimateCostUsd(
       model,
       info.promptTokens,
       info.completionTokens,
+      info.cachedTokens,
     ),
   };
 }
