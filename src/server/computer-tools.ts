@@ -12,6 +12,7 @@ const GATED_BY_PERMISSION: Partial<
   Record<keyof typeof computerInputs, keyof ComputerPermissions>
 > = {
   files_search: 'files',
+  files_edit: 'files',
 };
 
 /** Descriptions précises (le générique ne dit pas comment appeler). */
@@ -21,6 +22,8 @@ const TOOL_DESCRIPTIONS: Partial<Record<keyof typeof computerInputs, string>> =
       'Search file contents in the workspace with a regex (server-side, bounded). Returns [{path, line, text}]. Prefer this to reading whole files.',
     files_read:
       'Read a workspace file. Without offset/limit: whole file. With offset (1-based) and limit: a line range — prefer ranges for large files.',
+    files_edit:
+      'Surgical file edit: replaces oldText with newText (unique match required unless replaceAll). Refused if oldText is missing, ambiguous, or the file was truncated on read. Never rewrite whole files with this.',
   };
 export function computerTools(
   service: ComputerService,

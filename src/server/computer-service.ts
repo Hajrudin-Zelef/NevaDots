@@ -607,6 +607,62 @@ export class ComputerService {
     if (files.length > SEARCH_MAX_FILES) truncated = true;
     return { path: scope, query: input.query, matches, truncated };
   }
+  /** Édition chirurgicale : read → remplacements (match unique sauf
+   * replaceAll) → write. Refuse si le read est tronqué (on n'édite pas un
+   * fichier qu'on n'a pas lu en entier) ou si oldText est absent/ambigu. */
+  private async editFile(
+    url: string,
+    id: string,
+    input: {
+      path: string;
+      edits: Array<{ oldText: string; newText: string; replaceAll?: boolean }>;
+    },
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const read = (await this.json(
+      `${url}/files/read`,
+      this.token(id),
+      { path: input.path },
+      signal,
+      id,
+    )) as { path?: unknown; text?: unknown; truncated?: unknown };
+    if (typeof read.text !== 'string')
+      throw new Error('Lecture impossible avant édition.');
+    if (read.truncated === true)
+      throw new Error(
+        'Fichier tronqué au read : édition refusée, lisez par plages.',
+      );
+    let text = read.text;
+    let applied = 0;
+    for (const edit of input.edits) {
+      const occurrences = text.split(edit.oldText).length - 1;
+      if (occurrences === 0)
+        throw new Error(
+          `oldText introuvable dans ${input.path} : édition annulée, rien n'a été écrit.`,
+        );
+      if (occurrences > 1 && !edit.replaceAll)
+        throw new Error(
+          `${occurrences} occurrences dans ${input.path} : édition annulée, précisez replaceAll ou un oldText unique.`,
+        );
+      text =
+        edit.replaceAll === true
+          ? text.split(edit.oldText).join(edit.newText)
+          : text.replace(edit.oldText, edit.newText);
+      applied += edit.replaceAll === true ? occurrences : 1;
+    }
+    const written = (await this.json(
+      `${url}/files/write`,
+      this.token(id),
+      { path: input.path, contents: text },
+      signal,
+      id,
+    )) as { bytes?: unknown };
+    return {
+      path: input.path,
+      applied,
+      bytes: typeof written.bytes === 'number' ? written.bytes : null,
+    };
+  }
   async action(
     id: string,
     action: ComputerAction,
@@ -647,14 +703,28 @@ export class ComputerService {
         const url = await this.running(id, activeSignal);
         this.allowed(id, kind, actor);
         activeSignal.throwIfAborted();
-        // files_search et les lectures à plage sont composés côté serveur
-        // (le conteneur ne connaît que /files/list + /files/read entiers) —
-        // les champs offset/limit/query ne lui sont jamais transmis.
+        // files_search, lectures à plage et files_edit sont composés côté
+        // serveur (le conteneur ne connaît que /files/list + /files/read
+        // entiers + /files/write) — jamais transmis tels quels.
         if (action === 'files_search')
           return this.searchFiles(
             url,
             id,
             parsed as { query: string; path?: string; maxResults?: number },
+            activeSignal,
+          );
+        if (action === 'files_edit')
+          return this.editFile(
+            url,
+            id,
+            parsed as {
+              path: string;
+              edits: Array<{
+                oldText: string;
+                newText: string;
+                replaceAll?: boolean;
+              }>;
+            },
             activeSignal,
           );
         if (action === 'files_read') {

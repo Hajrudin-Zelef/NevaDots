@@ -96,6 +96,26 @@ export const computerInputs = {
       maxResults: z.number().int().min(1).max(100).default(30),
     })
     .strict(),
+  /** Édition chirurgicale, composée côté serveur (read → remplacements →
+   * write). Jamais transmise telle quelle. */
+  files_edit: z
+    .object({
+      path: path.refine((p) => p.length > 0),
+      edits: z
+        .array(
+          z
+            .object({
+              oldText: z.string().min(1).max(10000),
+              newText: z.string().max(10000),
+              /** Remplace toutes les occurrences ; défaut = exige un match unique. */
+              replaceAll: z.boolean().optional(),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(8),
+    })
+    .strict(),
   files_write: z
     .object({
       path: path.refine((p) => p.length > 0),

@@ -535,3 +535,99 @@ it('n’expose files_search que si la permission fichiers est active (mitigation
   const legacy = computerTools(f.service, f.id, check, signal);
   expect(legacy.some((t) => t.name === 'computer_files_search')).toBe(true);
 });
+it('édite par remplacements uniques, fail-closed sinon (P2)', async () => {
+  const f = fixture();
+  let content = 'alpha\nbeta\ngamma\nbeta\n';
+  let writes = 0;
+  f.handle(async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+      string,
+      unknown
+    >;
+    if (String(url).endsWith('/files/read'))
+      return Response.json({
+        path: body.path,
+        text: content,
+        truncated: false,
+        bytes: content.length,
+      });
+    if (String(url).endsWith('/files/write')) {
+      writes++;
+      content = String(body.contents);
+      return Response.json({ path: body.path, bytes: content.length });
+    }
+    throw new Error(`unexpected ${url}`);
+  });
+  // Match unique → appliqué.
+  await expect(
+    f.service.action(
+      f.id,
+      'files_edit',
+      { path: 'a.txt', edits: [{ oldText: 'alpha', newText: 'ALPHA' }] },
+      'owner',
+    ),
+  ).resolves.toMatchObject({ path: 'a.txt', applied: 1 });
+  expect(content.startsWith('ALPHA\n')).toBe(true);
+  // Ambigu sans replaceAll → refusé, rien écrit.
+  await expect(
+    f.service.action(
+      f.id,
+      'files_edit',
+      { path: 'a.txt', edits: [{ oldText: 'beta', newText: 'BETA' }] },
+      'owner',
+    ),
+  ).rejects.toThrow('occurrences');
+  expect(content).not.toContain('BETA');
+  // replaceAll explicite → toutes les occurrences.
+  await expect(
+    f.service.action(
+      f.id,
+      'files_edit',
+      {
+        path: 'a.txt',
+        edits: [{ oldText: 'beta', newText: 'BETA', replaceAll: true }],
+      },
+      'owner',
+    ),
+  ).resolves.toMatchObject({ applied: 2 });
+  expect(content).toBe('ALPHA\nBETA\ngamma\nBETA\n');
+  // oldText absent → refusé, rien écrit.
+  const before = content;
+  await expect(
+    f.service.action(
+      f.id,
+      'files_edit',
+      { path: 'a.txt', edits: [{ oldText: 'zzz', newText: 'Z' }] },
+      'owner',
+    ),
+  ).rejects.toThrow('introuvable');
+  expect(content).toBe(before);
+  // Le conteneur n'a vu que des read {path} et des write {path, contents}.
+  const writeBodies = f.calls
+    .filter((c) => c.url.endsWith('/files/write'))
+    .map((c) => JSON.parse(String(c.init?.body)) as Record<string, unknown>);
+  expect(writes).toBe(2);
+  for (const body of writeBodies)
+    expect(Object.keys(body).sort()).toEqual(['contents', 'path']);
+});
+it('refuse d’éditer un fichier tronqué au read', async () => {
+  const f = fixture();
+  f.handle(async (url, init) => {
+    if (String(url).endsWith('/files/read'))
+      return Response.json({
+        path: 'big.txt',
+        text: 'début…',
+        truncated: true,
+        bytes: 64000,
+      });
+    throw new Error(`unexpected ${url}`);
+  });
+  await expect(
+    f.service.action(
+      f.id,
+      'files_edit',
+      { path: 'big.txt', edits: [{ oldText: 'début', newText: 'fin' }] },
+      'owner',
+    ),
+  ).rejects.toThrow('tronqué');
+});
