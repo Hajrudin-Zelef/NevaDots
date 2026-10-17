@@ -239,6 +239,9 @@ export function Chat({
   const [showTranslation, setShowTranslation] = useState(false);
   const seenReasoning = useRef(new Set<string>());
   const prevRunning = useRef(false);
+  // Verrou anti-double-submit : un ref (pas un state) pour que deux Entrée
+  // rapprochés ne puissent pas lancer deux prepareSend+send concurrents.
+  const sendingRef = useRef(false);
   // Transient mascot reactions fired when a run ends (success or failure).
   const [flash, setFlash] = useState<'' | 'complete' | 'error'>('');
   const prevRunForMascot = useRef(false);
@@ -1035,12 +1038,20 @@ export function Chat({
         inputAriaLabel={`Discuter avec ${dot.name}`}
         canSubmitOnEnter={!!draft.trim() && loaded && contextReady && !paused}
         onSubmit={() => {
+          if (sendingRef.current) return;
+          sendingRef.current = true;
           void (async () => {
             try {
               const text = await attachments.prepareSend(draft);
               void send(`${source ? `From ${source}:\n\n` : ''}${text}`);
-            } catch {
-              // prepareSend a déjà signalé l'échec (fichiers en erreur).
+            } catch (error) {
+              // prepareSend a échoué (timeout, upload, rattachement) :
+              // erreur visible, brouillon conservé.
+              setError(
+                error instanceof Error ? error.message : 'Envoi impossible.',
+              );
+            } finally {
+              sendingRef.current = false;
             }
           })();
         }}

@@ -46,6 +46,13 @@ async function uploadFiles(
 }
 
 /**
+ * Attente d'upload avant envoi : 500 ms × 120 rondes = 60 s max. Passé ce
+ * délai, prepareSend lève (brouillon conservé) au lieu d'exclure en silence.
+ */
+const UPLOAD_WAIT_MS = 500;
+const UPLOAD_WAIT_ROUNDS = 120;
+
+/**
  * Gère les pièces jointes du composer.
  *
  * Phase 2a : upload immédiat en arrière-plan dès la sélection (un POST par
@@ -241,16 +248,24 @@ export function useAttachments(scope: string) {
   };
 
   /**
-   * Prépare l'envoi : attend les uploads en cours, refuse si échec, marque
-   * les fichiers comme rattachés au message, construit le texte, vide le
-   * brouillon (local + localStorage).
+   * Prépare l'envoi : attend les uploads en cours, refuse si échec ou si un
+   * upload dépasse le délai, marque les fichiers comme rattachés au message,
+   * construit le texte, vide le brouillon (local + localStorage).
+   * Le brouillon n'est vidé qu'après préparation complète : en cas d'erreur
+   * (timeout, échec d'upload, mark-attached refusé), rien n'est perdu.
    */
   const prepareSend = async (draft: string): Promise<string> => {
-    for (let i = 0; i < 600; i++) {
+    for (let i = 0; i < UPLOAD_WAIT_ROUNDS; i++) {
       if (!itemsRef.current.some((a) => a.status === 'uploading')) break;
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, UPLOAD_WAIT_MS));
     }
     const snapshot = itemsRef.current;
+    const stuck = snapshot.filter((a) => a.status === 'uploading');
+    if (stuck.length) {
+      throw new Error(
+        `Téléversement toujours en cours après ${Math.round((UPLOAD_WAIT_ROUNDS * UPLOAD_WAIT_MS) / 1000)} s : ${stuck.map((a) => a.name).join(', ')}. Attendez la fin du téléversement puis réessayez — votre brouillon est conservé.`,
+      );
+    }
     const failed = snapshot.filter((a) => a.status === 'error');
     if (failed.length) {
       throw new Error(
@@ -262,9 +277,17 @@ export function useAttachments(scope: string) {
     );
     if (ready.length) {
       // Exclut les fichiers du nettoyage des orphelins (rattachés à un message).
-      void api('/attachments/mark-attached', 'POST', {
-        ids: ready.map((a) => a.id),
-      }).catch(() => {});
+      // Attendu (pas de fire-and-forget) : si le rattachement échoue, on
+      // lève avant de vider le brouillon pour ne rien perdre.
+      try {
+        await api('/attachments/mark-attached', 'POST', {
+          ids: ready.map((a) => a.id),
+        });
+      } catch {
+        throw new Error(
+          'Impossible de rattacher les fichiers au message. Réessayez — votre brouillon est conservé.',
+        );
+      }
     }
     const text = buildMessageWithAttachments(draft, snapshot);
     clearPendingAttachments(scopeRef.current);
