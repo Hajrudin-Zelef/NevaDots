@@ -1,6 +1,12 @@
 import { expect, it } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { hardenSupervisorEnvironment } from '../deployment/computers/harden-supervisor.mjs';
+import {
+  patchDockerEnsureOptions,
+  patchDockerHostConfig,
+  patchIndexCpus,
+} from '../deployment/computers/cpu-cap-supervisor.mjs';
+import { computerCpus } from '../deployment/computers/computer-cpus.ts';
 
 const upstream = `export function environmentFor(botId, env) {
   const computerToken = env.COMPUTER_TOKEN?.trim() || undefined;
@@ -49,6 +55,70 @@ it('refuses missing or ambiguous upstream patch targets', () => {
     /contract changed/,
   );
   expect(() => hardenSupervisorEnvironment(upstream + upstream)).toThrow(
+    /contract changed/,
+  );
+});
+
+it('parses COMPUTER_CPUS strictly into nanocpus', () => {
+  expect(computerCpus(undefined)).toEqual({
+    ok: true,
+    nanoCpus: undefined,
+  });
+  expect(computerCpus('')).toEqual({ ok: true, nanoCpus: undefined });
+  expect(computerCpus('2')).toEqual({ ok: true, nanoCpus: 2_000_000_000 });
+  expect(computerCpus('1.5')).toEqual({ ok: true, nanoCpus: 1_500_000_000 });
+  expect(computerCpus('0')).toEqual({ ok: false, reason: expect.any(String) });
+  expect(computerCpus('2cpus')).toEqual({
+    ok: false,
+    reason: expect.any(String),
+  });
+  expect(computerCpus('-1')).toEqual({
+    ok: false,
+    reason: expect.any(String),
+  });
+});
+
+const dockerFixture = `export type EnsureOptions = {
+  image: string;
+  memoryBytes?: number;
+};
+const host = {
+    // A runaway Bot is a resource problem for itself.
+    ...(options.memoryBytes ? { Memory: options.memoryBytes } : {}),
+    PidsLimit: options.pidsLimit ?? 512,
+};`;
+
+it('adds a NanoCpus cap next to the memory cap', () => {
+  const options = patchDockerEnsureOptions(dockerFixture);
+  expect(options).toContain('nanoCpus?: number;');
+  const host = patchDockerHostConfig(dockerFixture);
+  expect(host).toContain(
+    '...(options.nanoCpus ? { NanoCpus: options.nanoCpus } : {}),',
+  );
+});
+
+const indexFixture = `import { computerMemoryBytes } from "./computer-memory-bytes";
+const memoryBytes = resolvedMemory.bytes;
+ensure(names, {
+      ...(memoryBytes ? { memoryBytes } : {}),
+});`;
+
+it('wires COMPUTER_CPUS from env to ensure options', () => {
+  const patched = patchIndexCpus(indexFixture);
+  expect(patched).toContain('import { computerCpus } from "./computer-cpus";');
+  expect(patched).toContain('computerCpus(process.env.COMPUTER_CPUS)');
+  expect(patched).toContain('...(nanoCpus ? { nanoCpus } : {}),');
+});
+
+it('refuses missing or ambiguous CPU patch targets', () => {
+  expect(() => patchDockerEnsureOptions('changed upstream')).toThrow(
+    /contract changed/,
+  );
+  expect(() => patchDockerHostConfig('changed upstream')).toThrow(
+    /contract changed/,
+  );
+  expect(() => patchIndexCpus('changed upstream')).toThrow(/contract changed/);
+  expect(() => patchDockerEnsureOptions(dockerFixture + dockerFixture)).toThrow(
     /contract changed/,
   );
 });

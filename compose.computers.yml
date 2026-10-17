@@ -30,6 +30,7 @@ services:
       COMPUTER_BROWSER_IDLE_MS: ${COMPUTER_BROWSER_IDLE_MS:-0}
       COMPUTER_NETWORK: ''
       COMPUTER_MEMORY_BYTES: ${COMPUTER_MEMORY_BYTES:-2147483648}
+      COMPUTER_CPUS: ${COMPUTER_CPUS:-2}
       COMPUTER_RUNTIME: ${COMPUTER_RUNTIME:-}
     volumes:
       - ${ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
