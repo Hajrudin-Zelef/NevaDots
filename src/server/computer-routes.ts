@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import type { ComputerService } from './computer-service.js';
+import { isUserFacingComputerError } from './computer-service.js';
+import { errorResponse } from './error-response.js';
 import type {
   ComputerAction,
   ComputerActivityEvent,
@@ -9,15 +11,14 @@ import type {
 export function computerRoutes(computers: ComputerService) {
   const app = new Hono();
   app.onError((error, c) =>
-    c.json(
-      {
-        error:
-          error instanceof z.ZodError
-            ? 'Invalid computer request.'
-            : error.message,
-      },
-      400,
-    ),
+    errorResponse(error, c, {
+      zodMessage: 'Invalid computer request.',
+      isSafe: isUserFacingComputerError,
+      fallback:
+        'The computer service could not complete this request. Try again.',
+      fallbackStatus: 503,
+      logLabel: 'computer',
+    }),
   );
   app.get('/dots/:id/computer', async (c) =>
     c.json(await computers.status(c.req.param('id'))),

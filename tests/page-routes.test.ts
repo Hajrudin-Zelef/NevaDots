@@ -422,7 +422,7 @@ it('keeps real Intelligence failures as 503 without exposing details', async () 
   expect(response.status).toBe(503);
   expect(await response.json()).toEqual({
     error:
-      'Page operation could not complete. Check Intelligence setup or retry; your draft has not been discarded.',
+      'Page operation could not complete. Retry; your draft has not been discarded.',
   });
 });
 

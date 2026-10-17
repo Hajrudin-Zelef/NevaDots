@@ -36,6 +36,16 @@ export class ComputerTimeoutError extends Error {
   }
 }
 /**
+ * Messages this service raises that are safe to return to the client verbatim.
+ * `ComputerHttpError` is deliberately excluded: it embeds the upstream
+ * response body, which must not cross the boundary.
+ */
+export function isUserFacingComputerError(message: string): boolean {
+  return /^(Dot not found|Computer service|Computer permission|Computer browser permission|Agents are paused|Start this Dot|Invalid computer namespace|Computer identity mismatch|Computer endpoint is not bound|Computer response exceeded|Computer request was cancelled|Human controls are owner-only|There is no active control request|Unknown computer action|Lecture impossible|Fichier tronqué|Fichier modifié depuis|oldText introuvable|occurences dans|Regex non supportée|Clone bloqué|Neutralisation \.git\/config|Clone trop volumineux|Op git inconnue|commit exige|checkout exige|clone exige|Navigation blocked|The owner currently has control)/.test(
+    message,
+  );
+}
+/**
  * Browser mutations that carry no element ref, so they are safe to retry after
  * taking a fresh snapshot. Click/type carry a ref bound to a snapshot id and
  * must not be replayed blindly.

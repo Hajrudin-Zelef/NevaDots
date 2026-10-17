@@ -63,9 +63,7 @@ export class WorkspaceStore {
         COMMIT;`);
     }
     this.computers = new ComputerStore(this.db);
-    this.connections = new ConnectionStore(this.db, () =>
-      resolveSecretKey(this),
-    );
+    this.connections = new ConnectionStore(this.db, () => resolveSecretKey());
     this.pages = new Pages(this.db, (id) =>
       this.spaces().some((space) => space.id === id),
     );

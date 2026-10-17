@@ -1,5 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+// At-rest secrets are environment-only (fail closed otherwise): give the
+// suite a test key so token sealing works.
+process.env.SECRETS_KEY ??= 'test-secrets-key';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { WorkspaceStore } from '../src/server/workspace.js';
@@ -609,7 +612,7 @@ it('seals MCP tokens at rest and migrates legacy plaintext', async () => {
         token: string;
       }
     ).token;
-    expect(raw.startsWith('enc1:')).toBe(true);
+    expect(raw.startsWith('enc2:')).toBe(true);
     expect(raw).not.toContain('super-secret');
     expect(store.credentials(created.id)).toEqual({
       url: 'https://mail.example.com/mcp',
@@ -631,7 +634,7 @@ it('seals MCP tokens at rest and migrates legacy plaintext', async () => {
         token: string;
       }
     ).token;
-    expect(migrated.startsWith('enc1:')).toBe(true);
+    expect(migrated.startsWith('enc2:')).toBe(true);
   } finally {
     db.close();
   }
@@ -648,7 +651,7 @@ it('fails closed on an unreadable stored credential', async () => {
       [],
     );
     db.prepare('UPDATE mcp_connections SET token=? WHERE id=?').run(
-      'enc1:!!!not-base64!!!',
+      'enc2:zz:zz:zz:zz',
       created.id,
     );
     expect(() => store.credentials(created.id)).toThrow('unreadable');

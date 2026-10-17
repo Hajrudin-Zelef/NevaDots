@@ -322,3 +322,10 @@ export class ConnectionService {
     }
   }
 }
+
+/** Messages safe to return to the client verbatim (see error-response.ts). */
+export function isUserFacingConnectionError(message: string): boolean {
+  return /^(Connection not found\.|Connection tool not found\.|Connection tool is not available|Dot not found\.|Could not reach the connected service|This tool is no longer enabled|The stored credential is unreadable|This approval request expired|This action belongs to a different approval request|This approval was already used|Approval request not found\.|Conversation does not belong to this Dot and owner\.)/.test(
+    message,
+  );
+}

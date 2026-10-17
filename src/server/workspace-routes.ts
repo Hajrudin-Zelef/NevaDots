@@ -9,6 +9,7 @@ import {
   validateLearningSettings,
 } from '../shared/learning.js';
 import { getReasoningStats } from './reasoning.js';
+import { errorResponse } from './error-response.js';
 import { AVATAR_IDS } from '../shared/avatars.js';
 import { defaultProvider, findProvider, providersView } from './providers.js';
 const dotSchema = z
@@ -633,27 +634,28 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   });
   app.all('/copilotkit/*', (c) => platform.handle(c.req.raw));
   app.onError((error, c) => {
-    const text = error.message;
+    const text = error instanceof Error ? error.message : '';
     if (text.startsWith('Space access must include'))
       return c.json({ error: text }, 400);
-    const known =
-      /^(Setup|Voice setup|Dot |Space |Specialist |Conversation |Call |This call|Voice provider|An audio)/.test(
-        text,
-      );
     // A conversation, call or Dot the caller named that does not exist is a missing resource, not a
     // server fault.
     if (
       /^(Dot not found|Call not found|Conversation does not belong)/.test(text)
     )
       return c.json({ error: text }, 404);
-    return c.json(
-      {
-        error: known
-          ? text
-          : 'The service request failed. Check the server configuration and try again.',
-      },
-      503,
-    );
+    return errorResponse(error, c, {
+      zodMessage: 'Invalid request.',
+      // Our own domain vocabulary; anything else is logged, never returned.
+      isSafe: (message) =>
+        /^(Setup|Voice setup|Dot |Space |Specialist |Conversation |Call |This call|Voice provider|An audio)/.test(
+          message,
+        ),
+      statusFor: () => 503,
+      fallback:
+        'The service request failed. Check the server configuration and try again.',
+      fallbackStatus: 503,
+      logLabel: 'workspace',
+    });
   });
   return app;
 }

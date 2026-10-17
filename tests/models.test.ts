@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createCipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { modelKey, parseModelKey } from '../src/shared/models';
 import {
   buildProviders,
@@ -10,6 +11,7 @@ import {
 import {
   decryptSecret,
   encryptSecret,
+  isLegacySecret,
   resolveSecretKey,
   type SecretConfigStore,
 } from '../src/server/secrets';
@@ -124,19 +126,47 @@ class MemoryConfigStore implements SecretConfigStore {
 }
 
 describe('secrets', () => {
-  it('round-trips an encrypted secret', () => {
+  it('round-trips a versioned (enc2) secret with a per-value salt', () => {
     const cipher = encryptSecret('sk-live-123', 'server-secret');
     expect(cipher).not.toContain('sk-live-123');
+    expect(cipher.startsWith('enc2:')).toBe(true);
     expect(decryptSecret(cipher, 'server-secret')).toBe('sk-live-123');
     expect(() => decryptSecret(cipher, 'other-secret')).toThrow();
+    // Same plaintext, different salt ⇒ different ciphertext.
+    expect(encryptSecret('sk-live-123', 'server-secret')).not.toBe(cipher);
   });
 
-  it('generates and persists a key when none is configured', () => {
-    const store = new MemoryConfigStore();
-    const first = resolveSecretKey(store, {});
-    expect(first).toHaveLength(44);
-    expect(resolveSecretKey(store, {})).toBe(first);
-    expect(resolveSecretKey(store, { SECRETS_KEY: 'env' })).toBe('env');
+  it('refuses to seal or read without a server secret (fail closed)', () => {
+    expect(() => encryptSecret('sk-live-123', '')).toThrow(/server secret/i);
+    expect(() => decryptSecret('enc2:a:b:c:d', '')).toThrow(/server secret/i);
+  });
+
+  it('reads the legacy enc1 format and flags it for migration', () => {
+    // Build a genuine legacy value (fixed salt) with the pre-versioned algo.
+    const key = scryptSync('server-secret', 'nevadots-provider-keys', 32);
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const enc = Buffer.concat([
+      cipher.update('sk-legacy', 'utf8'),
+      cipher.final(),
+    ]);
+    const legacy =
+      'enc1:' +
+      Buffer.concat([iv, cipher.getAuthTag(), enc]).toString('base64');
+    expect(isLegacySecret(legacy)).toBe(true);
+    expect(decryptSecret(legacy, 'server-secret')).toBe('sk-legacy');
+    expect(isLegacySecret(encryptSecret('x', 's'))).toBe(false);
+  });
+
+  it('resolves the secret from the environment only, never the database', () => {
+    expect(resolveSecretKey({})).toBe('');
+    expect(resolveSecretKey({ SECRETS_KEY: 'env' })).toBe('env');
+    expect(resolveSecretKey({ OWNER_TOKEN: 'owner-token' })).toBe(
+      'owner-token',
+    );
+    expect(
+      resolveSecretKey({ SECRETS_KEY: 'env', OWNER_TOKEN: 'owner-token' }),
+    ).toBe('env');
   });
 });
 

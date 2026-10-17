@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import { decryptSecret, encryptSecret } from './secrets.js';
+import { decryptSecret, encryptSecret, isLegacySecret } from './secrets.js';
 import type {
   Connection,
   ConnectionActionResult,
@@ -12,9 +12,6 @@ type Row = Omit<Connection, 'hasToken' | 'tools'> & {
 };
 /** Marqueur de la migration one-shot ci-dessous. */
 const REGATE_MARKER = 'mcp_regated_v1';
-/** Prefix for AES-GCM tokens (see secrets.ts). Bare values are legacy
- * plaintext, migrated on open. */
-const ENC_PREFIX = 'enc1:';
 /**
  * One-shot Lot 1 (fail-open `readOnlyHint`) : re-gate les outils restés
  * `requiresApproval: false` par l'ancien défaut. Retourne le nombre d'outils
@@ -88,8 +85,9 @@ export class ConnectionStore {
     }
     this.migrateTokens();
   }
-  /** Encrypt-at-rest for MCP bearer tokens. Legacy plaintext rows are
-   * re-encrypted once, idempotently, using the server secret. */
+  /** Encrypt-at-rest for MCP bearer tokens. Legacy plaintext or `enc1` rows
+   * are re-sealed once, idempotently, using the server secret. Refuses to
+   * store plaintext when no secret is configured (fail closed). */
   private secret(): string | undefined {
     try {
       return this.secretProvider?.();
@@ -98,15 +96,14 @@ export class ConnectionStore {
     }
   }
   private seal(plain: string): string {
-    const secret = this.secret();
-    if (!secret) return plain;
-    return ENC_PREFIX + encryptSecret(plain, secret);
+    return encryptSecret(plain, this.secret() ?? '');
+  }
+  private static sealed(stored: string): boolean {
+    return stored.startsWith('enc2:') || stored.startsWith('enc1:');
   }
   private open(stored: string): string {
-    if (!stored.startsWith(ENC_PREFIX)) return stored;
-    const secret = this.secret();
-    if (!secret) throw new Error('Stored credential is unreadable.');
-    return decryptSecret(stored.slice(ENC_PREFIX.length), secret);
+    if (!ConnectionStore.sealed(stored)) return stored;
+    return decryptSecret(stored, this.secret() ?? '');
   }
   private migrateTokens() {
     if (!this.secretProvider) return;
@@ -114,7 +111,7 @@ export class ConnectionStore {
       .prepare('SELECT id, token FROM mcp_connections WHERE token IS NOT NULL')
       .all() as unknown as { id: string; token: string }[];
     for (const row of rows) {
-      if (row.token.startsWith(ENC_PREFIX)) continue;
+      if (!isLegacySecret(row.token)) continue;
       this.db
         .prepare('UPDATE mcp_connections SET token=? WHERE id=?')
         .run(this.seal(row.token), row.id);

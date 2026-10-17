@@ -2,6 +2,7 @@ import { pageReviewSchema } from '../shared/page-review.js';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { PageError, pageInput, pagePatch } from './pages.js';
+import { errorResponse } from './error-response.js';
 import type { Platform } from './platform.js';
 export function pageRoutes(platform: Platform) {
   const app = new Hono();
@@ -139,21 +140,22 @@ export function pageRoutes(platform: Platform) {
       201,
     );
   });
-  app.onError((error, c) =>
-    error instanceof SyntaxError
-      ? c.json({ error: 'Invalid JSON request.' }, 400)
-      : error instanceof PageError
-        ? c.json({ error: error.message }, error.status)
-        : error.message ===
-            'Conversation does not belong to this Dot and owner.'
-          ? c.json({ error: error.message }, 404)
-          : c.json(
-              {
-                error:
-                  'Page operation could not complete. Check Intelligence setup or retry; your draft has not been discarded.',
-              },
-              503,
-            ),
-  );
+  app.onError((error, c) => {
+    if (error instanceof SyntaxError)
+      return c.json({ error: 'Invalid JSON request.' }, 400);
+    if (error instanceof PageError)
+      return c.json({ error: error.message }, error.status as never);
+    const text = error instanceof Error ? error.message : '';
+    if (text === 'Conversation does not belong to this Dot and owner.')
+      return c.json({ error: text }, 404);
+    return errorResponse(error, c, {
+      zodMessage: 'Invalid page request.',
+      isSafe: () => false,
+      fallback:
+        'Page operation could not complete. Retry; your draft has not been discarded.',
+      fallbackStatus: 503,
+      logLabel: 'page',
+    });
+  });
   return app;
 }

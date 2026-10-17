@@ -48,13 +48,19 @@ const workspace = new WorkspaceStore(
 );
 const providerRegistry = new ProviderRegistry(
   workspace,
-  resolveSecretKey(workspace),
+  resolveSecretKey(),
   process.env,
 );
-if (!process.env.SECRETS_KEY?.trim())
+if (!process.env.SECRETS_KEY?.trim() && process.env.OWNER_TOKEN?.trim())
   console.warn(
-    'SECRETS_KEY is not set: at-rest key encryption falls back to ' +
-      'OWNER_TOKEN or a generated database key. Set SECRETS_KEY in production.',
+    'SECRETS_KEY is not set: at-rest encryption falls back to OWNER_TOKEN. ' +
+      'Set SECRETS_KEY in production; rotating it (or OWNER_TOKEN) makes ' +
+      'stored secrets unreadable.',
+  );
+else if (!process.env.SECRETS_KEY?.trim())
+  console.warn(
+    'No SECRETS_KEY or OWNER_TOKEN: storing provider keys, MCP tokens or ' +
+      'credentials is disabled until one is set.',
   );
 const config: PlatformConfig = {
   databasePath: database,
@@ -67,10 +73,7 @@ const config: PlatformConfig = {
   baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
   providers: providerRegistry.list(),
   providerRegistry,
-  externalAccounts: new ExternalAccounts(
-    workspace,
-    resolveSecretKey(workspace),
-  ),
+  externalAccounts: new ExternalAccounts(workspace, resolveSecretKey()),
   contextWindow: process.env.OPENAI_CONTEXT_WINDOW
     ? Number(process.env.OPENAI_CONTEXT_WINDOW)
     : undefined,

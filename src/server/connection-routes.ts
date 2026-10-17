@@ -6,22 +6,25 @@ import {
   type PendingApproval,
 } from '../shared/connection-types.js';
 import type { WorkspaceStore } from './workspace.js';
-import { connectionInput, type ConnectionService } from './connections.js';
+import {
+  connectionInput,
+  isUserFacingConnectionError,
+  type ConnectionService,
+} from './connections.js';
+import { errorResponse } from './error-response.js';
 export function connectionRoutes(
   workspace: WorkspaceStore,
   connections: ConnectionService,
 ) {
   const app = new Hono();
   app.onError((error, c) =>
-    c.json(
-      {
-        error:
-          error instanceof z.ZodError
-            ? (error.issues[0]?.message ?? 'Invalid connection request.')
-            : error.message,
-      },
-      400,
-    ),
+    errorResponse(error, c, {
+      zodMessage: 'Invalid connection request.',
+      isSafe: isUserFacingConnectionError,
+      fallback: 'The connected-service request could not be completed.',
+      fallbackStatus: 503,
+      logLabel: 'connection',
+    }),
   );
   const requireDot = (id: string) => {
     if (!workspace.dot(id)) throw new Error('Dot not found.');
