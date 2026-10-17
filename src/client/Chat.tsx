@@ -49,13 +49,13 @@ import type {
   Settings,
   Task,
 } from '../shared/types';
-import { modelKey, type ModelsResponse } from '../shared/models';
 import { Mascot } from './Mascot';
 import { Composer } from './Composer';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
 import { useAgentSteps } from './useAgentSteps';
 import { useHeldMascotState } from './useHeldMascotState';
+import { useDotModelControls } from './useDotModelControls';
 import { StepCard } from './StepCard';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
@@ -359,64 +359,17 @@ export function Chat({
     return undefined;
   };
   // --- End reasoning panel ----------------------------------------------------
-  const [models, setModels] = useState<ModelsResponse>({
-    default: null,
-    providers: [],
-  });
   const [modelError, setModelError] = useState('');
-  useEffect(() => {
-    let active = true;
-    const load = () =>
-      void api<ModelsResponse>('/models')
-        .then((value) => {
-          if (active) setModels(value);
-        })
-        .catch(() => {});
-    load();
-    const onChange = () => load();
-    window.addEventListener('models-changed', onChange);
-    return () => {
-      active = false;
-      window.removeEventListener('models-changed', onChange);
-    };
-  }, []);
-  const modelValue =
-    dot.provider && dot.model ? modelKey(dot.provider, dot.model) : '';
-  const defaultModelLabel = models.default
-    ? (models.default.model ?? models.default.provider)
-    : '';
-  const selectedModel = dot.model ?? defaultModelLabel;
-  const reasoningEffort = dot.reasoningEffort ?? '';
-  const reasoningLabel =
-    reasoningEffort === 'none'
-      ? 'désactivée'
-      : reasoningEffort === 'low'
-        ? 'basse'
-        : reasoningEffort === 'high'
-          ? 'haute'
-          : 'désactivée';
-  const [reasoningBusy, setReasoningBusy] = useState(false);
-  const cycleReasoning = async () => {
-    if (reasoningBusy) return;
-    const order = ['', 'low', 'high'];
-    const next = order[(order.indexOf(reasoningEffort) + 1) % order.length];
-    setReasoningBusy(true);
-    setModelError('');
-    try {
-      await api(`/dots/${dot.id}/reasoning`, 'PUT', {
-        effort: next || null,
-      });
-      onSaved();
-    } catch (err) {
-      setModelError(
-        err instanceof Error
-          ? err.message
-          : 'Réglage de réflexion indisponible.',
-      );
-    } finally {
-      setReasoningBusy(false);
-    }
-  };
+  // Modèles + raisonnement centralisés (hook partagé App/Chat).
+  const modelControls = useDotModelControls({
+    dotId: dot.id,
+    provider: dot.provider,
+    model: dot.model,
+    reasoningEffort: dot.reasoningEffort,
+    onReasoningStart: () => setModelError(''),
+    onReasoningSaved: onSaved,
+    onReasoningError: setModelError,
+  });
   const voice = useVoice(thread.id, onSaved, agent.messages.at(-1)?.id);
   const voiceRequestStarted = useRef(false);
   useEffect(() => {
@@ -928,7 +881,7 @@ export function Chat({
         open={reasonPanel !== null}
         onClose={() => setReasonPanel(null)}
         docked={railOpen}
-        modelName={selectedModel || 'Modèle'}
+        modelName={modelControls.selectedModelLabel || 'Modèle'}
         live={reasonPanel?.live ?? false}
         text={reasonPanelText}
         stats={reasonStats}
@@ -1011,7 +964,7 @@ export function Chat({
           </button>
           <button
             className="icon-button"
-            aria-label="Save conversation as page"
+            aria-label="Enregistrer la conversation en page"
             title="Enregistrer la conversation en page"
             disabled={running}
             onClick={async () => {
@@ -1037,7 +990,7 @@ export function Chat({
           </button>
           <button
             className="icon-button"
-            aria-label="Schedule a task in this conversation"
+            aria-label="Planifier une tâche dans cette conversation"
             title="Planifier une tâche"
             onClick={onSchedule}
           >
@@ -1079,7 +1032,7 @@ export function Chat({
         text={draft}
         onTextChange={setDraft}
         placeholder={`Demander à ${dot.name}`}
-        inputAriaLabel="Message your Dot"
+        inputAriaLabel={`Discuter avec ${dot.name}`}
         canSubmitOnEnter={!!draft.trim() && loaded && contextReady && !paused}
         onSubmit={() => {
           void (async () => {
@@ -1099,7 +1052,7 @@ export function Chat({
           paused
         }
         submitTitle={running ? 'Mettre en file' : 'Envoyer'}
-        submitAriaLabel={running ? 'Queue message' : 'Send message'}
+        submitAriaLabel={running ? 'Mettre en file' : 'Envoyer'}
         sourceOpen={sourceOpen}
         onToggleSource={() => setSourceOpen((open) => !open)}
         source={source}
@@ -1178,21 +1131,21 @@ export function Chat({
           </div>
         }
         dotId={dot.id}
-        modelValue={modelValue}
-        modelOptions={models}
-        defaultModelLabel={defaultModelLabel}
+        modelValue={modelControls.modelValue}
+        modelOptions={modelControls.models}
+        defaultModelLabel={modelControls.defaultModelLabel}
         onModelSaved={onSaved}
         onModelError={setModelError}
-        reasoningEffort={reasoningEffort}
-        reasoningLabel={reasoningLabel}
-        onCycleReasoning={cycleReasoning}
-        reasoningDisabled={reasoningBusy}
+        reasoningEffort={modelControls.reasoningEffort}
+        reasoningLabel={modelControls.reasoningLabel}
+        onCycleReasoning={modelControls.cycleReasoning}
+        reasoningDisabled={modelControls.reasoningBusy}
         stopButton={
           running ? (
             <button
               type="button"
               className="send-button stop"
-              aria-label="Stop response"
+              aria-label="Arrêter la réponse"
               title="Arrêter la réponse"
               onClick={() => copilotkit.stopAgent({ agent })}
             >
@@ -1202,7 +1155,7 @@ export function Chat({
         }
         note={
           <>
-            {dot.name} · {selectedModel || 'défaut'}
+            {dot.name} · {modelControls.selectedModelLabel || 'défaut'}
             {paused ? ' · en pause' : ''}
           </>
         }

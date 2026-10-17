@@ -29,7 +29,6 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
-import { modelKey, type ModelsResponse } from '../shared/models';
 import { api, ApiError, authHeaders, authToken, setToken } from './api';
 import { trackSetupStep } from './setup-telemetry';
 import {
@@ -45,6 +44,7 @@ import { Composer } from './Composer';
 import { ComposerMenu } from './ComposerMenu';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
+import { useDotModelControls } from './useDotModelControls';
 import { ThreadList } from './ThreadList';
 import { ResultPane } from './ResultPane';
 import { TaskRow } from './TaskPresentation';
@@ -204,11 +204,6 @@ export function App() {
   const attachmentBar = useRef<AttachmentBarHandle>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string>();
   const [pendingVoice, setPendingVoice] = useState(false);
-  const [modelOptions, setModelOptions] = useState<ModelsResponse>({
-    default: null,
-    providers: [],
-  });
-  const [reasoningBusy, setReasoningBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [conversationSearch, setConversationSearch] = useState('');
@@ -242,22 +237,6 @@ export function App() {
     }, 3000);
     return () => clearInterval(timer);
   }, [refresh]);
-  useEffect(() => {
-    let active = true;
-    const load = () =>
-      void api<ModelsResponse>('/models')
-        .then((value) => {
-          if (active) setModelOptions(value);
-        })
-        .catch(() => {});
-    load();
-    const onChange = () => load();
-    window.addEventListener('models-changed', onChange);
-    return () => {
-      active = false;
-      window.removeEventListener('models-changed', onChange);
-    };
-  }, []);
   useEffect(() => {
     setCapture(undefined);
     if (!selectedThread) return;
@@ -303,40 +282,17 @@ export function App() {
   const dot =
     workspace?.dots.find((item) => item.id === selectedDot) ??
     workspace?.dots[0];
-  const modelValue =
-    dot?.provider && dot?.model ? modelKey(dot.provider, dot.model) : '';
-  const defaultModelLabel = modelOptions.default
-    ? (modelOptions.default.model ?? modelOptions.default.provider)
-    : (metrics?.model ?? '');
-  const selectedModel = dot?.model ?? defaultModelLabel;
-  const reasoningEffort = dot?.reasoningEffort ?? '';
-  const reasoningLabel =
-    reasoningEffort === 'none'
-      ? 'désactivée'
-      : reasoningEffort === 'low'
-        ? 'basse'
-        : reasoningEffort === 'high'
-          ? 'haute'
-          : 'désactivée';
-  const cycleReasoning = async () => {
-    if (reasoningBusy || !dot) return;
-    const order = ['', 'low', 'high'];
-    const next = order[(order.indexOf(reasoningEffort) + 1) % order.length];
-    setReasoningBusy(true);
-    setError('');
-    try {
-      await api(`/dots/${dot.id}/reasoning`, 'PUT', { effort: next || null });
-      await refresh();
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Réglage de réflexion indisponible.',
-      );
-    } finally {
-      setReasoningBusy(false);
-    }
-  };
+  // Modèles + raisonnement centralisés (hook partagé App/Chat).
+  const modelControls = useDotModelControls({
+    dotId: dot?.id ?? null,
+    provider: dot?.provider,
+    model: dot?.model,
+    reasoningEffort: dot?.reasoningEffort,
+    fallbackDefaultModel: metrics?.model ?? undefined,
+    onReasoningStart: () => setError(''),
+    onReasoningSaved: refresh,
+    onReasoningError: setError,
+  });
   const thread = workspace?.conversations.find(
     (item) => item.id === selectedThread && item.dotId === dot?.id,
   );
@@ -478,7 +434,7 @@ export function App() {
         >
           <input
             type="password"
-            aria-label="Owner access token"
+            aria-label="Jeton d’accès propriétaire"
             autoComplete="current-password"
             value={auth}
             onChange={(e) => setAuth(e.target.value)}
@@ -516,7 +472,7 @@ export function App() {
       {mobile && (
         <button
           className="nav-scrim"
-          aria-label="Close navigation"
+          aria-label="Fermer la navigation"
           onClick={() => setMobile(false)}
         />
       )}
@@ -805,7 +761,7 @@ export function App() {
             <span>{error}</span>
             <button
               className="icon-button"
-              aria-label="Dismiss error"
+              aria-label="Ignorer l’erreur"
               onClick={() => setNotices((current) => dismissNotice(current))}
             >
               <X size={16} />
@@ -1038,15 +994,15 @@ export function App() {
                       </div>
                     }
                     dotId={dot.id}
-                    modelValue={modelValue}
-                    modelOptions={modelOptions}
-                    defaultModelLabel={defaultModelLabel}
+                    modelValue={modelControls.modelValue}
+                    modelOptions={modelControls.models}
+                    defaultModelLabel={modelControls.defaultModelLabel}
                     onModelSaved={refresh}
                     onModelError={setError}
-                    reasoningEffort={reasoningEffort}
-                    reasoningLabel={reasoningLabel}
-                    onCycleReasoning={cycleReasoning}
-                    reasoningDisabled={reasoningBusy}
+                    reasoningEffort={modelControls.reasoningEffort}
+                    reasoningLabel={modelControls.reasoningLabel}
+                    onCycleReasoning={modelControls.cycleReasoning}
+                    reasoningDisabled={modelControls.reasoningBusy}
                     voiceButton={
                       <button
                         type="button"
@@ -1065,7 +1021,8 @@ export function App() {
                     }
                     note={
                       <>
-                        {dot.name} · {selectedModel || 'Modèle'}
+                        {dot.name} ·{' '}
+                        {modelControls.selectedModelLabel || 'Modèle'}
                       </>
                     }
                     attachmentCards={
@@ -1130,14 +1087,14 @@ export function App() {
                         </small>
                         <button
                           className="icon-button"
-                          aria-label="Edit memory"
+                          aria-label="Modifier la mémoire"
                           onClick={() => setDialog({ type: 'memory', memory })}
                         >
                           <MoreHorizontal size={17} />
                         </button>
                         <button
                           className="icon-button"
-                          aria-label="Delete memory"
+                          aria-label="Supprimer la mémoire"
                           onClick={() =>
                             void mutate(`/memories/${memory.id}`, 'DELETE', {})
                           }
@@ -1164,8 +1121,8 @@ export function App() {
                 <label className="search-box">
                   <Search size={16} />
                   <input
-                    aria-label="Search tasks"
-                    placeholder="Find a task…"
+                    aria-label="Rechercher une tâche"
+                    placeholder="Trouver une tâche…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
