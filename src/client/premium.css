@@ -666,3 +666,32 @@ a:focus-visible,
 .chat-compose-row textarea {
   overflow-y: auto;
 }
+
+/* Pièces jointes repliées dans les bulles utilisateur */
+.chat-bubble .chat-attachment-chip {
+  margin: 0.35rem 0 0;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: var(--p-radius-sm);
+  font-size: 0.8rem;
+}
+.chat-attachment-chip summary {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+  list-style: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-attachment-chip pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border-top: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  font-size: 0.75rem;
+}

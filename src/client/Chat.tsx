@@ -30,7 +30,11 @@ import {
   ComputerToolCard,
   type ComputerToolRenderProps,
 } from './ComputerToolCard';
-import { ChatTranscript, isInternalVoiceReceipt } from './ChatTranscript';
+import {
+  ChatTranscript,
+  isInternalVoiceReceipt,
+  UserMessageContent,
+} from './ChatTranscript';
 import { ReasoningPanel } from './ReasoningPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { ActivityTab } from './ActivityTab';
@@ -874,7 +878,7 @@ export function Chat({
         />
         {queued.map((text, index) => (
           <div className="chat-bubble user pending" key={`queued-${index}`}>
-            {text}
+            <UserMessageContent content={text} />
           </div>
         ))}
         {running && steps.length > 0 ? (

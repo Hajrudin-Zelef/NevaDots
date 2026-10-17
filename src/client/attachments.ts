@@ -54,7 +54,11 @@ export function buildMessageWithAttachments(
         file.textContent.length > 50000
           ? `${file.textContent.slice(0, 50000)}\n…[tronqué à 50 000 caractères]`
           : file.textContent;
-      blocks.push(`[Fichier : ${file.name}]\n\`\`\`\n${content}\n\`\`\``);
+      // En-tête porteur de longueur : le parseur d'affichage sait où finit
+      // le bloc sans parser le contenu (qui peut contenir des fences).
+      blocks.push(
+        `[Fichier : ${file.name} — ${content.length} car.]\n\`\`\`fichier\n${content}\n\`\`\``,
+      );
     } else if (file.category === 'image') {
       blocks.push(`[Image jointe : ${file.name} (${formatSize(file.size)})]`);
     } else if (file.category === 'pdf') {
@@ -149,4 +153,97 @@ export function clearPendingAttachments(scope: string): void {
   } catch {
     // Ignoré : le brouillon sera simplement re-proposé à la prochaine visite.
   }
+}
+
+/** Puce d'affichage pour un bloc de contenu injecté. */
+export interface AttachmentChip {
+  name: string;
+  /** Longueur exacte du bloc injecté (lue dans l'en-tête). */
+  chars: number;
+  body: string;
+  truncated: boolean;
+}
+
+export interface ParsedUserMessage {
+  /** Brouillon sans les blocs de contenu. */
+  text: string;
+  attachments: AttachmentChip[];
+}
+
+const INJECTED_RE = /\[Fichier : (.+?) — (\d+) car\.\]\n```fichier\n/gs;
+const CLOSING_FENCE = '\n```';
+const TRUNCATED_MARK = '…[tronqué';
+// Historique : format sans longueur, repli approximatif (non déterministe).
+const LEGACY_RE = /\[Fichier : (.+?)\]\n```\n/gs;
+
+/** Compteur de caractères FR pour la puce (12 345 car., 12,5k car.). */
+export function formatChars(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.', ',')}k car.`;
+  return `${n} car.`;
+}
+
+/**
+ * Découpe un message utilisateur en brouillon + puces de pièces jointes.
+ * Le nouveau format est déterministe (la longueur N de l'en-tête fixe la
+ * fin exacte du bloc, quoi que contienne le texte). Sans bloc : le texte
+ * est renvoyé tel quel. Jamais de throw, jamais de perte de contenu.
+ */
+export function parseUserMessageWithAttachments(
+  content: string,
+): ParsedUserMessage {
+  const attachments: AttachmentChip[] = [];
+  let text = '';
+  let rest = content;
+  for (;;) {
+    const fresh = [...rest.matchAll(INJECTED_RE)][0];
+    const legacy = [...rest.matchAll(LEGACY_RE)][0];
+    const pick =
+      fresh && (!legacy || fresh.index <= legacy.index) ? 'new' : 'legacy';
+    const m = pick === 'new' ? fresh : legacy;
+    if (!m) {
+      text += rest;
+      break;
+    }
+    text += rest.slice(0, m.index);
+    if (pick === 'new') {
+      const chars = Number(m[2]);
+      const bodyStart = m.index + m[0].length;
+      const body = rest.slice(bodyStart, bodyStart + chars);
+      const after = rest.slice(bodyStart + chars);
+      if (!after.startsWith(CLOSING_FENCE)) {
+        // En-tête sans suite valide : texte brut, pas de repli aventureux.
+        text += rest.slice(0, bodyStart);
+        rest = rest.slice(bodyStart);
+        continue;
+      }
+      attachments.push({
+        name: m[1],
+        chars,
+        body,
+        truncated: body.includes(TRUNCATED_MARK),
+      });
+      rest = after.slice(CLOSING_FENCE.length);
+    } else {
+      const bodyStart = m.index + m[0].length;
+      const close = rest.indexOf(CLOSING_FENCE, bodyStart);
+      if (close < 0) {
+        // Pas de fermeture : approximation sur tout le reste.
+        attachments.push({
+          name: m[1],
+          chars: rest.length - bodyStart,
+          body: rest.slice(bodyStart),
+          truncated: rest.slice(bodyStart).includes(TRUNCATED_MARK),
+        });
+        break;
+      }
+      attachments.push({
+        name: m[1],
+        chars: close - bodyStart,
+        body: rest.slice(bodyStart, close),
+        truncated: rest.slice(bodyStart, close).includes(TRUNCATED_MARK),
+      });
+      rest = rest.slice(close + CLOSING_FENCE.length);
+    }
+  }
+  return { text: text.trim(), attachments };
 }

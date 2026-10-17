@@ -3,14 +3,16 @@ import {
   Fragment,
   memo,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { PhoneOff } from 'lucide-react';
+import { FileText, PhoneOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import type { AssistantMessage, Message } from '@ag-ui/core';
 import type { CallReceipt } from '../shared/types';
+import { formatChars, parseUserMessageWithAttachments } from './attachments';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt';
 import { isScheduledTaskMessage } from '../shared/scheduled-message';
 
@@ -172,6 +174,38 @@ export function StreamingMarkdown({
   );
 }
 
+/**
+ * Bulle utilisateur : les blocs de contenu de pièces jointes injectés
+ * ([Fichier : nom — N car.]) sont repliés en puces dépliables ; le modèle
+ * garde le texte intégral, l'utilisateur ne voit que le brouillon + chips.
+ * Sans bloc : rendu Markdown inchangé.
+ */
+export function UserMessageContent({ content }: { content: string }) {
+  const parts = useMemo(
+    () => parseUserMessageWithAttachments(content),
+    [content],
+  );
+  if (!parts.attachments.length) return <StaticMarkdown content={content} />;
+  return (
+    <>
+      {parts.text && <StaticMarkdown content={parts.text} />}
+      {parts.attachments.map((attachment, index) => (
+        <details key={index} className="chat-attachment-chip">
+          <summary>
+            <FileText size={13} />
+            <span>{attachment.name}</span>
+            <span className="muted">
+              · {formatChars(attachment.chars)}
+              {attachment.truncated ? ' · tronqué' : ''}
+            </span>
+          </summary>
+          <pre>{attachment.body}</pre>
+        </details>
+      ))}
+    </>
+  );
+}
+
 function Receipt({ call }: { call: CallReceipt }) {
   return (
     <div className="call-receipt">
@@ -239,9 +273,11 @@ export function ChatTranscript({
               {isScheduledTaskMessage(message) && (
                 <span className="scheduled-message-label">Scheduled</span>
               )}
-              {message.role === 'assistant' &&
-              streaming &&
-              message.id === lastAssistantId ? (
+              {message.role === 'user' ? (
+                <UserMessageContent content={String(message.content)} />
+              ) : message.role === 'assistant' &&
+                streaming &&
+                message.id === lastAssistantId ? (
                 <StreamingMarkdown
                   content={String(message.content)}
                   streaming
