@@ -179,9 +179,7 @@ it('defers paused transcript synchronization and resumes it once without a dupli
   expect(f.workspace.call(call.id).transcript).toBe(
     'Speech saved while paused',
   );
-  expect(f.workspace.call(call.id).error).toContain(
-    'pending receipt sync',
-  );
+  expect(f.workspace.call(call.id).error).toContain('pending receipt sync');
   f.store.updateSettings({ paused: false });
   await f.voice.resumePending();
   await f.voice.resumePending();

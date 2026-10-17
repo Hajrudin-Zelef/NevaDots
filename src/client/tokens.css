@@ -13,8 +13,9 @@
 
 /* --- Typographie — Geist (auto-hébergée, cf. fonts.css) --- */
 :root {
-  --nd-font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    system-ui, sans-serif;
+  --nd-font-sans:
+    'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    sans-serif;
   --nd-font-mono: 'GeistMono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-family: var(--nd-font-sans);
   -webkit-font-smoothing: antialiased;

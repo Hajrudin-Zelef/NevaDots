@@ -26,7 +26,11 @@ function sweep(now = Date.now()) {
     if (now - entry.createdAt > ARCHIVE_TTL_MS) {
       entries.delete(id);
       const list = byThread.get(entry.threadId);
-      if (list) byThread.set(entry.threadId, list.filter((x) => x !== id));
+      if (list)
+        byThread.set(
+          entry.threadId,
+          list.filter((x) => x !== id),
+        );
     }
 }
 
@@ -50,7 +54,11 @@ export function archiveResult(
     const entry = entries.get(oldest)!;
     entries.delete(oldest);
     const refs = byThread.get(entry.threadId);
-    if (refs) byThread.set(entry.threadId, refs.filter((x) => x !== oldest));
+    if (refs)
+      byThread.set(
+        entry.threadId,
+        refs.filter((x) => x !== oldest),
+      );
   }
   return { id, created: true };
 }

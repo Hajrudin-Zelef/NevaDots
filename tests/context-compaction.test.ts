@@ -80,7 +80,9 @@ describe('context compaction', () => {
   });
 
   it('keeps the transcript when the summary call fails', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response('nope', { status: 500 }));
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(new Response('nope', { status: 500 }));
     const messages = sample();
     const outcome = await compactMessages(messages, {
       ...deps(fetchImpl as never),

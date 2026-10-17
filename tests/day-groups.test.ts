@@ -11,7 +11,9 @@ describe('dayLabel', () => {
     expect(dayLabel(new Date(2026, 9, 11, 9, 0).getTime(), NOW)).toBe('Hier');
   });
   it('labels older days by weekday then by date', () => {
-    expect(dayLabel(new Date(2026, 9, 9, 9, 0).getTime(), NOW)).toBe('Vendredi');
+    expect(dayLabel(new Date(2026, 9, 9, 9, 0).getTime(), NOW)).toBe(
+      'Vendredi',
+    );
     expect(dayLabel(new Date(2026, 8, 3, 9, 0).getTime(), NOW)).toContain(
       'septembre',
     );
@@ -26,10 +28,7 @@ describe('groupByDay', () => {
       { t: new Date(2026, 9, 11, 20, 0).getTime() },
     ];
     const groups = groupByDay(items, (item) => item.t, NOW);
-    expect(groups.map((group) => group.label)).toEqual([
-      "Aujourd'hui",
-      'Hier',
-    ]);
+    expect(groups.map((group) => group.label)).toEqual(["Aujourd'hui", 'Hier']);
     expect(groups[0].items).toHaveLength(2);
     expect(groups[1].items).toHaveLength(1);
   });

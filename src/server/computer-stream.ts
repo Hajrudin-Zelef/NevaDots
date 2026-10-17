@@ -103,9 +103,10 @@ function bridge(client: WebSocket, computers: ComputerService, dotId: string) {
       upstream = socket;
       socket.on('open', () => {
         upstreamOpen = true;
-        for (const item of pending.splice(0)) socket.send(item.data, {
-          binary: item.binary,
-        });
+        for (const item of pending.splice(0))
+          socket.send(item.data, {
+            binary: item.binary,
+          });
       });
       socket.on('message', (data: RawData, binary: boolean) => {
         if (client.readyState === WebSocket.OPEN) client.send(data, { binary });

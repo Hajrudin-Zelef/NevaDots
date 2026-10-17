@@ -23,7 +23,11 @@ describe('page cache', () => {
     expect(summary.pageId).toBe(page.id);
     expect(summary.url).toBe('https://example.com');
     expect(summary.lines).toBe(6);
-    expect(summary.headings).toEqual(['1: Title', '3: Section A', '5: Section B']);
+    expect(summary.headings).toEqual([
+      '1: Title',
+      '3: Section A',
+      '5: Section B',
+    ]);
     expect(summary.head).toContain('Intro paragraph.');
     expect(summary.note).toContain('shown in full');
     expect(cachedPage(page.id)?.text).toBe(doc);

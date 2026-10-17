@@ -25,15 +25,27 @@ export function classifyModelError(error: unknown): string {
     return 'Ce modèle n’a pas de crédit disponible chez son fournisseur. Choisis un modèle OpenCode dans le sélecteur, ou recharge le compte du fournisseur.';
   if (/\b401\b|invalid api key|incorrect api key|unauthorized/.test(text))
     return 'La clé d’API du modèle est invalide ou expirée. Vérifie la configuration du serveur.';
-  if (/\b404\b|model not found|does not exist|unknown model|no such model/.test(text))
+  if (
+    /\b404\b|model not found|does not exist|unknown model|no such model/.test(
+      text,
+    )
+  )
     return 'Modèle introuvable chez le fournisseur. Choisis un autre modèle dans le sélecteur.';
   if (/\b429\b|rate limit|too many requests/.test(text))
     return 'Le fournisseur a limité le débit (trop de requêtes). Patiente quelques secondes et réessaie.';
-  if (/context length|too many tokens|maximum context|context_length_exceeded/.test(text))
+  if (
+    /context length|too many tokens|maximum context|context_length_exceeded/.test(
+      text,
+    )
+  )
     return 'La conversation dépasse la fenêtre de contexte du modèle. Elle sera compressée automatiquement ; réessaie.';
   if (/timeout|timed out|etimedout|aborted/.test(text))
     return 'Le modèle n’a pas répondu à temps. Réessaie, ou choisis un modèle plus rapide.';
-  if (/econnrefused|enotfound|fetch failed|eai_again|socket hang up|network/.test(text))
+  if (
+    /econnrefused|enotfound|fetch failed|eai_again|socket hang up|network/.test(
+      text,
+    )
+  )
     return 'Impossible de joindre le fournisseur du modèle. Vérifie la connexion du serveur et réessaie.';
   if (/econnreset|premature close|stream|terminated/.test(text))
     return 'La connexion au modèle a été coupée en cours de réponse. Réessaie.';

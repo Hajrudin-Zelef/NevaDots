@@ -19,9 +19,9 @@ interface PersistedRun {
 
 interface GlobalThreadStore {
   getOrCreate(threadId: string): unknown;
-  peek(threadId: string):
-    | { historicRuns: PersistedRun[]; messagesSnapshot: unknown[] }
-    | undefined;
+  peek(
+    threadId: string,
+  ): { historicRuns: PersistedRun[]; messagesSnapshot: unknown[] } | undefined;
   appendRun(threadId: string, run: PersistedRun): void;
 }
 
@@ -62,7 +62,9 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
 
   private rehydrate() {
     const threads = this.db
-      .prepare('SELECT thread_id, messages FROM runner_threads ORDER BY created_at')
+      .prepare(
+        'SELECT thread_id, messages FROM runner_threads ORDER BY created_at',
+      )
       .all() as Array<Record<string, unknown>>;
     for (const thread of threads) {
       const threadId = String(thread.thread_id);
@@ -106,8 +108,7 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
         run.createdAt ?? Date.now(),
       );
     }
-    const createdAt =
-      thread.historicRuns[0]?.createdAt ?? Date.now();
+    const createdAt = thread.historicRuns[0]?.createdAt ?? Date.now();
     this.db
       .prepare(
         'INSERT INTO runner_threads (thread_id, messages, created_at) VALUES (?, ?, ?) ON CONFLICT(thread_id) DO UPDATE SET messages = excluded.messages',
@@ -123,7 +124,9 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
 
   /** Drop a thread's persisted and in-memory history. */
   deleteThread(threadId: string) {
-    this.db.prepare('DELETE FROM runner_runs WHERE thread_id = ?').run(threadId);
+    this.db
+      .prepare('DELETE FROM runner_runs WHERE thread_id = ?')
+      .run(threadId);
     this.db
       .prepare('DELETE FROM runner_threads WHERE thread_id = ?')
       .run(threadId);

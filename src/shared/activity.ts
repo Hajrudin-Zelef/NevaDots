@@ -73,7 +73,11 @@ export function describeTool(
   const text = argString(params, ['text', 'content', 'input']);
 
   if (name === 'computer_exec' || action === 'exec') {
-    return { kind: 'command', label: 'Commande terminal', detail: command ?? '' };
+    return {
+      kind: 'command',
+      label: 'Commande terminal',
+      detail: command ?? '',
+    };
   }
   if (name === 'computer_type' || action === 'type') {
     return { kind: 'typing', label: 'Frappe au clavier', detail: text ?? '' };
@@ -111,13 +115,13 @@ export function describeTool(
     action === 'key' ||
     action === 'type'
   ) {
-    return { kind: 'web', label: 'Agit dans la page', detail: url ?? text ?? '' };
+    return {
+      kind: 'web',
+      label: 'Agit dans la page',
+      detail: url ?? text ?? '',
+    };
   }
-  if (
-    action === 'read' ||
-    action === 'snapshot' ||
-    action === 'screenshot'
-  ) {
+  if (action === 'read' || action === 'snapshot' || action === 'screenshot') {
     return { kind: 'web', label: 'Inspecte la page', detail: url ?? '' };
   }
   return {
@@ -149,7 +153,7 @@ function extractResult(
 
 function statusFromResult(
   data: Record<string, unknown>,
-  toolMessage: Message & { role: 'tool' } | undefined,
+  toolMessage: (Message & { role: 'tool' }) | undefined,
 ): { status: ActivityStatus; error: string } {
   if (!toolMessage) return { status: 'running', error: '' };
   const error =
@@ -173,7 +177,10 @@ export function deriveActivity(messages: Message[]): ActivityEvent[] {
   const toolMessages = new Map<string, Message & { role: 'tool' }>();
   for (const message of messages) {
     if (message.role === 'tool') {
-      toolMessages.set(message.toolCallId, message as Message & { role: 'tool' });
+      toolMessages.set(
+        message.toolCallId,
+        message as Message & { role: 'tool' },
+      );
     }
   }
   const events: ActivityEvent[] = [];

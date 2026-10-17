@@ -31,7 +31,11 @@ function sweep(now = Date.now()) {
     if (now - page.createdAt > PAGE_TTL_MS) pages.delete(id);
 }
 
-export function cachePage(title: string, url: string, text: string): CachedPage {
+export function cachePage(
+  title: string,
+  url: string,
+  text: string,
+): CachedPage {
   sweep();
   const page: CachedPage = {
     id: randomUUID().slice(0, 8),
@@ -95,10 +99,14 @@ export function summarizePage(page: CachedPage): PageSummary {
 
 export function slicePage(id: string, from: number, to?: number) {
   const page = cachedPage(id);
-  if (!page) throw new Error('That pageId is unknown or expired. Read the page again.');
+  if (!page)
+    throw new Error('That pageId is unknown or expired. Read the page again.');
   const total = page.lines.length;
   const start = Math.max(1, Math.floor(from));
-  const end = Math.min(total, Math.max(start, Math.floor(to ?? start + SLICE_DEFAULT - 1)));
+  const end = Math.min(
+    total,
+    Math.max(start, Math.floor(to ?? start + SLICE_DEFAULT - 1)),
+  );
   if (end - start + 1 > SLICE_MAX)
     throw new Error(`Request at most ${SLICE_MAX} lines per slice.`);
   return {
@@ -117,7 +125,8 @@ export function slicePage(id: string, from: number, to?: number) {
 
 export function grepPage(id: string, query: string) {
   const page = cachedPage(id);
-  if (!page) throw new Error('That pageId is unknown or expired. Read the page again.');
+  if (!page)
+    throw new Error('That pageId is unknown or expired. Read the page again.');
   const needle = query.trim().toLowerCase();
   if (!needle) throw new Error('Provide a non-empty search query.');
   const matches: { line: number; text: string }[] = [];

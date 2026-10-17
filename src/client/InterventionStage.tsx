@@ -42,7 +42,11 @@ export function InterventionStage({
       : 'réfléchit…'
     : 'prêt';
   return (
-    <div className="intervention-stage" role="dialog" aria-label="Vue intervention">
+    <div
+      className="intervention-stage"
+      role="dialog"
+      aria-label="Vue intervention"
+    >
       <header className="stage-header">
         <span className="stage-title">{dot.name}</span>
         <button

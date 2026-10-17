@@ -1,5 +1,8 @@
 import { expect, it } from 'vitest';
-import { setupStatus, type PlatformConfig } from '../src/server/platform-config.js';
+import {
+  setupStatus,
+  type PlatformConfig,
+} from '../src/server/platform-config.js';
 const config: PlatformConfig = {
   apiKey: 'fixture',
   model: 'fixture',

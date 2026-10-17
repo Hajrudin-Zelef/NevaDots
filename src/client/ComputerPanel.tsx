@@ -191,9 +191,7 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
         </p>
       )}
       {!status ? (
-        <p role="status">
-          {error ? 'Statut indisponible.' : 'Chargement…'}
-        </p>
+        <p role="status">{error ? 'Statut indisponible.' : 'Chargement…'}</p>
       ) : (
         <>
           <div className="computer-status">
@@ -216,8 +214,8 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
               <h3>Connecter un service d’ordinateur</h3>
               <p>
                 Ce Dot n’a pas de service d’ordinateur configuré. Configurez
-                l’URL et le jeton du service, puis redémarrez. Chaque Dot obtient
-                son propre navigateur et son espace.
+                l’URL et le jeton du service, puis redémarrez. Chaque Dot
+                obtient son propre navigateur et son espace.
               </p>
               <a
                 href="https://github.com/CopilotKit/OpenDots/blob/main/docs/COMPUTERS.md"
@@ -355,9 +353,9 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                   <details className="computer-human">
                     <summary>Clavier & contrôles précis</summary>
                     <p>
-                      Cliquez l’écran ou saisissez des coordonnées ci-dessous. Le
-                      texte va directement à ce navigateur, hors du chat. Rendez
-                      le contrôle quand vous avez fini.
+                      Cliquez l’écran ou saisissez des coordonnées ci-dessous.
+                      Le texte va directement à ce navigateur, hors du chat.
+                      Rendez le contrôle quand vous avez fini.
                     </p>
                     <form
                       className="computer-row"
@@ -418,7 +416,9 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                         maxLength={20000}
                         onChange={(event) => setText(event.target.value)}
                       />
-                      <button disabled={busy || !browser || !text}>Saisir</button>
+                      <button disabled={busy || !browser || !text}>
+                        Saisir
+                      </button>
                     </form>
                     <form
                       className="computer-row"
@@ -695,8 +695,8 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
               </button>
             </div>
             <p className="computer-hint">
-              L’arrêt conserve les fichiers du workspace. Les sessions navigateur
-              peuvent demander de se reconnecter.
+              L’arrêt conserve les fichiers du workspace. Les sessions
+              navigateur peuvent demander de se reconnecter.
             </p>
           </details>
         </>
