@@ -168,6 +168,9 @@ export class ConnectionService {
     ]);
     const client = new Client({ name: 'opendots', version: '0.1.0' });
     try {
+      // Re-vérifie l'hôte juste avant la connexion (rebinding DNS) : le
+      // contrôle de add/refresh peut être ancien vis-à-vis de ce connect.
+      await validateMcpUrl(target.url);
       await client.connect(this.transport({ ...target, signal: bounded }), {
         signal: bounded,
       });

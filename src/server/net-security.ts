@@ -85,6 +85,25 @@ export async function validateUrl(
   return { url, ...addresses[0] };
 }
 
+/**
+ * Re-resolve and validate immediately before handing off to the network. If
+ * the address moved since the first check, the request is refused (DNS
+ * rebinding). Residual: a resolver can still move the address between this
+ * check and the actual connect from a third-party stack.
+ */
+export async function revalidateUrl(
+  input: string,
+  expectedAddress: string,
+  options?: { ports?: 'web' | 'any' },
+): Promise<ValidatedUrl> {
+  const again = await validateUrl(input, options);
+  if (again.address !== expectedAddress)
+    throw new Error(
+      'Address changed between validation and request (possible DNS rebinding).',
+    );
+  return again;
+}
+
 /** Owner-trusted loopback names: a locally-run MCP server. Any port. */
 export function isLoopbackHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');

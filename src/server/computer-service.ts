@@ -814,7 +814,15 @@ export class ComputerService {
           input.path && input.path.length > 0 ? input.path : 'repo';
         // Shallow systématique : borne le disque téléchargé. Tradeoff
         // documenté dans la description de l'outil (log tronqué).
-        command = `git clone --depth 1 --single-branch ${q(input.url)} ${q(target)}`;
+        // Watcher pendant le transfert : `setsid` fait du clone le chef de
+        // session/process-group ; on sonde la taille et on tue le groupe s'il
+        // dépasse le cap, AVANT que le disque ne se remplisse (résiduel clos).
+        command =
+          `setsid git clone --depth 1 --single-branch ${q(input.url)} ${q(target)} & pid=$!\n` +
+          `while kill -0 "$pid" 2>/dev/null; do\n` +
+          `sz=$(du -sb ${q(target)} 2>/dev/null | cut -f1); [ -z "$sz" ] && sz=0\n` +
+          `if [ "$sz" -gt ${CLONE_MAX_BYTES} ]; then kill -9 -- -"$pid" 2>/dev/null; rm -rf ${q(target)}; echo clone-size-exceeded 1>&2; exit 124; fi\n` +
+          `sleep 1\ndone\nwait "$pid"; exit $?`;
         const cloned = (await this.action(
           id,
           'exec',
