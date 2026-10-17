@@ -76,6 +76,41 @@ export async function saveGeneratedFile(
   return meta;
 }
 
+/** Taille max d'un binaire produit par l'agent (PDF/DOCX…) : alignée sur l'upload. */
+export const MAX_BINARY_SIZE = 50 * 1024 * 1024; // 50 Mo
+
+/**
+ * Sauvegarde un fichier binaire produit par l'agent (PDF édité/OCRé,
+ * DOCX…) dans le circuit des pièces jointes, avec les mêmes garanties
+ * que saveGeneratedFile (download, aperçu, jamais emporté par le sweep).
+ */
+export async function saveBinaryAttachment(
+  filename: string,
+  buffer: Buffer,
+  mime: string,
+): Promise<AttachmentMeta> {
+  const name = sanitizeGeneratedFilename(filename);
+  if (buffer.length > MAX_BINARY_SIZE) {
+    throw new Error(
+      `Fichier trop volumineux (max 50 Mo) : ${(buffer.length / 1024 / 1024).toFixed(1)} Mo.`,
+    );
+  }
+  const id = randomUUID();
+  const dir = join(ATTACHMENTS_DIR, id);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(join(dir, 'file'), buffer);
+  const meta: AttachmentMeta = {
+    id,
+    name,
+    size: buffer.length,
+    mime,
+    category: categorizeAttachment(mime, name),
+    createdAt: Date.now(),
+    attachedAt: Date.now(),
+  };
+  await fs.writeFile(join(dir, 'meta.json'), JSON.stringify(meta));
+  return meta;
+}
 /** Outil agent : générer un fichier texte téléchargeable. */
 export function generateFileTool() {
   return [

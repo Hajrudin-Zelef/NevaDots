@@ -13,7 +13,7 @@ import { pushPendingScreenshot } from './computer-screenshots.js';
  * extrait à l'upload ; le modèle choisit pages et mode.
  */
 
-const UUID_RE =
+export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Plafonds : le texte complet d'un PDF ne doit jamais inonder le prompt. */
 const TEXT_PAGE_CAP = 10;
@@ -58,7 +58,7 @@ export function parsePageSpec(spec: string, cap: number): number[] | null {
 }
 
 /** Résout un PDF joint : UUID strict, dossier sous data/attachments, catégorie pdf. */
-async function resolvePdf(attachmentId: string): Promise<string> {
+export async function resolvePdf(attachmentId: string): Promise<string> {
   if (!UUID_RE.test(attachmentId))
     throw new Error('Identifiant de pièce jointe invalide.');
   const meta = await readMeta(attachmentId);

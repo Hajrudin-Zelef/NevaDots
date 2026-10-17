@@ -54,6 +54,7 @@ import { screenshotMiddleware } from './screenshot-middleware.js';
 import { brainTools } from './brain-tools.js';
 import { generateFileTool } from './generate-file.js';
 import { pdfTools } from './pdf-tools.js';
+import { pdfWriteTools } from './pdf-write-tools.js';
 import { consultBrainSync } from './operator-brain.js';
 const channelError = () => ({
   type: EventType.RUN_ERROR,
@@ -607,6 +608,7 @@ export class DotAgent extends AbstractAgent {
           ...brainTools(),
           ...generateFileTool(),
           ...pdfTools(dot.id, controller.signal),
+          ...pdfWriteTools(controller.signal),
           ...(computer.configured
             ? computerTools(computer, dot.id, check, controller.signal)
             : []),

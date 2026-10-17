@@ -63,7 +63,7 @@ export function buildMessageWithAttachments(
       blocks.push(`[Image jointe : ${file.name} (${formatSize(file.size)})]`);
     } else if (file.category === 'pdf') {
       blocks.push(
-        `[PDF joint : ${file.name} (${formatSize(file.size)}) — id: ${file.id} — lis-le avec l'outil read_pdf]`,
+        `[PDF joint : ${file.name} (${formatSize(file.size)}) — id: ${file.id} — lis-le avec read_pdf, modifie-le avec pdf_edit, OCR avec pdf_ocr]`,
       );
     } else {
       blocks.push(`[Fichier joint : ${file.name} (${formatSize(file.size)})]`);
