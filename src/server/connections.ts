@@ -193,9 +193,12 @@ export class ConnectionService {
             description: (tool.description ?? '').slice(0, 1000),
             inputSchema: { type: 'object', ...tool.inputSchema },
             readOnly,
-            // New tools start enabled; anything not read-only needs approval.
+            // Approval is the owner's call: the server's readOnlyHint is
+            // informational only and never disables the gate. New tools
+            // start gated; a compromised server claiming read-only gains
+            // nothing.
             enabled: prior?.enabled ?? true,
-            requiresApproval: prior?.requiresApproval ?? !readOnly,
+            requiresApproval: prior?.requiresApproval ?? true,
           });
         }
         cursor = page.nextCursor;

@@ -93,7 +93,7 @@ function fixture({ twin = false } = {}) {
   };
 }
 const toolCtx = { toolCallId: 'call' } as never;
-it('discovers tools, gates anything not read-only, and never returns the token', async () => {
+it('discovers tools, gates everything by default, and never returns the token', async () => {
   const { dot, request, tokens } = fixture();
   const response = await request(`/dots/${dot.id}/connections`, 'POST', {
     name: 'Work Mail',
@@ -119,7 +119,7 @@ it('discovers tools, gates anything not read-only, and never returns the token',
     {
       name: 'search_mail',
       readOnly: true,
-      requiresApproval: false,
+      requiresApproval: true,
       enabled: true,
     },
     {
@@ -129,6 +129,21 @@ it('discovers tools, gates anything not read-only, and never returns the token',
       enabled: true,
     },
   ]);
+});
+it('ignores a lying readOnlyHint: a destructive tool stays gated', async () => {
+  const { dot, request } = fixture();
+  const response = await request(`/dots/${dot.id}/connections`, 'POST', {
+    name: 'Work Mail',
+    url: 'https://mail.example.com/mcp',
+  });
+  expect(response.status).toBe(201);
+  const connection = (await response.json()) as Connection;
+  // search_mail declares readOnlyHint: true yet still requires approval:
+  // the server hint is informational only, never a gate bypass.
+  const search = connection.tools.find((tool) => tool.name === 'search_mail')!;
+  expect(search.readOnly).toBe(true);
+  expect(search.requiresApproval).toBe(true);
+  expect(dot.id).toBeTruthy();
 });
 it('rejects endpoints with embedded credentials or non-http schemes', async () => {
   const { dot, request } = fixture();
@@ -191,7 +206,7 @@ const requestApproval = async (
   expect(result.status).toBe('approval_required');
   return result.approvalId;
 };
-it('runs read-only tools directly and holds write tools for owner approval', async () => {
+it('holds every tool for owner approval, including read-only ones', async () => {
   const { dot, connections, sent } = fixture();
   await connections.add(dot.id, {
     name: 'Mail',
@@ -200,9 +215,9 @@ it('runs read-only tools directly and holds write tools for owner approval', asy
   const search = tools(connections, dot.id).find(
     (tool) => tool.name === 'mail__search_mail',
   )!;
-  expect(await search.execute!({ query: 'invoices' }, toolCtx)).toEqual({
-    isError: false,
-    text: '3 results for invoices',
+  // readOnlyHint no longer executes directly: approval first.
+  expect(await search.execute!({ query: 'invoices' }, toolCtx)).toMatchObject({
+    status: 'approval_required',
   });
   await requestApproval(connections, dot.id, 'mail__send_mail', {
     to: 'a@example.com',
@@ -485,4 +500,127 @@ it('returns a saved result only for the approval that produced it', async () => 
   });
   expect(sent).toHaveBeenCalledOnce();
   expect(sent.mock.calls[0][0]).toMatchObject({ to: 'alice@example.com' });
+});
+it('rejects replaying an approval under a different call without executing', async () => {
+  const { dot, connections, request, sent } = fixture();
+  await connections.add(dot.id, {
+    name: 'Mail',
+    url: 'https://mail.example.com/mcp',
+  });
+  const approvalId = await requestApproval(
+    connections,
+    dot.id,
+    'mail__send_mail',
+    {
+      to: 'a@example.com',
+      body: 'Hi',
+    },
+  );
+  const first = await request(
+    '/conversations/thread/connection-actions',
+    'POST',
+    {
+      toolCallId: 'tc1',
+      approvalId,
+    },
+  );
+  expect(await first.json()).toEqual({
+    isError: false,
+    text: 'Sent to a@example.com',
+  });
+  // Same approval, new call: refused, nothing runs again.
+  const replay = await request(
+    '/conversations/thread/connection-actions',
+    'POST',
+    {
+      toolCallId: 'tc2',
+      approvalId,
+    },
+  );
+  expect(replay.status).toBe(409);
+  expect(await replay.json()).toEqual({
+    error: 'This approval was already used by another action.',
+  });
+  expect(sent).toHaveBeenCalledOnce();
+  // The original pair still recovers its receipt (idempotent retry).
+  expect(
+    await (
+      await request('/conversations/thread/connection-actions', 'POST', {
+        toolCallId: 'tc1',
+        approvalId,
+      })
+    ).json(),
+  ).toEqual({ isError: false, text: 'Sent to a@example.com' });
+  expect(sent).toHaveBeenCalledOnce();
+});
+it('seals MCP tokens at rest and migrates legacy plaintext', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { ConnectionStore } = await import('../src/server/connection-store.js');
+  const db = new DatabaseSync(':memory:');
+  try {
+    const store = new ConnectionStore(db, () => 'test-secret');
+    const created = store.create(
+      'dot-1',
+      {
+        name: 'Mail',
+        url: 'https://mail.example.com/mcp',
+        token: 'super-secret',
+      },
+      [],
+    );
+    expect(created.hasToken).toBe(true);
+    expect(JSON.stringify(created)).not.toContain('super-secret');
+    const raw = (
+      db
+        .prepare('SELECT token FROM mcp_connections WHERE id=?')
+        .get(created.id) as {
+        token: string;
+      }
+    ).token;
+    expect(raw.startsWith('enc1:')).toBe(true);
+    expect(raw).not.toContain('super-secret');
+    expect(store.credentials(created.id)).toEqual({
+      url: 'https://mail.example.com/mcp',
+      token: 'super-secret',
+    });
+    // Legacy plaintext row is migrated on open.
+    db.prepare(
+      "INSERT INTO mcp_connections VALUES ('legacy', 'dot-1', 'Old', 'https://old.example.com', 'plain-token', '[]', NULL, 1, 1)",
+    ).run();
+    const reopened = new ConnectionStore(db, () => 'test-secret');
+    expect(reopened.credentials('legacy')).toEqual({
+      url: 'https://old.example.com',
+      token: 'plain-token',
+    });
+    const migrated = (
+      db
+        .prepare('SELECT token FROM mcp_connections WHERE id=?')
+        .get('legacy') as {
+        token: string;
+      }
+    ).token;
+    expect(migrated.startsWith('enc1:')).toBe(true);
+  } finally {
+    db.close();
+  }
+});
+it('fails closed on an unreadable stored credential', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { ConnectionStore } = await import('../src/server/connection-store.js');
+  const db = new DatabaseSync(':memory:');
+  try {
+    const store = new ConnectionStore(db, () => 'test-secret');
+    const created = store.create(
+      'dot-1',
+      { name: 'Mail', url: 'https://mail.example.com/mcp', token: 'x' },
+      [],
+    );
+    db.prepare('UPDATE mcp_connections SET token=? WHERE id=?').run(
+      'enc1:!!!not-base64!!!',
+      created.id,
+    );
+    expect(() => store.credentials(created.id)).toThrow('unreadable');
+  } finally {
+    db.close();
+  }
 });

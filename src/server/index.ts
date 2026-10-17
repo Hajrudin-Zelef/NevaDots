@@ -39,6 +39,11 @@ const providerRegistry = new ProviderRegistry(
   resolveSecretKey(workspace),
   process.env,
 );
+if (!process.env.SECRETS_KEY?.trim())
+  console.warn(
+    'SECRETS_KEY is not set: at-rest key encryption falls back to ' +
+      'OWNER_TOKEN or a generated database key. Set SECRETS_KEY in production.',
+  );
 const config: PlatformConfig = {
   databasePath: database,
   apiKey: process.env.OPENAI_API_KEY,

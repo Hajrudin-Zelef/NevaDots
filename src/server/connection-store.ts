@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { decryptSecret, encryptSecret } from './secrets.js';
 import type {
   Connection,
   ConnectionActionResult,
@@ -9,8 +10,14 @@ type Row = Omit<Connection, 'hasToken' | 'tools'> & {
   token: string | null;
   tools: string;
 };
+/** Prefix for AES-GCM tokens (see secrets.ts). Bare values are legacy
+ * plaintext, migrated on open. */
+const ENC_PREFIX = 'enc1:';
 export class ConnectionStore {
-  constructor(private db: DatabaseSync) {
+  constructor(
+    private db: DatabaseSync,
+    private secretProvider?: () => string,
+  ) {
     db.exec(`CREATE TABLE IF NOT EXISTS mcp_connections(id TEXT PRIMARY KEY, dotId TEXT NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL, token TEXT, tools TEXT NOT NULL, error TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS mcp_approvals(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, dotId TEXT NOT NULL, connectionId TEXT NOT NULL, tool TEXT NOT NULL, arguments TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS mcp_actions(threadId TEXT NOT NULL, toolCallId TEXT NOT NULL, connectionId TEXT NOT NULL, tool TEXT NOT NULL, status TEXT NOT NULL, result TEXT, createdAt INTEGER NOT NULL, PRIMARY KEY(threadId, toolCallId));`);
@@ -22,6 +29,44 @@ export class ConnectionStore {
         .some((column) => column.name === 'approvalId')
     )
       db.exec('ALTER TABLE mcp_actions ADD COLUMN approvalId TEXT');
+    // One execution per approval: the first (threadId, toolCallId) pair to
+    // claim an approvalId owns it; any other pair is rejected.
+    db.exec(
+      `CREATE TABLE IF NOT EXISTS mcp_approval_claims(approvalId TEXT PRIMARY KEY, threadId TEXT NOT NULL, toolCallId TEXT NOT NULL, createdAt INTEGER NOT NULL)`,
+    );
+    this.migrateTokens();
+  }
+  /** Encrypt-at-rest for MCP bearer tokens. Legacy plaintext rows are
+   * re-encrypted once, idempotently, using the server secret. */
+  private secret(): string | undefined {
+    try {
+      return this.secretProvider?.();
+    } catch {
+      return undefined;
+    }
+  }
+  private seal(plain: string): string {
+    const secret = this.secret();
+    if (!secret) return plain;
+    return ENC_PREFIX + encryptSecret(plain, secret);
+  }
+  private open(stored: string): string {
+    if (!stored.startsWith(ENC_PREFIX)) return stored;
+    const secret = this.secret();
+    if (!secret) throw new Error('Stored credential is unreadable.');
+    return decryptSecret(stored.slice(ENC_PREFIX.length), secret);
+  }
+  private migrateTokens() {
+    if (!this.secretProvider) return;
+    const rows = this.db
+      .prepare('SELECT id, token FROM mcp_connections WHERE token IS NOT NULL')
+      .all() as unknown as { id: string; token: string }[];
+    for (const row of rows) {
+      if (row.token.startsWith(ENC_PREFIX)) continue;
+      this.db
+        .prepare('UPDATE mcp_connections SET token=? WHERE id=?')
+        .run(this.seal(row.token), row.id);
+    }
   }
   private rows(dotId?: string) {
     return this.db
@@ -41,10 +86,20 @@ export class ConnectionStore {
     return row && this.view(row);
   }
   // Secrets never leave the server: only the MCP transport reads them.
+  // Tokens are AES-GCM sealed at rest; a corrupt entry fails closed.
   credentials(id: string) {
     const row = this.rows().find((row) => row.id === id);
     if (!row) throw new Error('Connection not found.');
-    return { url: row.url, token: row.token ?? undefined };
+    if (row.token == null) return { url: row.url, token: undefined };
+    let token: string;
+    try {
+      token = this.open(row.token);
+    } catch {
+      throw new Error(
+        'The stored credential is unreadable. Re-enter the bearer token.',
+      );
+    }
+    return { url: row.url, token: token || undefined };
   }
   create(
     dotId: string,
@@ -62,7 +117,7 @@ export class ConnectionStore {
         dotId,
         value.name,
         value.url,
-        value.token || null,
+        value.token ? this.seal(value.token) : null,
         JSON.stringify(tools),
         now,
         now,
@@ -170,6 +225,36 @@ export class ConnectionStore {
         .run(threadId, toolCallId, connectionId, tool, Date.now(), approvalId)
         .changes > 0
     );
+  }
+  /**
+   * Bind an approval to its first (threadId, toolCallId) pair. Returns
+   * 'claimed' for the winner, 'same' when the identical pair retries
+   * (idempotent recovery), and 'different' when the approval is replayed
+   * under another call — which the route rejects without executing.
+   */
+  claimApproval(
+    approvalId: string,
+    threadId: string,
+    toolCallId: string,
+  ): 'claimed' | 'same' | 'different' {
+    const inserted =
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO mcp_approval_claims (approvalId, threadId, toolCallId, createdAt) VALUES (?, ?, ?, ?)',
+        )
+        .run(approvalId, threadId, toolCallId, Date.now()).changes > 0;
+    if (inserted) return 'claimed';
+    const row = this.db
+      .prepare(
+        'SELECT threadId, toolCallId FROM mcp_approval_claims WHERE approvalId=?',
+      )
+      .get(approvalId) as unknown as {
+      threadId: string;
+      toolCallId: string;
+    };
+    return row.threadId === threadId && row.toolCallId === toolCallId
+      ? 'same'
+      : 'different';
   }
   finishAction(
     threadId: string,

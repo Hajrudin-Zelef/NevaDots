@@ -132,6 +132,21 @@ export function connectionRoutes(
     const earlier = recovered();
     if (earlier) return earlier;
     const { approval, exposed } = approvalFor(thread.id, body.approvalId);
+    // Single-use approval: the first (threadId, toolCallId) pair owns the
+    // approvalId. A replay under another call is rejected without executing.
+    // The identical pair falls through to the action claim below, which
+    // returns the running/recovered receipt (idempotent retry).
+    if (
+      connections.store.claimApproval(
+        approval.id,
+        thread.id,
+        body.toolCallId,
+      ) === 'different'
+    )
+      return c.json(
+        { error: 'This approval was already used by another action.' },
+        409,
+      );
     if (
       !connections.store.claimAction(
         thread.id,
