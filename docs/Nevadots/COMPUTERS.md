@@ -38,7 +38,37 @@ Le service `computer-image` est une cible de build, pas un conteneur à faire to
 - **CPU 2 cœurs / RAM 4 GiB** par conteneur (plafond, configurable via `COMPUTER_CPUS` / `COMPUTER_MEMORY_BYTES`).
 - **Disque** : pas de quota dur ; les logs sont bornés (30 Mo) et l'usage disque est visible dans l'onglet Fichiers.
 - **Clone git** : hôte public validé, `--depth 1 --single-branch`, transfert borné (500 Mo, kill du groupe au dépassement), `.git/config` neutralisé après usage.
-- **Isolation** : isolation Docker standard (noyau partagé). `COMPUTER_RUNTIME=runsc` sélectionne un runtime gVisor **déjà installé** sur l'hôte — le template ne l'installe pas. Accès shell = programmes et réseau dans le conteneur ; c'est le niveau de confiance à accepter.
+- **Isolation** : isolation Docker standard (noyau partagé). `COMPUTER_RUNTIME=runsc` sélectionne un runtime gVisor — voir « Durcir avec gVisor (runsc) » ci-dessous. Accès shell = programmes et réseau dans le conteneur ; c'est le niveau de confiance à accepter.
+
+### Durcir avec gVisor (runsc)
+
+Par défaut, les conteneurs des Dots tournent avec le runtime Docker standard (`runc`, noyau partagé avec l'hôte). `COMPUTER_RUNTIME=runsc` les fait tourner sous gVisor : un noyau virtuel qui intercepte les appels système du conteneur et réduit la surface d'évasion vers l'hôte. C'est la voie d'attaque la plus probable qui est durcie (un Dot qui s'échappe de son conteneur). runsc ne protège pas le superviseur lui-même (il tourne toujours sous `runc`) et ne remplace pas le proxy socket (voir « Risque accepté ») — le montage du socket reste en place.
+
+**Installer (Debian/Ubuntu, méthode recommandée, paquet apt).** D'après la [doc d'installation gVisor](https://gvisor.dev/docs/user_guide/install/) :
+
+```sh
+curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null
+sudo apt-get update && sudo apt-get install -y runsc
+```
+
+Le paquet configure Docker automatiquement quand Docker est installé. Vérifier : `runsc --version`, puis `docker info` doit lister `runsc` parmi les runtimes, et `docker run --rm --runtime=runsc hello-world` doit réussir.
+
+**Activer.** Dans `.env` : `COMPUTER_RUNTIME=runsc`, puis redémarrer le superviseur (`docker compose -f compose.computers.yml up -d computer-supervisor`). Les conteneurs déjà créés gardent leur runtime ; seuls les nouveaux conteneurs (ou recréés) tournent sous runsc.
+
+**Vérifier.** Démarrer l'ordinateur d'un Dot, puis inspecter son conteneur : `docker inspect <conteneur>` doit afficher `"Runtime": "runsc"` sous `HostConfig`. Si ce n'est pas le cas, le superviseur n'a pas pris la variable (vérifier le `.env` et le redémarrage du superviseur).
+
+gVisor peut refuser certains appels système exotiques et ralentir les charges lourdes — si un Dot se comporte bizarrement sous runsc, tester sans pour isoler.
+
+## Risque accepté : socket Docker du superviseur
+
+Le superviseur monte le socket Docker de l'hôte (`compose.computers.yml:47` : `${ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock`). C'est volontaire — c'est comme ça qu'il crée les conteneurs des Dots — mais c'est le plus gros risque unitaire du système.
+
+**Blast radius.** Le socket Docker est la télécommande de Docker : qui le contrôle peut créer n'importe quel conteneur, y compris privilégié, et monter n'importe quel dossier de l'hôte. Une compromission du superviseur = root sur la machine hôte. Les conteneurs des Dots, eux, ne montent pas le socket : un Dot qui s'échappe de son conteneur n'obtient pas le socket.
+
+**Ce qui est trusted (et pourquoi le risque est accepté pour l'instant).** Déploiement mono-utilisateur ; le port du superviseur n'écoute qu'en loopback ; les requêtes de cycle de vie exigent le token superviseur ; les conteneurs des Dots sont non privilégiés, bornés (2 CPU / 4 Go), et peuvent tourner sous gVisor (voir ci-dessus). Le vrai correctif — un proxy socket qui ne laisserait passer que les appels de cycle de vie nécessaires et refuserait les montages de chemins hôte — est un chantier à part, différé (un composant de plus à maintenir, du coût opérationnel).
+
+**Ce qui changerait la décision.** Déploiement multi-utilisateur, superviseur exposé au-delà du loopback, ou compromission avérée du superviseur → le proxy socket devient obligatoire, et le montage direct du socket doit être retiré.
 
 ## Vérifier
 
