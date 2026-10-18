@@ -18,6 +18,7 @@ import { ExternalAccounts } from './external-accounts.js';
 import { resolveLegacySecretKey, resolveSecretKey } from './secrets.js';
 import { attachComputerStream } from './computer-stream.js';
 import type { PlatformConfig } from './platform-config.js';
+import { requireOwnerToken } from './require-owner-token.js';
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 4310);
 const ownerToken = process.env.OWNER_TOKEN;
@@ -28,17 +29,16 @@ if (
   throw new Error(
     'External binding requires an OWNER_TOKEN of at least 24 characters.',
   );
-// Lot 6 (D3) : sur machine partagée, exiger un token même en loopback.
-// Opt-in (défaut off) pour ne pas casser les installs loopback existantes.
-// Sans token, tout processus local peut appeler l'API (host/origin seulement).
-if (!ownerToken && process.env.REQUIRE_OWNER_TOKEN === 'true')
+// Lot 5.1 (#6, option a) : exiger un token par défaut, même en loopback.
+// Fail-closed : sans token, le serveur refuse de démarrer, sauf opt-out
+// explicite REQUIRE_OWNER_TOKEN=false (dev local uniquement).
+if (!ownerToken && requireOwnerToken())
   throw new Error(
-    'REQUIRE_OWNER_TOKEN is true: set an OWNER_TOKEN of at least 24 characters.',
+    'OWNER_TOKEN is required: set an OWNER_TOKEN of at least 24 characters, or REQUIRE_OWNER_TOKEN=false to disable (local dev only).',
   );
 if (!ownerToken)
   console.warn(
-    'No OWNER_TOKEN set: any local process can call this API (host/origin checks only). ' +
-      'Set REQUIRE_OWNER_TOKEN=true with an OWNER_TOKEN on shared machines.',
+    'REQUIRE_OWNER_TOKEN=false: API auth disabled — any local process can call this API (host/origin checks only).',
   );
 const database = process.env.DATABASE_PATH ?? 'data/opendots.sqlite';
 const store = new Store(database);

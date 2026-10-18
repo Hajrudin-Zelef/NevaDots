@@ -45,9 +45,8 @@ Les clés de modèles peuvent aussi être saisies dans **Réglages → API et Mo
 
 ### Jeton d'accès et liaisons externes
 
-- `OWNER_TOKEN` (24 caractères minimum) est exigé dès que `HOST` dépasse le loopback.
-- `REQUIRE_OWNER_TOKEN=true` refuse le boot sans jeton même en loopback (machine partagée).
-- Sans jeton, tout processus local peut appeler l'API (vérifications host/origin seulement) — un warning le signale au démarrage.
+- `OWNER_TOKEN` (24 caractères minimum) est exigé par défaut, même en loopback : sans jeton, le serveur refuse de démarrer.
+- `REQUIRE_OWNER_TOKEN=false` désactive cette exigence (dev local uniquement) ; sans jeton, tout processus local peut appeler l'API (vérifications host/origin seulement) — un warning le signale au démarrage.
 
 ### Clé de chiffrement au repos
 
