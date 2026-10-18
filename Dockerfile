@@ -7,6 +7,10 @@ RUN npm run build
 
 FROM node:24-bookworm-slim AS app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=4310 DATABASE_PATH=/data/opendots.sqlite
+# PDF agent tools (pdfcraft-cli, ocrmypdf) are intentionally NOT installed in
+# this image (decision 2026-10-18): they are host-only, and their absence is a
+# graceful degradation (read_pdf/pdf_edit/pdf_ocr simply do not register).
+# If Docker becomes the primary deployment, revisit.
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev && mkdir -p /data && chown node:node /data
