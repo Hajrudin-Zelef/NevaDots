@@ -1,5 +1,6 @@
 # Source comes from the exact OpenBot revision in compose.computers.yml.
-FROM oven/bun:1.3.14-alpine
+# Image épinglée par digest (Renovate : docker:pinDigests).
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0
 WORKDIR /app
 COPY --from=openbot supervisor/package.json supervisor/bun.lock ./
 RUN bun install --frozen-lockfile
