@@ -375,6 +375,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         data.data.spaceIds,
         data.data.learningContainerId,
         data.data.skillDeliveryEnabled,
+        null, // model : le schéma ne l'expose pas, pas de modèle à la création
         data.data.avatar ?? null,
       ),
       201,

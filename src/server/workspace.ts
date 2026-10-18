@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { AVATAR_IDS } from '../shared/avatars.js';
 import { validateLearningSettings } from '../shared/learning.js';
 import type { CallReceipt, Conversation, Dot, Space } from '../shared/types.js';
 export class WorkspaceStore {
@@ -225,6 +226,13 @@ export class WorkspaceStore {
     model: string | null = null,
     avatar: string | null = null,
   ): Dot {
+    // Un id d'avatar n'est jamais un modèle : attrape une inversion
+    // d'arguments (avatar passé dans le slot model) au lieu d'écrire
+    // silencieusement une valeur corrompue.
+    if (model !== null && (AVATAR_IDS as readonly string[]).includes(model))
+      throw new Error(
+        `Invalid model: "${model}" is an avatar id, not a model.`,
+      );
     this.validateSpaceAccess(spaceId, spaceIds);
     validateLearningSettings(learningContainerId, skillDeliveryEnabled);
     const dot: Dot = {

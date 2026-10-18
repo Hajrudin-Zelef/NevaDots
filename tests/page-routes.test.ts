@@ -452,3 +452,31 @@ it('maps Conversation not found to 404 in onError', () => {
   expect(isNotFoundMessage('Conversation failed.')).toBe(false);
   expect(isNotFoundMessage('Provider secret')).toBe(false);
 });
+
+it('POST /dots puts the avatar in the avatar slot, not the model slot', async () => {
+  const { app } = fixture();
+  const spaceRes = await app.request(
+    '/api/spaces',
+    request({ name: 'Design', description: '' }),
+  );
+  expect(spaceRes.status).toBe(201);
+  const space = (await spaceRes.json()) as { id: string };
+  const res = await app.request(
+    '/api/dots',
+    request({
+      spaceId: space.id,
+      name: 'Scout',
+      instructions: 'Be concise',
+      researchAllowed: false,
+      memoryAllowed: true,
+      avatar: 'leo',
+    }),
+  );
+  expect(res.status).toBe(201);
+  const dot = (await res.json()) as {
+    avatar: string | null;
+    model: string | null;
+  };
+  expect(dot.avatar).toBe('leo');
+  expect(dot.model).toBeNull();
+});

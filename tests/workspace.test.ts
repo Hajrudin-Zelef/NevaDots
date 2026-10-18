@@ -105,3 +105,38 @@ it('persists the per-dot compaction strategy (phase 9)', () => {
   expect(() => store.setDotCompactionStrategy('missing', 'native')).toThrow();
   store.close();
 });
+
+it('refuses an avatar id in the model slot of createDot', () => {
+  const store = new WorkspaceStore(':memory:', 'owner');
+  const space = store.createSpace('Design', 'Design decisions');
+  // Inversion d'arguments (avatar passé dans le slot model) : refusée.
+  expect(() =>
+    store.createDot(
+      space.id,
+      'Scout',
+      'Be concise',
+      false,
+      true,
+      [space.id],
+      null,
+      false,
+      'leo',
+    ),
+  ).toThrow('Invalid model');
+  // Un vrai modèle + un avatar passent.
+  const dot = store.createDot(
+    space.id,
+    'Scout',
+    'Be concise',
+    false,
+    true,
+    [space.id],
+    null,
+    false,
+    'gpt-4o',
+    'leo',
+  );
+  expect(dot.model).toBe('gpt-4o');
+  expect(dot.avatar).toBe('leo');
+  store.close();
+});
