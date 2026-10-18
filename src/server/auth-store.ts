@@ -128,6 +128,14 @@ export class AuthStore {
     this.db.close();
   }
 
+  /** Phase B (bootstrap) : nombre de comptes (0 = premier compte à créer). */
+  countUsers(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM users').get() as {
+      n: number;
+    };
+    return row.n;
+  }
+
   async createUser(
     username: string,
     password: string,
@@ -182,6 +190,33 @@ export class AuthStore {
     this.db
       .prepare('UPDATE users SET disabled=? WHERE id=?')
       .run(disabled ? 1 : 0, id);
+  }
+  /** Phase B (reset) : change le mot de passe (validé, haché). */
+  async setUserPassword(id: string, password: string) {
+    if (
+      password.length < PASSWORD_MIN_LENGTH ||
+      password.length > PASSWORD_MAX_LENGTH
+    )
+      throw new Error(
+        `Password must be ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters.`,
+      );
+    this.db
+      .prepare('UPDATE users SET passwordHash=? WHERE id=?')
+      .run(await hashPassword(password), id);
+  }
+  getUserById(id: string): UserRow | undefined {
+    const row = this.db.prepare('SELECT * FROM users WHERE id=?').get(id) as
+      DbUserRow | undefined;
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      username: row.username,
+      passwordHash: row.passwordHash,
+      role: row.role,
+      disabled: row.disabled === 1,
+      createdAt: row.createdAt,
+      lastLoginAt: row.lastLoginAt,
+    };
   }
   setUserRole(id: string, role: UserRole) {
     this.db.prepare('UPDATE users SET role=? WHERE id=?').run(role, id);
@@ -266,6 +301,13 @@ export class AuthStore {
     this.db
       .prepare('DELETE FROM password_resets WHERE id=?')
       .run(hashToken(rawToken));
+  }
+  /** Phase B : purge les codes expirés (lignes mortes, comme les sessions). */
+  sweepExpiredResets(now = Date.now()): number {
+    const result = this.db
+      .prepare('DELETE FROM password_resets WHERE expiresAt < ?')
+      .run(now);
+    return Number(result.changes);
   }
 
   logAuthEvent(action: string, username: string, ip: string, at = Date.now()) {

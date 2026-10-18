@@ -30,7 +30,7 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
-import { api, ApiError, isAuthed, login, logout } from './api';
+import { api, ApiError, logout } from './api';
 import { trackSetupStep } from './setup-telemetry';
 import {
   applyCaptureResult,
@@ -162,8 +162,6 @@ export function App() {
     setNotices((current) =>
       current.action === action ? current : { ...current, action },
     );
-  const [auth, setAuth] = useState('');
-  const [needsAuth, setNeedsAuth] = useState(false);
   const [dialog, setDialog] = useState<Dialog>();
   const [mobile, setMobile] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
@@ -218,11 +216,9 @@ export function App() {
       ]);
       setState(s);
       setWorkspace(w);
-      setNeedsAuth(false);
       setSelectedDot((previous) => previous || w.dots[0]?.id || '');
       setNotices((current) => applyRefreshResult(current, { ok: true }));
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setNeedsAuth(true);
       setNotices((current) =>
         applyRefreshResult(
           current,
@@ -406,61 +402,10 @@ export function App() {
       await refresh();
     }
   };
-  if (needsAuth)
-    return (
-      <main className="unlock">
-        {/* The Dot avatar is owner-private (gated on /dots), so the locked
-            screen shows the public logo instead of the mascot. */}
-        <img className="unlock-logo" src="/logo.png" alt="" />
-        <h1>Your own little corner.</h1>
-        <p>
-          Enter the owner access token configured on this template’s server.
-        </p>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            try {
-              await login(auth);
-              setError('');
-              await refresh();
-            } catch (err) {
-              setError(
-                err instanceof Error
-                  ? err.message
-                  : 'Access token was not accepted.',
-              );
-            }
-          }}
-        >
-          <input
-            type="password"
-            aria-label="Jeton d’accès propriétaire"
-            autoComplete="current-password"
-            value={auth}
-            onChange={(e) => setAuth(e.target.value)}
-            required
-          />
-          <button className="primary">Unlock NevaDots</button>
-        </form>
-        {error && (
-          <p className="chat-error" role="alert">
-            {error}
-          </p>
-        )}
-        <p className="muted">
-          The token is sent once and stored in an HttpOnly cookie the page
-          cannot read.
-        </p>
-      </main>
-    );
   if (!state || !workspace || !dot)
     return (
       <main className="unlock">
-        {isAuthed() ? (
-          <Mascot state="working" />
-        ) : (
-          <img className="unlock-logo" src="/logo.png" alt="" />
-        )}
+        <Mascot state="working" />
         <h1>Finding your dots…</h1>
         {error && (
           <>
@@ -552,7 +497,6 @@ export function App() {
             onClick={async () => {
               try {
                 await logout();
-                setNeedsAuth(true);
               } catch (err) {
                 setError(
                   err instanceof Error ? err.message : 'Could not log out.',

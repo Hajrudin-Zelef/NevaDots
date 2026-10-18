@@ -18,7 +18,7 @@ import {
 // codes reset à usage unique, audit. L'auth par jeton coexiste (non branchée).
 const stores: { close(): void }[] = [];
 const config: Config = { mode: 'sample', baseUrl: 'https://api.openai.com/v1' };
-function fixture(token?: string) {
+function fixture() {
   const store = new Store(':memory:');
   const auth = new AuthStore(':memory:');
   stores.push(store, auth);
@@ -27,7 +27,7 @@ function fixture(token?: string) {
     store,
     auth,
     runner,
-    app: createApp({ store, runner, config, ownerToken: token, auth }),
+    app: createApp({ store, runner, config, auth }),
   };
 }
 afterEach(() => stores.splice(0).forEach((s) => s.close()));
@@ -129,6 +129,35 @@ describe('sessions (AuthStore)', () => {
 });
 
 describe('password resets (AuthStore)', () => {
+  it('setUserPassword changes the password (old fails, new works)', async () => {
+    const { auth } = fixture();
+    const user = await auth.createUser('marie', 'a-strong-password', 'user');
+    await auth.setUserPassword(user.id, 'a-brand-new-pass');
+    const row = auth.getUserByUsername('marie');
+    expect(await verifyPassword('a-brand-new-pass', row!.passwordHash)).toBe(
+      true,
+    );
+    expect(await verifyPassword('a-strong-password', row!.passwordHash)).toBe(
+      false,
+    );
+  });
+  it('sweepExpiredResets purges expired codes only', async () => {
+    const { auth } = fixture();
+    const user = await auth.createUser('marie', 'a-strong-password', 'user');
+    const t0 = Date.now();
+    const { rawToken: old } = auth.createPasswordReset(user.id, t0);
+    const { rawToken: fresh } = auth.createPasswordReset(
+      user.id,
+      t0 + 60 * 60 * 1000,
+    );
+    expect(auth.sweepExpiredResets(t0 + 60 * 60 * 1000 + 1)).toBe(1);
+    expect(auth.verifyPasswordReset(old, t0 + 60 * 60 * 1000 + 2)).toBe(
+      undefined,
+    );
+    expect(
+      auth.verifyPasswordReset(fresh, t0 + 60 * 60 * 1000 + 2)?.userId,
+    ).toBe(user.id);
+  });
   it('create → verify → consume → gone; wrong token fails', async () => {
     const { auth } = fixture();
     const user = await auth.createUser('marie', 'a-strong-password', 'user');
@@ -278,22 +307,288 @@ describe('POST /api/auth/login + /api/auth/logout', () => {
     expect(actions).toContain('login_failed');
     expect(actions).toContain('login_ok');
   });
-  it('token flow still works (coexistence — Phase A does not change it)', async () => {
-    const { app } = fixture('private-token');
+  it('token flow is gone: POST /api/login → 404 (with a session), Bearer header → 401', async () => {
+    const { app, auth } = fixture();
+    await auth.createUser('marie', 'a-strong-password', 'user');
     const login = await app.request(
-      '/api/login',
-      json({ token: 'private-token' }),
+      '/api/auth/login',
+      json({ username: 'marie', password: 'a-strong-password' }),
     );
-    expect(login.status).toBe(200);
-    const cookie = login.headers
-      .getSetCookie()
-      .find((c) => c.startsWith('opendots-auth='));
-    expect(cookie).toMatch(/HttpOnly/);
-    const state = await app.request('/api/state', {
-      headers: { Cookie: cookie! },
-    });
-    expect(state.status).toBe(200);
+    const cookie = sessionCookie(login)!;
+    // Avec une session valide, la route /api/login n'existe plus → 404.
+    expect(
+      (
+        await app.request('/api/login', {
+          ...json({ token: 'whatever' }),
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await app.request('/api/state', {
+          headers: { Authorization: 'Bearer whatever' },
+        })
+      ).status,
+    ).toBe(401);
   });
+});
+
+describe('Phase B — POST /api/auth/reset', () => {
+  it('valid code → password changed, code consumed, sessions revoked', async () => {
+    const { app, auth } = fixture();
+    const user = await auth.createUser('marie', 'a-strong-password', 'user');
+    const login = await app.request(
+      '/api/auth/login',
+      json({ username: 'marie', password: 'a-strong-password' }),
+    );
+    const cookie = sessionCookie(login)!;
+    const raw = cookie.split(';')[0].split('=')[1];
+    expect(auth.getSession(decodeURIComponent(raw))).toBeDefined();
+    const { rawToken } = auth.createPasswordReset(user.id);
+    const reset = await app.request(
+      '/api/auth/reset',
+      json({ token: rawToken, password: 'a-brand-new-pass' }),
+    );
+    expect(reset.status).toBe(200);
+    // Code consommé (usage unique) + session révoquée.
+    expect(auth.verifyPasswordReset(rawToken)).toBeUndefined();
+    expect(auth.getSession(decodeURIComponent(raw))).toBeUndefined();
+    // Ancien mot de passe KO, nouveau OK.
+    expect(
+      (
+        await app.request(
+          '/api/auth/login',
+          json({ username: 'marie', password: 'a-strong-password' }),
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await app.request(
+          '/api/auth/login',
+          json({ username: 'marie', password: 'a-brand-new-pass' }),
+        )
+      ).status,
+    ).toBe(200);
+  });
+  it('wrong or expired code → 401, password unchanged', async () => {
+    const { app, auth } = fixture();
+    const user = await auth.createUser('marie', 'a-strong-password', 'user');
+    expect(
+      (
+        await app.request(
+          '/api/auth/reset',
+          json({ token: '00'.repeat(32), password: 'a-brand-new-pass' }),
+        )
+      ).status,
+    ).toBe(401);
+    const t0 = Date.now();
+    const { rawToken } = auth.createPasswordReset(user.id, t0);
+    // Expire le code en avançant le temps via un sweep, puis reset → 401.
+    auth.sweepExpiredResets(t0 + 60 * 60 * 1000 + 1);
+    expect(
+      (
+        await app.request(
+          '/api/auth/reset',
+          json({ token: rawToken, password: 'a-brand-new-pass' }),
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await app.request(
+          '/api/auth/login',
+          json({ username: 'marie', password: 'a-strong-password' }),
+        )
+      ).status,
+    ).toBe(200);
+  });
+  it('reset form (urlencoded) → redirect /login?reset=1', async () => {
+    const { app, auth } = fixture();
+    const user = await auth.createUser('marie', 'a-strong-password', 'user');
+    const { rawToken } = auth.createPasswordReset(user.id);
+    const res = await app.request('/api/auth/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(rawToken)}&password=${encodeURIComponent('a-brand-new-pass')}`,
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/login?reset=1');
+  });
+});
+
+describe('Phase B — GET /api/auth/me', () => {
+  it('with a session → 200 {username, role}; without → 401', async () => {
+    const { app, auth } = fixture();
+    await auth.createUser('marie', 'a-strong-password', 'admin');
+    const login = await app.request(
+      '/api/auth/login',
+      json({ username: 'marie', password: 'a-strong-password' }),
+    );
+    const cookie = sessionCookie(login)!;
+    const me = await app.request('/api/auth/me', {
+      headers: { Cookie: cookie },
+    });
+    expect(me.status).toBe(200);
+    expect(await me.json()).toEqual({ username: 'marie', role: 'admin' });
+    expect((await app.request('/api/auth/me')).status).toBe(401);
+  });
+});
+
+describe('Phase B — pages /login et /reset', () => {
+  it('GET /login → 200 HTML autonome (formulaire, pas de /assets/*, CSP stricte)', async () => {
+    const { app } = fixture();
+    const res = await app.request('/login');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/text\/html/);
+    expect(res.headers.get('content-security-policy')).toMatch(
+      /default-src 'none'/,
+    );
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const html = await res.text();
+    expect(html).toContain('<form action="/api/auth/login" method="post">');
+    expect(html).toContain('Mot de passe oublié');
+    expect(html).not.toContain('/assets/');
+    expect(html).not.toContain('<script');
+  });
+  it('GET /reset → 200 HTML autonome (formulaire code + nouveau mot de passe)', async () => {
+    const { app } = fixture();
+    const res = await app.request('/reset');
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<form action="/api/auth/reset" method="post">');
+    expect(html).toContain('name="token"');
+    expect(html).not.toContain('<script');
+  });
+  it('GET /login avec une session → redirection vers /', async () => {
+    const { app, auth } = fixture();
+    await auth.createUser('marie', 'a-strong-password', 'user');
+    const login = await app.request(
+      '/api/auth/login',
+      json({ username: 'marie', password: 'a-strong-password' }),
+    );
+    const res = await app.request('/login', {
+      headers: { Cookie: sessionCookie(login)! },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/');
+  });
+  it('login par formulaire (urlencoded) → cookie + redirection vers /', async () => {
+    const { app, auth } = fixture();
+    await auth.createUser('marie', 'a-strong-password', 'user');
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'username=marie&password=a-strong-password',
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/');
+    expect(sessionCookie(res)).toMatch(/HttpOnly/);
+  });
+  it('login par formulaire avec mauvais mot de passe → redirection /login?error=1', async () => {
+    const { app, auth } = fixture();
+    await auth.createUser('marie', 'a-strong-password', 'user');
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'username=marie&password=wrong-password-1',
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/login?error=1');
+  });
+});
+
+describe('Phase B — POST /api/auth/bootstrap', () => {
+  const MASTER = 'test-master-password';
+  const setMaster = () => {
+    process.env.ADMIN_MASTER_PASSWORD = MASTER;
+  };
+  const clearMaster = () => {
+    delete process.env.ADMIN_MASTER_PASSWORD;
+  };
+  it('wrong master password → 401, no account created', async () => {
+    setMaster();
+    const { app, auth } = fixture();
+    try {
+      const res = await app.request(
+        '/api/auth/bootstrap',
+        json({
+          masterPassword: 'wrong-master-password',
+          username: 'admin',
+          password: 'a-strong-password',
+        }),
+      );
+      expect(res.status).toBe(401);
+      expect(auth.countUsers()).toBe(0);
+    } finally {
+      clearMaster();
+    }
+  });
+  it('correct master + no users → 201, first Admin created; second bootstrap → 409', async () => {
+    setMaster();
+    const { app, auth } = fixture();
+    try {
+      const res = await app.request(
+        '/api/auth/bootstrap',
+        json({
+          masterPassword: MASTER,
+          username: 'admin',
+          password: 'a-strong-password',
+        }),
+      );
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({
+        ok: true,
+        user: { username: 'admin', role: 'admin' },
+      });
+      expect(auth.countUsers()).toBe(1);
+      expect(auth.getUserByUsername('admin')?.role).toBe('admin');
+      const again = await app.request(
+        '/api/auth/bootstrap',
+        json({
+          masterPassword: MASTER,
+          username: 'second',
+          password: 'a-strong-password',
+        }),
+      );
+      expect(again.status).toBe(409);
+      expect(auth.countUsers()).toBe(1);
+    } finally {
+      clearMaster();
+    }
+  });
+  it('bootstrap form (urlencoded) → redirect /login?bootstrap=1', async () => {
+    setMaster();
+    const { app, auth } = fixture();
+    try {
+      const res = await app.request('/api/auth/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `masterPassword=${encodeURIComponent(MASTER)}&username=admin&password=a-strong-password`,
+      });
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toBe('/login?bootstrap=1');
+      expect(auth.countUsers()).toBe(1);
+    } finally {
+      clearMaster();
+    }
+  });
+  it('GET /bootstrap → 200 form when no users, redirect /login when a user exists', async () => {
+    const { app, auth } = fixture();
+    const empty = await app.request('/bootstrap');
+    expect(empty.status).toBe(200);
+    expect(await empty.text()).toContain(
+      '<form action="/api/auth/bootstrap" method="post">',
+    );
+    await auth.createUser('admin', 'a-strong-password', 'admin');
+    const full = await app.request('/bootstrap');
+    expect(full.status).toBe(302);
+    expect(full.headers.get('location')).toBe('/login');
+  });
+});
+
+describe('POST /api/auth/login + /api/auth/logout', () => {
   it('/api/auth/* → 503 without an auth store', async () => {
     const store = new Store(':memory:');
     stores.push(store);

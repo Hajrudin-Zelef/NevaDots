@@ -7,10 +7,9 @@ import { AuthStore, resolveAdminMasterPassword } from './auth-store.js';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { compress } from 'hono/compress';
 import { getCookie } from 'hono/cookie';
-import { timingSafeEqual } from 'node:crypto';
 import { Store } from './store.js';
 import { Runner } from './runner.js';
-import { createApp } from './app.js';
+import { createApp, createStaticGate } from './app.js';
 import { resolveAppOrigins } from './app-origin.js';
 import { WorkspaceStore } from './workspace.js';
 import { Platform } from './platform.js';
@@ -19,28 +18,13 @@ import { ExternalAccounts } from './external-accounts.js';
 import { resolveLegacySecretKey, resolveSecretKey } from './secrets.js';
 import { attachComputerStream } from './computer-stream.js';
 import type { PlatformConfig } from './platform-config.js';
-import { requireOwnerToken } from './require-owner-token.js';
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 4310);
-const ownerToken = process.env.OWNER_TOKEN;
-if (
-  !['127.0.0.1', '::1', 'localhost'].includes(host) &&
-  (!ownerToken || ownerToken.length < 24)
-)
-  throw new Error(
-    'External binding requires an OWNER_TOKEN of at least 24 characters.',
-  );
-// Lot 5.1 (#6, option a) : exiger un token par défaut, même en loopback.
-// Fail-closed : sans token, le serveur refuse de démarrer, sauf opt-out
-// explicite REQUIRE_OWNER_TOKEN=false (dev local uniquement).
-if (!ownerToken && requireOwnerToken())
-  throw new Error(
-    'OWNER_TOKEN is required: set an OWNER_TOKEN of at least 24 characters, or REQUIRE_OWNER_TOKEN=false to disable (local dev only).',
-  );
-if (!ownerToken)
-  console.warn(
-    'REQUIRE_OWNER_TOKEN=false: API auth disabled — any local process can call this API (host/origin checks only).',
-  );
+// Phase B (comptes) : l'auth par jeton OWNER_TOKEN est retirée — la
+// session (nom + mot de passe) protège l'API, y compris sur un bind
+// externe. Le fail-closed reste assuré par ADMIN_MASTER_PASSWORD
+// (ci-dessous). OWNER_TOKEN n'est plus lu que par le fallback legacy des
+// secrets scellés (secrets.js), jamais comme auth.
 // Phase A (comptes) : fail-closed aussi sur le mot de passe maître Admin
 // (bootstrap premier Admin + création/suppression de comptes). Sans lui,
 // le serveur refuse de démarrer — ajouter ADMIN_MASTER_PASSWORD au .env.
@@ -107,7 +91,6 @@ const config: PlatformConfig = {
     .filter(Boolean),
   slackDotId: process.env.SLACK_DOT_ID || undefined,
   runtimeUrl: `http://${host === '::1' ? '[::1]' : '127.0.0.1'}:${port}/api/copilotkit`,
-  ownerToken,
 };
 const platform = new Platform(store, workspace, config);
 const researchConfig = {
@@ -144,16 +127,16 @@ const app = createApp({
   store,
   runner,
   config: researchConfig,
-  ownerToken,
   origin: appOrigins,
   platform,
   auth,
 });
-// Phase A (comptes) : purge horaire des sessions expirées (même pattern que
-// le sweep des pièces jointes orphelines).
+// Phase B (comptes) : purge horaire des sessions expirées et des codes
+// reset expirés (même pattern que le sweep des pièces jointes orphelines).
 setInterval(() => {
   try {
     auth.sweepExpiredSessions();
+    auth.sweepExpiredResets();
   } catch {
     /* ignore */
   }
@@ -168,8 +151,8 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.get('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
-// Avatar art (/dots) is the owner's private property: it is gated behind the
-// owner token (sent as a cookie so <img> can carry it) and refuses cross-site
+// Avatar art (/dots) is the owner's private property: it is gated behind
+// the session (sent as a cookie so <img> can carry it) and refuses cross-site
 // embeds, so it can neither be loaded by a stranger nor hotlinked elsewhere.
 app.use('/dots/*', async (c, next) => {
   c.header('Cross-Origin-Resource-Policy', 'same-origin');
@@ -183,16 +166,8 @@ app.use('/dots/*', async (c, next) => {
       return c.body(null, 403);
     }
   }
-  if (ownerToken) {
-    const supplied =
-      getCookie(c, 'opendots-auth') ??
-      c.req.header('authorization')?.replace(/^Bearer /, '') ??
-      '';
-    const expected = Buffer.from(ownerToken);
-    const got = Buffer.from(supplied);
-    if (expected.length !== got.length || !timingSafeEqual(expected, got))
-      return c.body(null, 401);
-  }
+  const raw = getCookie(c, 'nevadots-session');
+  if (!raw || !auth.getSession(raw)) return c.body(null, 401);
   await next();
 });
 // Cache policy: hashed assets are immutable; avatar art (public/dots) is
@@ -214,6 +189,11 @@ app.use('/*', async (c, next) => {
   );
   await next();
 });
+// Phase B (comptes) : porte serveur — sans session valide, le serveur ne
+// sert que /login (jamais le JS de l'app, jamais les avatars). Les chemins
+// publics (/login, /reset, /health, /logo.png, /fonts/*, /api/*) sont
+// exemptés dans la porte elle-même.
+app.use('/*', createStaticGate(auth));
 // Compress only hashed static assets. Scoped to /assets/* so the SSE endpoint
 // (/api/copilotkit) and JSON APIs are never buffered or compressed.
 app.use('/assets/*', compress({ threshold: 1024 }));

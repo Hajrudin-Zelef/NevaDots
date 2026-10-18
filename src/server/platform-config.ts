@@ -34,7 +34,6 @@ export interface PlatformConfig extends WebConfig {
   slackUsers: string[];
   slackDotId?: string;
   runtimeUrl: string;
-  ownerToken?: string;
 }
 export function setupStatus(
   config: PlatformConfig,

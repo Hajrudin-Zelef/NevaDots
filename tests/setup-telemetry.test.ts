@@ -8,6 +8,8 @@ import { WorkspaceStore } from '../src/server/workspace.js';
 import { createApp } from '../src/server/app.js';
 import { Runner } from '../src/server/runner.js';
 import { Store } from '../src/server/store.js';
+import { AuthStore } from '../src/server/auth-store.js';
+import { loginSession } from './auth-helpers.js';
 import {
   SetupTelemetry,
   setupInputSchema,
@@ -155,9 +157,10 @@ it('activates only after a successful assistant answer and records a bounded fai
   expect(capture).toHaveBeenLastCalledWith({ kind: 'activated' });
 });
 
-it('protects the browser route with owner auth and origin guards and rejects forged readiness', async () => {
+it('protects the browser route with session auth and origin guards and rejects forged readiness', async () => {
   const store = new Store(':memory:');
   const workspace = new WorkspaceStore(':memory:', 'fixture-owner');
+  const auth = new AuthStore(':memory:');
   const platform = new Platform(store, workspace, {
     baseUrl: '',
     runtimeUrl: '',
@@ -169,8 +172,8 @@ it('protects the browser route with owner auth and origin guards and rejects for
     store,
     runner: new Runner(store, config),
     config,
-    ownerToken: 'fixture-token',
     platform,
+    auth,
   });
   const request = (body: unknown, headers: Record<string, string> = {}) =>
     app.request('/api/setup-telemetry', {
@@ -178,7 +181,7 @@ it('protects the browser route with owner auth and origin guards and rejects for
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
     });
-  const headers = { Authorization: 'Bearer fixture-token' };
+  const headers = { Cookie: await loginSession(app, auth) };
   expect(
     (await request({ kind: 'step_viewed', step: 'setup_required' })).status,
   ).toBe(401);
@@ -208,6 +211,7 @@ it('protects the browser route with owner auth and origin guards and rejects for
   ).toBe(200);
   store.close();
   workspace.close();
+  auth.close();
 });
 
 it('does not activate from user text, partial answers or tool-only success', () => {
