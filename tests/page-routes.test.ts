@@ -4,6 +4,7 @@ import { WorkspaceStore } from '../src/server/workspace.js';
 import { Platform } from '../src/server/platform.js';
 import { Runner } from '../src/server/runner.js';
 import { createApp } from '../src/server/app.js';
+import { isNotFoundMessage } from '../src/server/workspace-routes.js';
 const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).forEach((fn) => fn()));
 function fixture(ownerToken?: string) {
@@ -438,4 +439,16 @@ it('answers 404, not 503, for a conversation or call that does not exist', async
       /not found|does not belong/,
     );
   }
+});
+
+it('maps Conversation not found to 404 in onError', () => {
+  expect(isNotFoundMessage('Conversation not found.')).toBe(true);
+  expect(isNotFoundMessage('Conversation not found')).toBe(true);
+  expect(isNotFoundMessage('Dot not found.')).toBe(true);
+  expect(isNotFoundMessage('Call not found.')).toBe(true);
+  expect(
+    isNotFoundMessage('Conversation does not belong to this Dot and owner.'),
+  ).toBe(true);
+  expect(isNotFoundMessage('Conversation failed.')).toBe(false);
+  expect(isNotFoundMessage('Provider secret')).toBe(false);
 });

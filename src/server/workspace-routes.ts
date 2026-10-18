@@ -25,6 +25,14 @@ const dotSchema = z
     avatar: z.enum(AVATAR_IDS).nullable().optional(),
   })
   .strict();
+
+/** Erreurs de domaine = ressource manquante (404), pas faute serveur. */
+export function isNotFoundMessage(text: string): boolean {
+  return /^(Dot not found|Call not found|Conversation not found|Conversation does not belong)/.test(
+    text,
+  );
+}
+
 export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   const app = new Hono();
   app.route('/', pageRoutes(platform));
@@ -647,10 +655,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       return c.json({ error: text }, 400);
     // A conversation, call or Dot the caller named that does not exist is a missing resource, not a
     // server fault.
-    if (
-      /^(Dot not found|Call not found|Conversation does not belong)/.test(text)
-    )
-      return c.json({ error: text }, 404);
+    if (isNotFoundMessage(text)) return c.json({ error: text }, 404);
     return errorResponse(error, c, {
       zodMessage: 'Invalid request.',
       // Our own domain vocabulary; anything else is logged, never returned.
