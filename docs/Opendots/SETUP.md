@@ -56,7 +56,7 @@ Back up the SQLite file: it contains page content, thread bindings, and conversa
 
 ## Browser tool
 
-Parallel is selected by default (`WEB_SEARCH_PROVIDER=parallel`). Live research needs the model configuration, but no browser worker. An optional server-side `PARALLEL_API_KEY` enables authenticated usage and higher limits. The anonymous MCP endpoint is free for light use. Queries, selected URLs, research objectives and a stable session identifier go to Parallel. See [public-web research](../README.md#public-web-research) for data sharing, permissions and limitations.
+Parallel is selected by default (`WEB_SEARCH_PROVIDER=parallel`). Live research needs the model configuration, but no browser worker. An optional server-side `PARALLEL_API_KEY` enables authenticated usage and higher limits. The anonymous MCP endpoint is free for light use. Queries, selected URLs, research objectives and a stable session identifier go to Parallel. See [public-web research](../../README.md#public-web-research) for data sharing, permissions and limitations.
 
 Set `WEB_SEARCH_PROVIDER=disabled` to turn off these research tools, or `WEB_SEARCH_PROVIDER=browser` for the existing URL-only reader. The browser service reads a supplied public URL and returns page text and a capture. Configure `BROWSER_URL` and `BROWSER_SECRET`, then run:
 
@@ -136,7 +136,7 @@ Open http://localhost:4310. The app port binds to loopback. The browser service 
 docker compose down
 ```
 
-For remote hosting, configure an HTTPS reverse proxy and the matching `APP_ORIGIN`. See [Security](../SECURITY.md) for the template's deployment boundary.
+For remote hosting, configure an HTTPS reverse proxy and the matching `APP_ORIGIN`. See [Security](../../SECURITY.md) for the template's deployment boundary.
 
 ## Automatic Learning
 

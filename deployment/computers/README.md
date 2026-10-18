@@ -18,4 +18,4 @@ Build order matters (the dev image resolves its `FROM` from local images):
 `docker compose -f compose.computers.yml build computer-image computer-image-dev`,
 then `up -d` the supervisor and recreate computers (`docker rm -f opendots-computer-<id>` + `POST /dots/:id/computer/start`) — volumes are retained.
 
-See [computer setup](../../docs/COMPUTERS.md). OpenBot's MIT license is included in [LICENSE.openbot](LICENSE.openbot).
+See [computer setup](../../docs/Opendots/COMPUTERS.md). OpenBot's MIT license is included in [LICENSE.openbot](LICENSE.openbot).

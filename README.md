@@ -15,7 +15,7 @@
 > "`copilotkit project select`", `CPK_INTELLIGENCE_API_KEY`,
 > `INTELLIGENCE_*`, managed Slack Channels, or hosted Automatic Learning, read
 > it as **upstream-template behaviour that this fork does not use**. For the
-> actual runtime, see `docs/SETUP.md` and `.env.example`. Sections that still
+> actual runtime, see `docs/Opendots/SETUP.md` and `.env.example`. Sections that still
 > describe the hosted flow are marked inline.
 
 <div align="center">
@@ -28,7 +28,7 @@ Built with [CopilotKit](https://github.com/CopilotKit/CopilotKit) and [AG-UI](ht
 
 <a href="https://trendshift.io/repositories/275323" target="_blank"><img src="https://trendshift.io/api/badge/trendshift/repositories/275323/daily?language=TypeScript" alt="CopilotKit/OpenDots | Trendshift #2 TypeScript Repository Of The Day" width="250" height="55"/></a>
 
-Host OpenDots on your own infrastructure. Conversations require CopilotKit Intelligence: use the hosted service, the [local Docker evaluation](docs/SETUP.md#local-intelligence-evaluation), or a licensed [self-hosted deployment](https://docs.copilotkit.ai/intelligence/self-hosting). Clone this template and customize it however you want.
+Host OpenDots on your own infrastructure. Conversations require CopilotKit Intelligence: use the hosted service, the [local Docker evaluation](docs/Opendots/SETUP.md#local-intelligence-evaluation), or a licensed [self-hosted deployment](https://docs.copilotkit.ai/intelligence/self-hosting). Clone this template and customize it however you want.
 
 [**Building on OpenDots? Meet with the CopilotKit team →**](https://www.copilotkit.ai/talk-to-an-engineer?ref=opendots_readme)
 
@@ -80,7 +80,7 @@ Give each Dot a name, role, instructions, and permitted tools. A researcher can 
 
 Each Dot can have its own computer, using [OpenBot](https://github.com/CopilotKit/OpenBot)'s container supervisor and computer service. Its browser profile and workspace files persist across stop/start. The Computer panel exposes browser control, human takeover, files, terminal output, and activity, with browser, file, and shell permissions set per Dot. The application keeps service credentials on the server and derives a different computer credential for each Dot.
 
-See [Computer setup](docs/COMPUTERS.md) to build the pinned services and connect your deployment. Computer tools require those services; an unconfigured template does not execute commands on your host.
+See [Computer setup](docs/Opendots/COMPUTERS.md) to build the pinned services and connect your deployment. Computer tools require those services; an unconfigured template does not execute commands on your host.
 
 <div align="center">
 
@@ -100,7 +100,7 @@ Ask a Dot to show a draft before saving it. A CopilotKit human-in-the-loop card 
 
 ### Connections
 
-Give a Dot tools from any MCP server, such as email, calendar, GitHub, or your own services. Read-only tools run on their own. Any other tool pauses for an **Approve & run** card in chat, and only your approval runs it. You can turn each tool on or off per Dot. See [Connections](docs/CONNECTIONS.md).
+Give a Dot tools from any MCP server, such as email, calendar, GitHub, or your own services. Read-only tools run on their own. Any other tool pauses for an **Approve & run** card in chat, and only your approval runs it. You can turn each tool on or off per Dot. See [Connections](docs/Opendots/CONNECTIONS.md).
 
 ### Text and calls
 
@@ -122,7 +122,7 @@ _Connect, talk, mute, minimize, and return to chat. This is a silent screen capt
 
 ### Slack
 
-Mention a Dot through a managed Slack connection using Channels SDK, then continue in its thread. The integration follows [OpenTag](https://github.com/CopilotKit/OpenTag), with an explicit workspace/user allowlist and a selected specialist. See [Slack setup](docs/SETUP.md#slack) to connect your deployment.
+Mention a Dot through a managed Slack connection using Channels SDK, then continue in its thread. The integration follows [OpenTag](https://github.com/CopilotKit/OpenTag), with an explicit workspace/user allowlist and a selected specialist. See [Slack setup](docs/Opendots/SETUP.md#slack) to connect your deployment.
 
 <div align="center">
 
@@ -182,7 +182,7 @@ npm run dev
 
 Open **http://127.0.0.1:5173**. You can create Spaces, write pages, and configure Dots before connecting services. To start chatting, connect an Intelligence project and a model.
 
-Choose where to store conversations before connecting. For local Docker evaluation, follow [Local Intelligence evaluation](docs/SETUP.md#local-intelligence-evaluation). For hosted Intelligence, sign in and select or create a project in the `OpenDots` folder:
+Choose where to store conversations before connecting. For local Docker evaluation, follow [Local Intelligence evaluation](docs/Opendots/SETUP.md#local-intelligence-evaluation). For hosted Intelligence, sign in and select or create a project in the `OpenDots` folder:
 
 ```sh
 npx copilotkit@latest login
@@ -193,7 +193,7 @@ npx copilotkit@latest project select
 
 Do not run `copilotkit onboard` in this folder. OpenDots already contains its CopilotKit integration, and onboarding adds a second, generic one.
 
-See [Setup](docs/SETUP.md) for configuration, Slack, calls, the browser service, and Docker.
+See [Setup](docs/Opendots/SETUP.md) for configuration, Slack, calls, the browser service, and Docker.
 
 ## Data and privacy
 
@@ -201,29 +201,29 @@ Conversation messages, tool calls, and run events are persisted in the configure
 
 The configured model provider receives conversation context, including authorized page content and tool results. Local Intelligence does not make a remote model local: configure the app's model and the Automatic Learning model separately. Public-web research sends queries and selected URLs to Parallel by default; set `WEB_SEARCH_PROVIDER=disabled` to disable those tools. Speech and messaging integrations send data to their configured providers when used.
 
-CopilotKit SDK telemetry collects usage metadata separately from conversation persistence. OpenDots also records bounded browser setup stages and first successful assistant activation with a random installation ID; the same opt-out flags disable this tracking and purge pending setup events. See [browser setup telemetry](docs/SETUP-TELEMETRY.md). Runtime events are tagged `OpenDots`; see [signup and usage tracking](docs/TELEMETRY.md). Set `COPILOTKIT_TELEMETRY_DISABLED=true` or `DO_NOT_TRACK=1` to opt out; see [CopilotKit telemetry](https://docs.copilotkit.ai/telemetry). Review [CopilotKit's privacy policy](https://www.copilotkit.ai/privacy-policy) and the policies and retention settings of each service you configure. Installing or renewing local Intelligence still requires CopilotKit sign-in and internet access.
+CopilotKit SDK telemetry collects usage metadata separately from conversation persistence. OpenDots also records bounded browser setup stages and first successful assistant activation with a random installation ID; the same opt-out flags disable this tracking and purge pending setup events. See [browser setup telemetry](docs/Opendots/SETUP-TELEMETRY.md). Runtime events are tagged `OpenDots`; see [signup and usage tracking](docs/Opendots/TELEMETRY.md). Set `COPILOTKIT_TELEMETRY_DISABLED=true` or `DO_NOT_TRACK=1` to opt out; see [CopilotKit telemetry](https://docs.copilotkit.ai/telemetry). Review [CopilotKit's privacy policy](https://www.copilotkit.ai/privacy-policy) and the policies and retention settings of each service you configure. Installing or renewing local Intelligence still requires CopilotKit sign-in and internet access.
 
 ## Features
 
-| Area                       | Included                                                                                                                                |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Spaces and Specialist Dots | Saved names, role instructions, and per-Dot research and memory permissions                                                             |
-| Pages                      | Searchable library, visual editor, slash commands, autosave, and revision checks                                                        |
-| Conversations              | React SDK chat and Threads integration, page-specific conversations, and source links                                                   |
-| Slack                      | Managed Channels SDK declaration with workspace and user allowlists                                                                     |
-| Calls                      | WebRTC speech, delegated compute, bounded sessions, hangup, and timeline receipts                                                       |
-| Background work            | Scheduled server-side turns in their original conversation, with pause and retry controls                                               |
-| Browser                    | Separate read-only public-page service with page capture and navigation limits                                                          |
-| Dot computers              | Per-Dot browser profiles, files, shell, takeover, permissions, and action records through OpenBot                                       |
-| Connections                | Per-Dot MCP servers, per-tool access, and owner approval for non-read-only actions                                                      |
-| Appearance                 | System, light, and dark themes; dark colors are derived at build time from the light styles                                             |
-| Memory                     | User-managed preferences that permitted Dots can use                                                                                    |
-| Automatic Learning         | Per-Dot Learning containers, conversation evidence routing, and published-skill delivery; see [setup](docs/SETUP.md#automatic-learning) |
-| Deployment                 | Local Node setup and separate application/browser containers                                                                            |
+| Area                       | Included                                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Spaces and Specialist Dots | Saved names, role instructions, and per-Dot research and memory permissions                                                                      |
+| Pages                      | Searchable library, visual editor, slash commands, autosave, and revision checks                                                                 |
+| Conversations              | React SDK chat and Threads integration, page-specific conversations, and source links                                                            |
+| Slack                      | Managed Channels SDK declaration with workspace and user allowlists                                                                              |
+| Calls                      | WebRTC speech, delegated compute, bounded sessions, hangup, and timeline receipts                                                                |
+| Background work            | Scheduled server-side turns in their original conversation, with pause and retry controls                                                        |
+| Browser                    | Separate read-only public-page service with page capture and navigation limits                                                                   |
+| Dot computers              | Per-Dot browser profiles, files, shell, takeover, permissions, and action records through OpenBot                                                |
+| Connections                | Per-Dot MCP servers, per-tool access, and owner approval for non-read-only actions                                                               |
+| Appearance                 | System, light, and dark themes; dark colors are derived at build time from the light styles                                                      |
+| Memory                     | User-managed preferences that permitted Dots can use                                                                                             |
+| Automatic Learning         | Per-Dot Learning containers, conversation evidence routing, and published-skill delivery; see [setup](docs/Opendots/SETUP.md#automatic-learning) |
+| Deployment                 | Local Node setup and separate application/browser containers                                                                                     |
 
 Scheduled tasks run in their original conversation. If a worker stops or its lease expires during a run, OpenDots marks that run **Interrupted** and waits for an explicit retry. Review its pages and computer actions, then use **Retry after review** when appropriate. Completed effects may already be present even when a run has no final result.
 
-Local checks cover setup, persistence, permissions, SDK failure handling, and browser isolation. Automated tests use service fixtures. **Live Intelligence, model responses, and page-context chat were verified on September 29, 2026.** Live OpenBot computer browsing, file creation, shell verification, and file persistence across stop/start were also verified locally. Live Realtime speech, call controls, and receipt persistence were verified locally on September 30, 2026. Slack and spoken compute delegation still need connected-service verification. See [recording notes](docs/demos/README.md) for the demonstrated flows and limits.
+Local checks cover setup, persistence, permissions, SDK failure handling, and browser isolation. Automated tests use service fixtures. **Live Intelligence, model responses, and page-context chat were verified on September 29, 2026.** Live OpenBot computer browsing, file creation, shell verification, and file persistence across stop/start were also verified locally. Live Realtime speech, call controls, and receipt persistence were verified locally on September 30, 2026. Slack and spoken compute delegation still need connected-service verification. See [recording notes](docs/Opendots/demos/README.md) for the demonstrated flows and limits.
 
 Automatic Learning routing and skill delivery are configured locally. Cloud schedules, eligible-thread counts, and published-skill delivery still need connected-service verification. Skills require review and publication in Intelligence; existing conversations without a container are not enrolled retroactively.
 
