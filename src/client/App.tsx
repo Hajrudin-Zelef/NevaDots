@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   BookOpen,
   Clock3,
+  LogOut,
   Mic,
   MessageCircle,
   Monitor,
@@ -29,7 +30,7 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
-import { api, ApiError, authHeaders, hasToken, setToken } from './api';
+import { api, ApiError, isAuthed, login, logout } from './api';
 import { trackSetupStep } from './setup-telemetry';
 import {
   applyCaptureResult,
@@ -418,9 +419,8 @@ export function App() {
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            setToken(auth);
             try {
-              await api('/state');
+              await login(auth);
               setError('');
               await refresh();
             } catch (err) {
@@ -447,13 +447,16 @@ export function App() {
             {error}
           </p>
         )}
-        <p className="muted">The token stays in this tab’s session storage.</p>
+        <p className="muted">
+          The token is sent once and stored in an HttpOnly cookie the page
+          cannot read.
+        </p>
       </main>
     );
   if (!state || !workspace || !dot)
     return (
       <main className="unlock">
-        {hasToken() ? (
+        {isAuthed() ? (
           <Mascot state="working" />
         ) : (
           <img className="unlock-logo" src="/logo.png" alt="" />
@@ -543,6 +546,22 @@ export function App() {
           >
             <BookOpen size={15} />
             Compétences
+          </button>
+          <button
+            className="module-button"
+            onClick={async () => {
+              try {
+                await logout();
+                setNeedsAuth(true);
+              } catch (err) {
+                setError(
+                  err instanceof Error ? err.message : 'Could not log out.',
+                );
+              }
+            }}
+          >
+            <LogOut size={15} />
+            Déconnexion
           </button>
         </nav>
         <button
@@ -1238,7 +1257,7 @@ export function App() {
   return configured ? (
     <CopilotKitProvider
       runtimeUrl="/api/copilotkit"
-      headers={authHeaders()}
+      credentials="include"
       showDevConsole={false}
     >
       {content}

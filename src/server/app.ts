@@ -26,6 +26,23 @@ export interface AppOptions {
   platform?: Platform;
 }
 /**
+ * Valeur Set-Cookie du jeton propriétaire : HttpOnly (illisible par le
+ * JS — le point du lot), SameSite=Strict (anti-CSRF), Path=/ (couvre
+ * /api et /dots). Secure quand la requête est en https (Origin ou URL).
+ * maxAge = 0 efface le cookie (logout).
+ */
+function authCookie(c: Context, value: string, maxAge?: number): string {
+  const secure =
+    c.req.url.startsWith('https://') ||
+    (c.req.header('origin') ?? '').startsWith('https://');
+  return (
+    `opendots-auth=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict` +
+    (secure ? '; Secure' : '') +
+    (maxAge !== undefined ? `; Max-Age=${maxAge}` : '')
+  );
+}
+
+/**
  * Clé de rate-limit. X-Forwarded-For n'est lu QUE derrière un reverse-proxy
  * de confiance (TRUST_PROXY=true) : sinon tout client peut forger l'en-tête
  * et faire tourner les buckets. Sans proxy, l'adresse du socket est utilisée
@@ -120,19 +137,21 @@ export function createApp({
       return c.json({ error: 'Cross-origin requests are not allowed.' }, 403);
     if (c.req.header('sec-fetch-site') === 'cross-site')
       return c.json({ error: 'Cross-site requests are not allowed.' }, 403);
-    if (ownerToken) {
+    // POST /api/login n'a pas encore de cookie : il vérifie le jeton
+    // dans le corps (voir la route ci-dessous) — on saute le contrôle
+    // token ici, les gardes host/origin/sec-fetch restent actives.
+    const isLogin = c.req.method === 'POST' && c.req.path === '/api/login';
+    if (ownerToken && !isLogin) {
       const expected = Buffer.from(ownerToken);
       const header = c.req.header('authorization')?.replace(/^Bearer /, '');
-      // Les liens bruts (<a href>, <img src>) ne peuvent pas porter
-      // d'en-tête : le jeton miroir en cookie SameSite=Strict (path
-      // /api/attachments, posé par api.ts) est accepté pour le seul
-      // contenu de pièce jointe en GET — mêmes gardes host/origin/
-      // sec-fetch que le reste de /api, comparaison timing-safe.
-      const cookieOk =
-        c.req.method === 'GET' &&
-        /^\/api\/attachments\/[^/]+\/content$/.test(c.req.path);
+      // Le cookie HttpOnly (posé par POST /api/login, illisible par le
+      // JS) est accepté pour toutes les routes /api — le navigateur
+      // l'envoie automatiquement (y compris <img> et liens de
+      // téléchargement, qui ne peuvent pas porter d'en-tête). Défenses
+      // CSRF : SameSite=Strict + gardes origin/sec-fetch ci-dessus,
+      // comparaison timing-safe.
       const supplied = Buffer.from(
-        header ?? (cookieOk ? (getCookie(c, 'opendots-auth') ?? '') : ''),
+        header ?? getCookie(c, 'opendots-auth') ?? '',
       );
       if (
         expected.length !== supplied.length ||
@@ -152,6 +171,33 @@ export function createApp({
     )
       return c.json({ error: 'Use application/json.' }, 415);
     await next();
+  });
+  // Auth par cookie HttpOnly : le jeton n'est jamais stocké dans le JS.
+  // POST /api/login vérifie le jeton du corps et pose le cookie ;
+  // POST /api/logout l'efface. Le middleware ci-dessus saute le
+  // contrôle token pour /api/login (pas encore de cookie).
+  app.post('/api/login', async (c) => {
+    const parsed = z
+      .object({ token: z.string().min(1) })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success)
+      return c.json({ error: 'Enter your owner access token.' }, 400);
+    if (!ownerToken)
+      return c.json({ error: 'Owner authentication is not configured.' }, 400);
+    const expected = Buffer.from(ownerToken);
+    const supplied = Buffer.from(parsed.data.token);
+    if (
+      expected.length !== supplied.length ||
+      !timingSafeEqual(expected, supplied)
+    )
+      return c.json({ error: 'Access token was not accepted.' }, 401);
+    c.header('Set-Cookie', authCookie(c, ownerToken));
+    return c.json({ ok: true });
+  });
+  app.post('/api/logout', async (c) => {
+    c.header('Set-Cookie', authCookie(c, '', 0));
+    return c.json({ ok: true });
   });
   if (platform) app.route('/api', computerRoutes(platform.computers));
   app.route('/api', attachmentRoutes());

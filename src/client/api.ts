@@ -1,26 +1,15 @@
-let token = sessionStorage.getItem('opendots-token') ?? '';
-// The owner token is also mirrored into a SameSite=Strict cookie scoped to
-// /dots (avatar <img>) and /api/attachments (raw download links and image
-// thumbnails, which cannot carry an Authorization header). The server gates
-// both on it.
-function syncAuthCookie() {
-  if (typeof document === 'undefined') return;
-  const secure =
-    typeof location !== 'undefined' && location.protocol === 'https:'
-      ? '; Secure'
-      : '';
-  for (const path of ['/dots', '/api/attachments']) {
-    document.cookie = token
-      ? `opendots-auth=${encodeURIComponent(token)}; path=${path}; SameSite=Strict${secure}`
-      : `opendots-auth=; path=${path}; Max-Age=0; SameSite=Strict`;
-  }
+/** Le jeton propriétaire n'est jamais stocké dans le JS : il vit dans
+ *  un cookie HttpOnly posé par POST /api/login (cf. serveur). Le client
+ *  ne connaît que l'état « authentifié » (drapeau local, pas le jeton).
+ *  Toutes les requêtes envoient le cookie (credentials: 'include') :
+ *  <img> et liens de téléchargement inclus, sans en-tête Authorization. */
+let authed = false;
+/** Whether this tab has opened an authenticated session. */
+export function isAuthed(): boolean {
+  return authed;
 }
-syncAuthCookie();
-export function setToken(value: string) {
-  token = value;
-  if (value) sessionStorage.setItem('opendots-token', value);
-  else sessionStorage.removeItem('opendots-token');
-  syncAuthCookie();
+function setAuthed(value: boolean) {
+  authed = value;
 }
 export class ApiError extends Error {
   constructor(
@@ -39,8 +28,8 @@ export async function api<T>(
   const response = await fetch(`/api${path}`, {
     method,
     signal,
+    credentials: 'include',
     headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(['GET', 'HEAD'].includes(method)
         ? {}
         : { 'Content-Type': 'application/json' }),
@@ -59,10 +48,13 @@ export async function api<T>(
     );
   return data as T;
 }
-export function authHeaders(): Record<string, string> {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+/** Ouvre une session : vérifie le jeton côté serveur et pose le cookie HttpOnly. */
+export async function login(token: string): Promise<void> {
+  await api('/login', 'POST', { token });
+  setAuthed(true);
 }
-/** Whether an owner token is stored (the raw token is never exported). */
-export function hasToken(): boolean {
-  return token.length > 0;
+/** Ferme la session : efface le cookie HttpOnly côté serveur. */
+export async function logout(): Promise<void> {
+  await api('/logout', 'POST');
+  setAuthed(false);
 }

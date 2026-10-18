@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, authHeaders, ApiError } from './api';
+import { api, ApiError } from './api';
 import {
   buildMessageWithAttachments,
   clearPendingAttachments,
@@ -29,7 +29,7 @@ async function uploadFiles(
   for (const { file, name } of entries) form.append('files', file, name);
   const response = await fetch('/api/attachments', {
     method: 'POST',
-    headers: { ...authHeaders() },
+    credentials: 'include',
     body: form,
   });
   const data = (await response.json().catch(() => ({}))) as {

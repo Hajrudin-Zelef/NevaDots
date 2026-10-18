@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, authHeaders } from './api';
+import { api } from './api';
 // A single failed control poll is usually a network flap, not a dead call.
 // Only treat the control connection as lost after this many consecutive
 // poll failures, mirroring the grace period #26 gives the peer connection.
@@ -131,7 +131,8 @@ export function useVoice(
       if (current?.id && !ending.current)
         void fetch(`/api/voice/calls/${current.id}/end`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             transcript: current.transcript.join('\n').slice(0, 20000),
             anchorMessageId: anchor.current,

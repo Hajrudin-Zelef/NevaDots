@@ -1,5 +1,3 @@
-import { authHeaders } from './api';
-
 /** The server persists accepted events. A closed page cannot guarantee delivery. */
 export function trackSetupStep(step: 'setup_required' | 'ready' | 'settings') {
   const report = (error: 'request_rejected' | 'request_failed') =>
@@ -12,7 +10,8 @@ export function trackSetupStep(step: 'setup_required' | 'ready' | 'settings') {
     // Setup rendering must proceed even if this independent metadata request fails.
     void fetch('/api/setup-telemetry', {
       method: 'POST',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind, step }),
       keepalive: true,
     })

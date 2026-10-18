@@ -268,7 +268,7 @@ it('rejects DNS-rebinding Host even with a matching hostile Origin', async () =>
   expect(response.status).toBe(403);
 });
 describe('attachment content auth', () => {
-  it('accepte le cookie miroir en GET, pas les autres routes ni le mauvais cookie', async () => {
+  it('accepte le cookie HttpOnly en GET et sur les autres routes, pas le mauvais cookie', async () => {
     const { mkdtempSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
@@ -297,8 +297,8 @@ describe('attachment content auth', () => {
       expect(
         (await app.request(`/api/attachments/${id}/content`, cookie)).status,
       ).toBe(200);
-      // Le cookie ne vaut que pour cette route.
-      expect((await app.request('/api/state', cookie)).status).toBe(401);
+      // Le cookie HttpOnly vaut pour toutes les routes /api (auth générale).
+      expect((await app.request('/api/state', cookie)).status).toBe(200);
       // Cookie erroné = 401 (timing-safe).
       expect(
         (
@@ -381,5 +381,103 @@ describe('attachment content auth', () => {
       process.chdir(origCwd);
       rmSync(sandbox, { recursive: true, force: true });
     }
+  });
+});
+
+describe('HttpOnly cookie auth', () => {
+  // Extrait la paire opendots-auth=<valeur> d'un Set-Cookie.
+  const cookieFrom = (res: Response): string | null => {
+    const setCookie = res.headers.get('set-cookie');
+    if (!setCookie) return null;
+    const pair = setCookie.split(';')[0];
+    return pair.startsWith('opendots-auth=') ? pair : null;
+  };
+  it('sets an HttpOnly SameSite=Strict cookie on correct login', async () => {
+    const { app } = fixture('private-token');
+    const res = await app.request(
+      '/api/login',
+      json({ token: 'private-token' }),
+    );
+    expect(res.status).toBe(200);
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('opendots-auth=');
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('SameSite=Strict');
+    expect(setCookie).toContain('Path=/');
+    expect(setCookie).not.toContain('Secure'); // http en test
+  });
+  it('rejects a wrong token without setting a cookie', async () => {
+    const { app } = fixture('private-token');
+    const res = await app.request('/api/login', json({ token: 'wrong' }));
+    expect(res.status).toBe(401);
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
+  it('rejects a login without a token field', async () => {
+    const { app } = fixture('private-token');
+    const res = await app.request('/api/login', json({}));
+    expect(res.status).toBe(400);
+  });
+  it('authenticates any /api route with the cookie (not just attachments)', async () => {
+    const { app } = fixture('private-token');
+    const logged = await app.request(
+      '/api/login',
+      json({ token: 'private-token' }),
+    );
+    const cookie = cookieFrom(logged);
+    expect(cookie).not.toBeNull();
+    expect(
+      (await app.request('/api/state', { headers: { Cookie: cookie! } }))
+        .status,
+    ).toBe(200);
+    // Sans cookie ni header -> 401.
+    expect((await app.request('/api/state')).status).toBe(401);
+    // L'en-tête Authorization fonctionne toujours (compat API/tests).
+    expect(
+      (
+        await app.request('/api/state', {
+          headers: { Authorization: 'Bearer private-token' },
+        })
+      ).status,
+    ).toBe(200);
+  });
+  it('blocks cookie auth on cross-site requests (CSRF)', async () => {
+    const { app } = fixture('private-token');
+    const logged = await app.request(
+      '/api/login',
+      json({ token: 'private-token' }),
+    );
+    const cookie = cookieFrom(logged)!;
+    // Origin cross-site -> 403.
+    expect(
+      (
+        await app.request('/api/state', {
+          headers: { Cookie: cookie, Origin: 'https://evil.example' },
+        })
+      ).status,
+    ).toBe(403);
+    // sec-fetch-site cross-site -> 403.
+    expect(
+      (
+        await app.request('/api/state', {
+          headers: { Cookie: cookie, 'sec-fetch-site': 'cross-site' },
+        })
+      ).status,
+    ).toBe(403);
+  });
+  it('clears the cookie on logout', async () => {
+    const { app } = fixture('private-token');
+    const logged = await app.request(
+      '/api/login',
+      json({ token: 'private-token' }),
+    );
+    const cookie = cookieFrom(logged)!;
+    const res = await app.request('/api/logout', {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(res.status).toBe(200);
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('Max-Age=0');
+    expect(setCookie).toContain('HttpOnly');
   });
 });

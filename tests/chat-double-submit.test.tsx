@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 
-// sessionStorage/localStorage (api.ts les lit au chargement du module).
+// Stockages en mémoire (certains modules les touchent au chargement ; Node n'en a pas).
 {
   const makeStore = () => {
     const data = new Map<string, string>();
@@ -99,9 +99,9 @@ vi.mock('../src/client/api', () => ({
     if (path.endsWith('/page-context')) return null;
     return {};
   },
-  authHeaders: () => ({}),
-  hasToken: () => false,
-  setToken: () => {},
+  isAuthed: () => false,
+  login: async () => {},
+  logout: async () => {},
 }));
 
 vi.mock('thinking-orbs', () => ({

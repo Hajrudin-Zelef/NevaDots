@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { authHeaders } from './api';
 import {
   appendActivityRun,
   parseActivityChunk,
@@ -29,7 +28,7 @@ export function useComputerActivity(
       try {
         const response = await fetch(
           `/api/dots/${encodeURIComponent(dotId)}/computer/activity`,
-          { headers: authHeaders(), signal: controller.signal },
+          { credentials: 'include', signal: controller.signal },
         );
         if (!response.ok || !response.body)
           throw new Error(`Journal indisponible (${response.status}).`);
