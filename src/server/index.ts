@@ -32,12 +32,22 @@ resolveAdminMasterPassword();
 const database = process.env.DATABASE_PATH ?? 'data/opendots.sqlite';
 const store = new Store(database);
 const auth = new AuthStore(database);
-const workspace = new WorkspaceStore(
-  database,
-  process.env.OWNER_ID ?? 'opendots-owner',
-);
+const workspace = new WorkspaceStore(database);
+// Phase C1 : les données orphelines du monde mono-utilisateur (user_id
+// NULL) sont réclamées par le premier compte (Admin du bootstrap). Si
+// aucun compte n'existe encore, elles attendent le bootstrap (qui
+// réclame aussi).
+{
+  const firstUser = auth.firstUserId();
+  if (firstUser) {
+    store.claimOrphans(firstUser);
+    workspace.claimOrphans(firstUser);
+  }
+}
 const providerRegistry = new ProviderRegistry(
-  workspace,
+  // Clés provider GLOBALES (Admin) : namespace système '' — jamais un
+  // compte, jamais réclamées par claimOrphans.
+  workspace.forUser(''),
   resolveSecretKey(),
   process.env,
   resolveLegacySecretKey(),
@@ -107,7 +117,7 @@ const runner = new Runner(
   store,
   researchConfig,
   async (claim, _memories, signal, progress) => {
-    const threadId = workspace.taskThread(claim.id);
+    const threadId = workspace.forUser(claim.userId).taskThread(claim.id);
     if (!threadId)
       throw new Error(
         'This legacy task has no conversation. Create a new scheduled task from a conversation.',

@@ -5,6 +5,7 @@ import WebSocket from 'ws';
 import { WorkspaceStore } from '../src/server/workspace.js';
 import { ComputerService } from '../src/server/computer-service.js';
 import { computerRoutes } from '../src/server/computer-routes.js';
+import { mountScoped } from './scoped-mount.js';
 import {
   attachComputerStream,
   checkStreamUpgrade,
@@ -17,6 +18,7 @@ afterEach(() => {
 
 function fixture() {
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   stores.push(workspace);
   const id = workspace.dots()[0].id;
   const service = new ComputerService(
@@ -67,8 +69,12 @@ it('un ticket minté pour un Dot inconnu est refusé', () => {
 });
 
 it("la route émet un ticket et l'upgrade le valide une fois", async () => {
-  const { id, service } = fixture();
-  const routes = computerRoutes(service);
+  const { id, service, workspace } = fixture();
+  const routes = mountScoped(computerRoutes(), {
+    userId: 'owner',
+    workspace,
+    computers: service.forUser('owner', () => false),
+  });
   const minted = await routes.request(`/dots/${id}/computer/stream-ticket`, {
     method: 'POST',
   });

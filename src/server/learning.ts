@@ -13,7 +13,7 @@ export function learningSelector(
   channelDotId?: string,
 ): Selector {
   return ({ surface, user, agentId, input }) => {
-    if (user?.id !== workspace.ownerId)
+    if (user?.id !== workspace.userId)
       throw new Error('Conversation learning requires the workspace owner.');
     if (surface === 'channel') {
       if (agentId !== channelDotId)

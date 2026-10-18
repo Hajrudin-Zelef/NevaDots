@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { Store } from '../src/server/store.js';
 import { WorkspaceStore } from '../src/server/workspace.js';
 import { Platform } from '../src/server/platform.js';
+import { PageService } from '../src/server/page-service.js';
 import { Runner } from '../src/server/runner.js';
 import { createApp } from '../src/server/app.js';
 import { AuthStore } from '../src/server/auth-store.js';
@@ -13,8 +14,9 @@ afterEach(() => cleanup.splice(0).forEach((fn) => fn()));
 // renvoie `api` (requêtes avec le cookie de session) + `app` (brut, pour
 // les cas 401 sans session).
 async function fixture() {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   const auth = new AuthStore(':memory:');
   cleanup.push(() => {
     store.close();
@@ -290,15 +292,23 @@ it('answers malformed JSON and invalid Space access with 400 on workspace routes
 });
 
 it('keeps upstream JSON parsing failures on workspace routes as 503', async () => {
-  const { ws, api } = await fixture();
-  vi.spyOn(ws, 'createSpace').mockImplementation(() => {
-    throw new SyntaxError('Unexpected token in upstream response');
-  });
-  const response = await api(
-    '/api/spaces',
-    request({ name: 'Valid', description: '' }),
-  );
-  expect(response.status).toBe(503);
+  const { api } = await fixture();
+  // Les routes travaillent sur le workspace porté (nouvelle instance) :
+  // espionner le prototype, pas l'instance de la fixture.
+  const spy = vi
+    .spyOn(WorkspaceStore.prototype, 'createSpace')
+    .mockImplementation(() => {
+      throw new SyntaxError('Unexpected token in upstream response');
+    });
+  try {
+    const response = await api(
+      '/api/spaces',
+      request({ name: 'Valid', description: '' }),
+    );
+    expect(response.status).toBe(503);
+  } finally {
+    spy.mockRestore();
+  }
 });
 
 it('deletes pages through the API and returns 404 for missing pages or spaces', async () => {
@@ -394,20 +404,25 @@ it.each([
 );
 
 it('keeps real Intelligence failures as 503 without exposing details', async () => {
-  const { ws, api, platform } = await fixture();
+  const { ws, api } = await fixture();
   ws.bindThread('valid-thread', ws.dots()[0].id, 'Conversation');
-  vi.spyOn(platform.pages, 'saveConversation').mockRejectedValueOnce(
-    new Error('Provider secret'),
-  );
-  const response = await api(
-    '/api/conversations/valid-thread/page',
-    request({ title: 'Draft' }),
-  );
-  expect(response.status).toBe(503);
-  expect(await response.json()).toEqual({
-    error:
-      'Page operation could not complete. Retry; your draft has not been discarded.',
-  });
+  // Les routes travaillent sur le PageService porté (nouvelle instance).
+  const spy = vi
+    .spyOn(PageService.prototype, 'saveConversation')
+    .mockRejectedValueOnce(new Error('Provider secret'));
+  try {
+    const response = await api(
+      '/api/conversations/valid-thread/page',
+      request({ title: 'Draft' }),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error:
+        'Page operation could not complete. Retry; your draft has not been discarded.',
+    });
+  } finally {
+    spy.mockRestore();
+  }
 });
 
 it('answers 404, not 503, for a conversation or call that does not exist', async () => {

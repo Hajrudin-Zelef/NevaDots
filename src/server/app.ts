@@ -16,6 +16,8 @@ import { workspaceRoutes } from './workspace-routes.js';
 import { providerRoutes } from './provider-routes.js';
 import { externalAccountRoutes } from './external-accounts.js';
 import { systemMetrics } from './metrics.js';
+import { ConnectionService } from './connections.js';
+import type { AppVariables } from './request-context.js';
 import {
   AuthStore,
   PASSWORD_MIN_LENGTH,
@@ -190,7 +192,7 @@ export function createApp({
   platform,
   auth,
 }: AppOptions) {
-  const app = new Hono();
+  const app = new Hono<{ Variables: AppVariables }>();
   // Simple per-IP fixed-window rate limit for the API. Generous by default
   // (the UI polls), configurable/tunable via RATE_LIMIT_PER_MIN (0 disables).
   const rateLimit = Number.parseInt(
@@ -302,6 +304,27 @@ export function createApp({
       const raw = getCookie(c, 'nevadots-session');
       const session = raw && auth ? auth.getSession(raw) : undefined;
       if (!session) return c.json({ error: 'Authentication required.' }, 401);
+      // Phase C1 : la session détermine la portée de TOUTE la requête —
+      // les routes lisent ces stores portés, jamais les singletons.
+      c.set('userId', session.userId);
+      c.set('store', store.forUser(session.userId));
+      if (platform) {
+        c.set('workspace', platform.workspace.forUser(session.userId));
+        c.set(
+          'connections',
+          new ConnectionService(
+            platform.workspace.connections.forUser(session.userId),
+          ),
+        );
+        c.set('pages', platform.pages.forUser(session.userId));
+        c.set(
+          'computers',
+          platform.computers.forUser(
+            session.userId,
+            () => store.forUser(session.userId).settings().paused,
+          ),
+        );
+      }
     }
     const contentType = c.req.header('content-type');
     // Les formulaires sans JS des pages /login et /reset postent en
@@ -498,6 +521,13 @@ export function createApp({
       'admin',
     );
     auth.logAuthEvent('bootstrap_ok', user.username, rateLimitKey(c));
+    // Phase C1 : le premier Admin réclame les données du monde
+    // mono-utilisateur (orphelines) et reçoit sa graine (Everyday + Dot).
+    store.claimOrphans(user.id);
+    if (platform) {
+      platform.workspace.claimOrphans(user.id);
+      platform.workspace.forUser(user.id).ensureSeed();
+    }
     if (isForm) return c.redirect('/login?bootstrap=1', 302);
     return c.json(
       { ok: true, user: { username: user.username, role: 'admin' } },
@@ -528,13 +558,9 @@ export function createApp({
     return c.html(authPage('bootstrap', c.req.query('error')));
   });
 
-  if (platform) app.route('/api', computerRoutes(platform.computers));
+  if (platform) app.route('/api', computerRoutes());
   app.route('/api', attachmentRoutes());
-  if (platform)
-    app.route(
-      '/api',
-      connectionRoutes(platform.workspace, platform.connections),
-    );
+  if (platform) app.route('/api', connectionRoutes());
   const voice = platform ? new VoiceService(platform) : undefined;
   if (platform && voice) app.route('/api', workspaceRoutes(platform, voice));
   if (platform) app.route('/api', providerRoutes(platform));
@@ -542,9 +568,9 @@ export function createApp({
     app.route('/api', externalAccountRoutes(platform.config.externalAccounts));
   app.get('/api/state', (c) =>
     c.json({
-      settings: store.settings(),
-      tasks: store.tasks(),
-      memories: store.memories(),
+      settings: c.get('store').settings(),
+      tasks: c.get('store').tasks(),
+      memories: c.get('store').memories(),
       mode: config.mode,
       configured: configured(config),
     }),
@@ -568,7 +594,7 @@ export function createApp({
         },
         400,
       );
-    if (!store.settings().researchAllowed)
+    if (!c.get('store').settings().researchAllowed)
       return c.json({ error: 'Research is disabled in Settings.' }, 403);
     if (platform) {
       if (platform.setup().missing.length)
@@ -582,7 +608,7 @@ export function createApp({
           400,
         );
       try {
-        platform.workspace.requireThread(parsed.data.threadId);
+        c.get('workspace').requireThread(parsed.data.threadId);
       } catch {
         return c.json(
           { error: 'Conversation is not owned by this workspace.' },
@@ -590,17 +616,19 @@ export function createApp({
         );
       }
     }
-    const task = store.createTask(
-      parsed.data.prompt,
-      parsed.data.runAt ? null : parsed.data.intervalSeconds,
-      parsed.data.runAt ?? null,
-    );
+    const task = c
+      .get('store')
+      .createTask(
+        parsed.data.prompt,
+        parsed.data.runAt ? null : parsed.data.intervalSeconds,
+        parsed.data.runAt ?? null,
+      );
     if (platform && parsed.data.threadId)
-      platform.workspace.bindTask(task.id, parsed.data.threadId);
+      c.get('workspace').bindTask(task.id, parsed.data.threadId);
     return c.json(task, 201);
   });
   app.get('/api/tasks/:id', (c) => {
-    const detail = store.detail(c.req.param('id'));
+    const detail = c.get('store').detail(c.req.param('id'));
     return detail ? c.json(detail) : c.json({ error: 'Task not found.' }, 404);
   });
   app.post('/api/tasks/:id/actions', async (c) => {
@@ -609,9 +637,12 @@ export function createApp({
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Unknown task action.' }, 400);
-    if (parsed.data.action === 'run' && !store.settings().researchAllowed)
+    if (
+      parsed.data.action === 'run' &&
+      !c.get('store').settings().researchAllowed
+    )
       return c.json({ error: 'Research is disabled in Settings.' }, 403);
-    const task = store.action(c.req.param('id'), parsed.data.action);
+    const task = c.get('store').action(c.req.param('id'), parsed.data.action);
     if (parsed.data.action !== 'run') runner.abort(c.req.param('id'));
     return task ? c.json(task) : c.json({ error: 'Task not found.' }, 404);
   });
@@ -625,7 +656,9 @@ export function createApp({
         { error: 'Repeat interval must be 60 seconds to one year, or null.' },
         400,
       );
-    const task = store.schedule(c.req.param('id'), parsed.data.intervalSeconds);
+    const task = c
+      .get('store')
+      .schedule(c.req.param('id'), parsed.data.intervalSeconds);
     return task ? c.json(task) : c.json({ error: 'Task not found.' }, 404);
   });
   app.patch('/api/settings', async (c) => {
@@ -641,8 +674,8 @@ export function createApp({
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Invalid settings.' }, 400);
-    const previous = store.settings();
-    const settings = store.updateSettings(parsed.data);
+    const previous = c.get('store').settings();
+    const settings = c.get('store').updateSettings(parsed.data);
     if (
       settings.paused ||
       !settings.researchAllowed ||
@@ -663,7 +696,7 @@ export function createApp({
         { error: 'Memory must be between 1 and 2,000 characters.' },
         400,
       );
-    return c.json(store.saveMemory(parsed.data.text), 201);
+    return c.json(c.get('store').saveMemory(parsed.data.text), 201);
   });
   app.put('/api/memories/:id', async (c) => {
     const parsed = z
@@ -675,25 +708,33 @@ export function createApp({
         { error: 'Memory must be between 1 and 2,000 characters.' },
         400,
       );
-    if (!store.memories().some((m) => m.id === c.req.param('id')))
+    if (
+      !c
+        .get('store')
+        .memories()
+        .some((m) => m.id === c.req.param('id'))
+    )
       return c.json({ error: 'Memory not found.' }, 404);
-    return c.json(store.saveMemory(parsed.data.text, c.req.param('id')));
+    return c.json(
+      c.get('store').saveMemory(parsed.data.text, c.req.param('id')),
+    );
   });
   app.delete('/api/memories/:id', (c) =>
-    store.deleteMemory(c.req.param('id'))
+    c.get('store').deleteMemory(c.req.param('id'))
       ? c.json({ ok: true })
       : c.json({ error: 'Memory not found.' }, 404),
   );
   // Bulk "forget everything" (double-confirmed client-side).
   app.delete('/api/memories', (c) =>
-    c.json({ ok: true, removed: store.deleteAllMemories() }),
+    c.json({ ok: true, removed: c.get('store').deleteAllMemories() }),
   );
-  // Aggregated model usage for the settings cockpit.
+  // Aggregated model usage for the settings cockpit (Phase C3 : périmètre
+  // compte — pour l'instant global, comme avant C1).
   app.get('/api/usage', (c) => c.json(store.usageSummary()));
   // Unauthenticated liveness probe: cheap, proves the DB is reachable.
   app.get('/health', (c) => {
     try {
-      store.settings();
+      store.setupTelemetryState();
       return c.json({ status: 'ok' });
     } catch {
       return c.json({ status: 'error' }, 503);

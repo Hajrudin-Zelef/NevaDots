@@ -29,11 +29,13 @@ vi.mock('../src/server/net-security.js', () => ({
 }));
 import { connectionTools } from '../src/server/connection-tools.js';
 import { connectionRoutes } from '../src/server/connection-routes.js';
+import { mountScoped } from './scoped-mount.js';
 import type { Connection } from '../src/shared/connection-types.js';
 const resources: (() => void)[] = [];
 afterEach(() => resources.splice(0).forEach((close) => close()));
 function fixture({ twin = false } = {}) {
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   resources.push(() => workspace.close());
   const dot = workspace.dots()[0];
   workspace.bindThread('thread', dot.id, 'A conversation');
@@ -91,7 +93,11 @@ function fixture({ twin = false } = {}) {
     return client;
   };
   const connections = new ConnectionService(workspace.connections, transport);
-  const routes = connectionRoutes(workspace, connections);
+  const routes = mountScoped(connectionRoutes(), {
+    userId: 'owner',
+    workspace,
+    connections,
+  });
   const request = (path: string, method = 'GET', body?: unknown) =>
     routes.request(path, {
       method,
@@ -593,7 +599,7 @@ it('seals MCP tokens at rest and migrates legacy plaintext', async () => {
   const { ConnectionStore } = await import('../src/server/connection-store.js');
   const db = new DatabaseSync(':memory:');
   try {
-    const store = new ConnectionStore(db, () => 'test-secret');
+    const store = new ConnectionStore(db, () => 'test-secret').forUser('owner');
     const created = store.create(
       'dot-1',
       {
@@ -620,9 +626,12 @@ it('seals MCP tokens at rest and migrates legacy plaintext', async () => {
     });
     // Legacy plaintext row is migrated on open.
     db.prepare(
-      "INSERT INTO mcp_connections VALUES ('legacy', 'dot-1', 'Old', 'https://old.example.com', 'plain-token', '[]', NULL, 1, 1)",
+      "INSERT INTO mcp_connections VALUES ('legacy', 'dot-1', 'Old', 'https://old.example.com', 'plain-token', '[]', NULL, 1, 1, NULL)",
     ).run();
-    const reopened = new ConnectionStore(db, () => 'test-secret');
+    const reopened = new ConnectionStore(db, () => 'test-secret').forUser(
+      'owner',
+    );
+    reopened.claimOrphans('owner');
     expect(reopened.credentials('legacy')).toEqual({
       url: 'https://old.example.com',
       token: 'plain-token',
@@ -644,7 +653,7 @@ it('fails closed on an unreadable stored credential', async () => {
   const { ConnectionStore } = await import('../src/server/connection-store.js');
   const db = new DatabaseSync(':memory:');
   try {
-    const store = new ConnectionStore(db, () => 'test-secret');
+    const store = new ConnectionStore(db, () => 'test-secret').forUser('owner');
     const created = store.create(
       'dot-1',
       { name: 'Mail', url: 'https://mail.example.com/mcp', token: 'x' },
@@ -691,7 +700,7 @@ it('regate en une fois les outils hérités du fail-open, puis respecte le choix
   try {
     db.exec(
       `CREATE TABLE mcp_connections(id TEXT PRIMARY KEY, dotId TEXT NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL, token TEXT, tools TEXT NOT NULL, error TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
-       CREATE TABLE app_config(key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+       CREATE TABLE app_config(user_id TEXT, key TEXT, value TEXT NOT NULL, PRIMARY KEY(user_id, key));`,
     );
     const legacy = [
       { name: 'open', requiresApproval: false },
@@ -722,7 +731,7 @@ it('regate en une fois les outils hérités du fail-open, puis respecte le choix
     // Choix owner postérieur (false volontaire) : respecté aux ouvertures suivantes.
     const kept = [{ name: 'owner-open', requiresApproval: false }];
     db.prepare(
-      'INSERT INTO mcp_connections VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)',
+      'INSERT INTO mcp_connections VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)',
     ).run(
       'c2',
       'd1',

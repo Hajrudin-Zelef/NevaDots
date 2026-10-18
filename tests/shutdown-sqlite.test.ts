@@ -59,16 +59,18 @@ describe('createShutdown', () => {
 describe('boot tolérant (quarantaine, jamais de suppression)', () => {
   it('settings corrompu : défauts + mise de côté append-only + warning, boot OK', () => {
     const path = tmpFile('store.sqlite');
-    const seed = new Store(path);
+    const seed = new Store(path).forUser('owner');
     expect(seed.settings()).toBeTruthy();
     seed.close();
     const raw = new DatabaseSync(path);
     raw
-      .prepare("UPDATE settings SET value='!!!pas-du-json!!!' WHERE id=1")
+      .prepare(
+        "UPDATE settings SET value='!!!pas-du-json!!!' WHERE userId='owner'",
+      )
       .run();
     raw.close();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const reopened = new Store(path);
+    const reopened = new Store(path).forUser('owner');
     expect(reopened.settings()).toEqual(
       expect.objectContaining({ researchAllowed: expect.anything() }),
     );
@@ -83,12 +85,12 @@ describe('boot tolérant (quarantaine, jamais de suppression)', () => {
     expect(quarry.value).toBe('!!!pas-du-json!!!');
     // The settings row is reset to defaults so the warning does not repeat.
     const kept = check
-      .prepare('SELECT value FROM settings WHERE id=1')
+      .prepare("SELECT value FROM settings WHERE userId='owner'")
       .get() as { value: string };
     expect(() => JSON.parse(kept.value)).not.toThrow();
     check.close();
     // Idempotent: reopening neither re-quarantines nor duplicates.
-    const again = new Store(path);
+    const again = new Store(path).forUser('owner');
     expect(again.settings()).toBeTruthy();
     again.close();
     const recount = new DatabaseSync(path);
@@ -102,14 +104,15 @@ describe('boot tolérant (quarantaine, jamais de suppression)', () => {
 
   it('une seconde corruption ajoute une ligne, sans écraser la première', () => {
     const path = tmpFile('store2.sqlite');
-    const seed = new Store(path);
+    const seed = new Store(path).forUser('owner');
+    seed.settings();
     seed.close();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     for (const bad of ['!!!one!!!', '!!!two!!!']) {
       const raw = new DatabaseSync(path);
-      raw.prepare('UPDATE settings SET value=? WHERE id=1').run(bad);
+      raw.prepare("UPDATE settings SET value=? WHERE userId='owner'").run(bad);
       raw.close();
-      new Store(path).settings();
+      new Store(path).forUser('owner').settings();
     }
     const check = new DatabaseSync(path);
     const rows = check
@@ -157,14 +160,15 @@ describe('boot tolérant (quarantaine, jamais de suppression)', () => {
 
   it('close idempotent sur Store', () => {
     const path = tmpFile('close.sqlite');
-    const store = new Store(path);
+    const store = new Store(path).forUser('owner');
     expect(() => store.close()).not.toThrow();
     expect(() => store.close()).not.toThrow();
   });
 
   it('migre une quarantaine legacy mono-ligne sans perdre la valeur', () => {
     const path = tmpFile('store3.sqlite');
-    const seed = new Store(path);
+    const seed = new Store(path).forUser('owner');
+    seed.settings();
     seed.close();
     const raw = new DatabaseSync(path);
     // Ancien schéma mono-ligne + une valeur déjà mise de côté.
@@ -175,10 +179,12 @@ describe('boot tolérant (quarantaine, jamais de suppression)', () => {
     raw
       .prepare('INSERT INTO settings_quarantine VALUES (1, ?, ?)')
       .run('!!!legacy!!!', 1);
-    raw.prepare("UPDATE settings SET value='!!!bad!!!' WHERE id=1").run();
+    raw
+      .prepare("UPDATE settings SET value='!!!bad!!!' WHERE userId='owner'")
+      .run();
     raw.close();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    new Store(path).settings();
+    new Store(path).forUser('owner').settings();
     warn.mockRestore();
     const check = new DatabaseSync(path);
     const rows = check

@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
+import type { AppVariables } from './request-context.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { connect as tcpConnect } from 'node:net';
@@ -492,6 +494,10 @@ export class ExternalAccounts {
     private readonly secret: string,
     private readonly legacySecret = '',
   ) {}
+  /** Vue portée par un utilisateur : ses comptes externes (config à portée). */
+  forUser(store: SecretConfigStore): ExternalAccounts {
+    return new ExternalAccounts(store, this.secret, this.legacySecret);
+  }
 
   private read(id: string): {
     fieldsCipher?: string;
@@ -643,8 +649,12 @@ export class ExternalAccounts {
 }
 
 export function externalAccountRoutes(accounts: ExternalAccounts) {
-  const app = new Hono();
-  app.get('/external-accounts', (c) => c.json({ connectors: accounts.list() }));
+  const app = new Hono<{ Variables: AppVariables }>();
+  const scoped = (c: Context<{ Variables: AppVariables }>) =>
+    accounts.forUser(c.get('workspace'));
+  app.get('/external-accounts', (c) =>
+    c.json({ connectors: scoped(c).list() }),
+  );
   app.put('/external-accounts/:id', async (c) => {
     const id = c.req.param('id');
     const parsed = z
@@ -653,7 +663,7 @@ export function externalAccountRoutes(accounts: ExternalAccounts) {
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Requête invalide.' }, 400);
     try {
-      const login = await accounts.connect(id, parsed.data.values);
+      const login = await scoped(c).connect(id, parsed.data.values);
       return c.json({ ok: true, login });
     } catch (cause) {
       return c.json(
@@ -675,7 +685,7 @@ export function externalAccountRoutes(accounts: ExternalAccounts) {
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Requête invalide.' }, 400);
     try {
-      const id = accounts.connectManual(parsed.data.name, parsed.data.secret);
+      const id = scoped(c).connectManual(parsed.data.name, parsed.data.secret);
       return c.json({ ok: true, id });
     } catch (cause) {
       return c.json(
@@ -688,7 +698,7 @@ export function externalAccountRoutes(accounts: ExternalAccounts) {
     }
   });
   app.delete('/external-accounts/:id', (c) => {
-    accounts.disconnect(c.req.param('id'));
+    scoped(c).disconnect(c.req.param('id'));
     return c.json({ ok: true });
   });
   return app;

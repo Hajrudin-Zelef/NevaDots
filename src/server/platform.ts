@@ -56,12 +56,12 @@ export class Platform {
       agents: async () =>
         Object.fromEntries(
           workspace
-            .dots()
+            .dotsAll()
             .map((dot) => [
               dot.id,
               new DotAgent(
-                store,
-                workspace,
+                store.forUser(dot.userId),
+                workspace.forUser(dot.userId),
                 config,
                 dot.id,
                 false,
@@ -90,31 +90,38 @@ export class Platform {
   async stop() {
     await this.setupTelemetry.stop();
   }
-  async createConversation(dotId: string, title: string) {
+  async createConversation(userId: string, dotId: string, title: string) {
     this.requireReady();
-    if (!this.workspace.dot(dotId)) throw new Error('Dot not found.');
+    const workspace = this.workspace.forUser(userId);
+    if (!workspace.dot(dotId)) throw new Error('Dot not found.');
     // The thread id is minted locally and its transcript is stored locally by
     // the runner; no hosted round-trip is needed.
-    return this.workspace.bindThread(randomUUID(), dotId, title);
+    return workspace.bindThread(randomUUID(), dotId, title);
   }
-  async deleteConversation(threadId: string): Promise<void> {
+  async deleteConversation(userId: string, threadId: string): Promise<void> {
     this.requireReady();
-    this.workspace.requireThread(threadId);
-    this.workspace.deleteThread(threadId);
+    const workspace = this.workspace.forUser(userId);
+    workspace.requireThread(threadId);
+    workspace.deleteThread(threadId);
     this.runner.deleteThread(threadId);
   }
-  async deleteAllConversations(): Promise<number> {
+  async deleteAllConversations(userId: string): Promise<number> {
     this.requireReady();
-    const conversations = this.workspace.conversations();
+    const workspace = this.workspace.forUser(userId);
+    const conversations = workspace.conversations();
     for (const conversation of conversations) {
-      this.workspace.deleteThread(conversation.id);
+      workspace.deleteThread(conversation.id);
       this.runner.deleteThread(conversation.id);
     }
     return conversations.length;
   }
   async history(threadId: string): Promise<string> {
     this.requireReady();
-    this.workspace.requireThread(threadId);
+    // Le propriétaire vient du thread (confiance système) ; la lecture
+    // ensuite est filtrée — un thread étranger lève ici.
+    const owner = this.workspace.ownerOfThread(threadId);
+    if (!owner) throw new Error('Conversation not found.');
+    this.workspace.forUser(owner).requireThread(threadId);
     const history = this.runner.getThreadMessages(threadId);
     return history
       .filter((message) => ['user', 'assistant'].includes(message.role))
@@ -126,7 +133,7 @@ export class Platform {
       .join('\n')
       .slice(-12000);
   }
-  async handle(request: Request): Promise<Response> {
+  async handle(request: Request, userId: string): Promise<Response> {
     // The CopilotKit client continuously polls inspector metadata that this
     // fork deliberately does not serve; answering 204 stops the retry loop.
     const pathname = new URL(request.url).pathname;
@@ -143,7 +150,7 @@ export class Platform {
         .json()
         .catch(() => null);
     try {
-      validateRuntimeScope(request, this.workspace, body);
+      validateRuntimeScope(request, this.workspace.forUser(userId), body);
     } catch (error) {
       return Response.json(
         {
@@ -185,10 +192,13 @@ export class Platform {
   ): Promise<string> {
     this.requireReady();
     signal.throwIfAborted();
-    const thread = this.workspace.requireThread(threadId);
+    const owner = this.workspace.ownerOfThread(threadId);
+    if (!owner) throw new Error('Conversation not found.');
+    const workspace = this.workspace.forUser(owner);
+    const thread = workspace.requireThread(threadId);
     const agent = new DotAgent(
-      this.store,
-      this.workspace,
+      this.store.forUser(owner),
+      workspace,
       this.config,
       thread.dotId,
       false,
@@ -244,7 +254,7 @@ export class Platform {
       // Persist the turn's activity so the Muse rail can show scheduled-task
       // and voice turns, which never run through an open browser client.
       try {
-        this.workspace.recordThreadActivity(threadId, {
+        workspace.recordThreadActivity(threadId, {
           summary: text.replace(/\s+/g, ' ').slice(0, 240) || null,
           activity: deriveActivity(finalMessages).slice(-60),
         });

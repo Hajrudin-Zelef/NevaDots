@@ -43,13 +43,15 @@ export class PageError extends Error {
     super(message);
   }
 }
+/** Pages — Phase C1 : toutes les requêtes filtrent par user_id. */
 export class Pages {
   constructor(
     private db: DatabaseSync,
     private spaceExists: (id: string) => boolean,
+    readonly userId: string | null = null,
   ) {
     db.exec(
-      'CREATE TABLE IF NOT EXISTS page_reviews(threadId TEXT NOT NULL, toolCallId TEXT NOT NULL, pageId TEXT NOT NULL, spaceId TEXT NOT NULL, draft TEXT, PRIMARY KEY(threadId,toolCallId))',
+      'CREATE TABLE IF NOT EXISTS page_reviews(threadId TEXT NOT NULL, toolCallId TEXT NOT NULL, pageId TEXT NOT NULL, spaceId TEXT NOT NULL, draft TEXT, user_id TEXT, PRIMARY KEY(threadId,toolCallId))',
     );
     if (
       !db
@@ -58,8 +60,8 @@ export class Pages {
         .some((row) => row.name === 'draft')
     )
       db.exec('ALTER TABLE page_reviews ADD COLUMN draft TEXT');
-    db.exec(`CREATE TABLE IF NOT EXISTS pages(id TEXT PRIMARY KEY, spaceId TEXT NOT NULL, parentId TEXT, title TEXT NOT NULL, content TEXT NOT NULL, revision INTEGER NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, sourceThreadId TEXT);
- CREATE TABLE IF NOT EXISTS page_threads(pageId TEXT NOT NULL,dotId TEXT NOT NULL,threadId TEXT NOT NULL UNIQUE,ready INTEGER NOT NULL DEFAULT 0, leaseUntil INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(pageId,dotId));`);
+    db.exec(`CREATE TABLE IF NOT EXISTS pages(id TEXT PRIMARY KEY, spaceId TEXT NOT NULL, parentId TEXT, title TEXT NOT NULL, content TEXT NOT NULL, revision INTEGER NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, sourceThreadId TEXT, user_id TEXT);
+ CREATE TABLE IF NOT EXISTS page_threads(pageId TEXT NOT NULL,dotId TEXT NOT NULL,threadId TEXT NOT NULL UNIQUE,ready INTEGER NOT NULL DEFAULT 0, leaseUntil INTEGER NOT NULL DEFAULT 0, user_id TEXT, PRIMARY KEY(pageId,dotId));`);
     if (
       !db
         .prepare('PRAGMA table_info(page_threads)')
@@ -69,6 +71,31 @@ export class Pages {
       db.exec(
         'ALTER TABLE page_threads ADD COLUMN leaseUntil INTEGER NOT NULL DEFAULT 0',
       );
+    for (const table of ['pages', 'page_reviews', 'page_threads']) {
+      if (
+        !db
+          .prepare(`PRAGMA table_info(${table})`)
+          .all()
+          .some((row) => row.name === 'user_id')
+      )
+        db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`);
+    }
+  }
+  /** Même instance portée par cet utilisateur, même connexion DB. */
+  forUser(userId: string): Pages {
+    return new Pages(this.db, this.spaceExists, userId);
+  }
+  private requireUser(): string {
+    if (this.userId === null)
+      throw new Error('Pages: no user bound (call forUser first).');
+    return this.userId;
+  }
+  /** Migration (système) : réclame les lignes orphelines. Idempotente. */
+  claimOrphans(userId: string) {
+    for (const table of ['pages', 'page_reviews', 'page_threads'])
+      this.db
+        .prepare(`UPDATE ${table} SET user_id=? WHERE user_id IS NULL`)
+        .run(userId);
   }
   requireSpace(spaceId: string) {
     if (!this.spaceExists(spaceId))
@@ -77,27 +104,31 @@ export class Pages {
   exists(spaceId: string, id: string): boolean {
     this.requireSpace(spaceId);
     return !!this.db
-      .prepare('SELECT 1 FROM pages WHERE id=? AND spaceId=?')
-      .get(id, spaceId);
+      .prepare('SELECT 1 FROM pages WHERE id=? AND spaceId=? AND user_id=?')
+      .get(id, spaceId, this.userId);
   }
   list(spaceId: string): Page[] {
     this.requireSpace(spaceId);
     return this.db
-      .prepare('SELECT * FROM pages WHERE spaceId=? ORDER BY createdAt,id')
-      .all(spaceId) as unknown as Page[];
+      .prepare(
+        'SELECT * FROM pages WHERE spaceId=? AND user_id=? ORDER BY createdAt,id',
+      )
+      .all(spaceId, this.userId) as unknown as Page[];
   }
   /** Page count per space id (single aggregate query). */
   countsBySpace(): Record<string, number> {
     const rows = this.db
-      .prepare('SELECT spaceId, COUNT(*) AS n FROM pages GROUP BY spaceId')
-      .all() as unknown as { spaceId: string; n: number }[];
+      .prepare(
+        'SELECT spaceId, COUNT(*) AS n FROM pages WHERE user_id=? GROUP BY spaceId',
+      )
+      .all(this.userId) as unknown as { spaceId: string; n: number }[];
     return Object.fromEntries(rows.map((row) => [row.spaceId, row.n]));
   }
   get(spaceId: string, id: string): Page {
     this.requireSpace(spaceId);
     const row = this.db
-      .prepare('SELECT * FROM pages WHERE id=? AND spaceId=?')
-      .get(id, spaceId);
+      .prepare('SELECT * FROM pages WHERE id=? AND spaceId=? AND user_id=?')
+      .get(id, spaceId, this.userId);
     if (!row) throw new PageError('Page not found in this Space.', 404);
     return row as unknown as Page;
   }
@@ -118,6 +149,7 @@ export class Pages {
     input: z.input<typeof pageInput>,
     sourceThreadId: string | null = null,
   ): Page {
+    const userId = this.requireUser();
     this.requireSpace(spaceId);
     const parsed = pageInput.safeParse(input);
     if (!parsed.success)
@@ -129,7 +161,7 @@ export class Pages {
     const id = randomUUID(),
       now = Date.now();
     this.db
-      .prepare('INSERT INTO pages VALUES (?,?,?,?,?,1,?,?,?)')
+      .prepare('INSERT INTO pages VALUES (?,?,?,?,?,1,?,?,?,?)')
       .run(
         id,
         spaceId,
@@ -139,6 +171,7 @@ export class Pages {
         now,
         now,
         sourceThreadId,
+        userId,
       );
     return this.get(spaceId, id);
   }
@@ -148,9 +181,9 @@ export class Pages {
   ): { pageId: string; spaceId: string; draft: PageReviewDraft | null } | null {
     const row = this.db
       .prepare(
-        'SELECT pageId,spaceId,draft FROM page_reviews WHERE threadId=? AND toolCallId=?',
+        'SELECT pageId,spaceId,draft FROM page_reviews WHERE threadId=? AND toolCallId=? AND user_id=?',
       )
-      .get(threadId, toolCallId);
+      .get(threadId, toolCallId, this.userId);
     return row
       ? {
           pageId: String(row.pageId),
@@ -175,6 +208,7 @@ export class Pages {
     threadId: string,
     toolCallId: string,
   ): ReviewedPage {
+    const userId = this.requireUser();
     const draft = pageReviewSchema.parse({ ...input, spaceId });
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -205,9 +239,16 @@ export class Pages {
       );
       this.db
         .prepare(
-          'INSERT INTO page_reviews (threadId,toolCallId,pageId,spaceId,draft) VALUES (?,?,?,?,?)',
+          'INSERT INTO page_reviews (threadId,toolCallId,pageId,spaceId,draft,user_id) VALUES (?,?,?,?,?,?)',
         )
-        .run(threadId, toolCallId, page.id, spaceId, JSON.stringify(draft));
+        .run(
+          threadId,
+          toolCallId,
+          page.id,
+          spaceId,
+          JSON.stringify(draft),
+          userId,
+        );
       this.db.exec('COMMIT');
       return { ...page, reviewDraft: draft };
     } catch (error) {
@@ -216,6 +257,7 @@ export class Pages {
     }
   }
   update(spaceId: string, id: string, input: z.input<typeof pagePatch>): Page {
+    const userId = this.requireUser();
     const parsed = pagePatch.safeParse(input);
     if (!parsed.success)
       throw new PageError(
@@ -235,7 +277,7 @@ export class Pages {
       this.parent(spaceId, parent, id);
       this.db
         .prepare(
-          'UPDATE pages SET title=?,content=?,parentId=?,revision=revision+1,updatedAt=? WHERE id=? AND revision=?',
+          'UPDATE pages SET title=?,content=?,parentId=?,revision=revision+1,updatedAt=? WHERE id=? AND revision=? AND user_id=?',
         )
         .run(
           data.title ?? page.title,
@@ -244,6 +286,7 @@ export class Pages {
           Date.now(),
           id,
           data.expectedRevision,
+          userId,
         );
       this.db.exec('COMMIT');
       return this.get(spaceId, id);
@@ -255,56 +298,64 @@ export class Pages {
   thread(pageId: string, dotId: string) {
     const row = this.db
       .prepare(
-        'SELECT threadId,ready FROM page_threads WHERE pageId=? AND dotId=?',
+        'SELECT threadId,ready FROM page_threads WHERE pageId=? AND dotId=? AND user_id=?',
       )
-      .get(pageId, dotId);
+      .get(pageId, dotId, this.userId);
     return row
       ? { threadId: String(row.threadId), ready: !!row.ready }
       : undefined;
   }
   reserveThread(pageId: string, dotId: string, threadId: string) {
+    const userId = this.requireUser();
     this.db
       .prepare(
-        'INSERT OR IGNORE INTO page_threads(pageId,dotId,threadId,ready,leaseUntil) VALUES(?,?,?,0,0)',
+        'INSERT OR IGNORE INTO page_threads(pageId,dotId,threadId,ready,leaseUntil,user_id) VALUES(?,?,?,0,0,?)',
       )
-      .run(pageId, dotId, threadId);
+      .run(pageId, dotId, threadId, userId);
     return (
       this.db
         .prepare(
-          'UPDATE page_threads SET leaseUntil=? WHERE pageId=? AND dotId=? AND ready=0 AND leaseUntil<=?',
+          'UPDATE page_threads SET leaseUntil=? WHERE pageId=? AND dotId=? AND ready=0 AND leaseUntil<=? AND user_id=?',
         )
-        .run(Date.now() + 60000, pageId, dotId, Date.now()).changes > 0
+        .run(Date.now() + 60000, pageId, dotId, Date.now(), userId).changes > 0
     );
   }
   finishThread(pageId: string, dotId: string) {
-    this.db
-      .prepare('UPDATE page_threads SET ready=1 WHERE pageId=? AND dotId=?')
-      .run(pageId, dotId);
-  }
-  releaseThread(pageId: string, dotId: string) {
+    this.requireUser();
     this.db
       .prepare(
-        'UPDATE page_threads SET leaseUntil=0 WHERE pageId=? AND dotId=? AND ready=0',
+        'UPDATE page_threads SET ready=1 WHERE pageId=? AND dotId=? AND user_id=?',
       )
-      .run(pageId, dotId);
+      .run(pageId, dotId, this.userId);
+  }
+  releaseThread(pageId: string, dotId: string) {
+    this.requireUser();
+    this.db
+      .prepare(
+        'UPDATE page_threads SET leaseUntil=0 WHERE pageId=? AND dotId=? AND ready=0 AND user_id=?',
+      )
+      .run(pageId, dotId, this.userId);
   }
   forThread(threadId: string, spaceId?: string): Page | undefined {
     const row = this.db
       .prepare(
-        'SELECT pageId, pages.spaceId FROM page_threads JOIN pages ON pages.id=page_threads.pageId WHERE threadId=? AND ready=1',
+        'SELECT pageId, pages.spaceId FROM page_threads JOIN pages ON pages.id=page_threads.pageId WHERE threadId=? AND ready=1 AND page_threads.user_id=? AND pages.user_id=?',
       )
-      .get(threadId);
+      .get(threadId, this.userId, this.userId);
     return row
       ? this.get(spaceId ?? String(row.spaceId), String(row.pageId))
       : undefined;
   }
   delete(spaceId: string, id: string): boolean {
+    const userId = this.requireUser();
     this.requireSpace(spaceId);
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const page = this.db
-        .prepare('SELECT parentId FROM pages WHERE id=? AND spaceId=?')
-        .get(id, spaceId) as { parentId: string | null } | undefined;
+        .prepare(
+          'SELECT parentId FROM pages WHERE id=? AND spaceId=? AND user_id=?',
+        )
+        .get(id, spaceId, userId) as { parentId: string | null } | undefined;
       if (!page) {
         this.db.exec('COMMIT');
         return false;
@@ -312,14 +363,16 @@ export class Pages {
       const now = Date.now();
       this.db
         .prepare(
-          'UPDATE pages SET parentId=?, revision=revision+1, updatedAt=? WHERE spaceId=? AND parentId=?',
+          'UPDATE pages SET parentId=?, revision=revision+1, updatedAt=? WHERE spaceId=? AND parentId=? AND user_id=?',
         )
-        .run(page.parentId, now, spaceId, id);
+        .run(page.parentId, now, spaceId, id, userId);
       // page_reviews rows stay: a retried approval must not recreate this page.
-      this.db.prepare('DELETE FROM page_threads WHERE pageId=?').run(id);
       this.db
-        .prepare('DELETE FROM pages WHERE id=? AND spaceId=?')
-        .run(id, spaceId);
+        .prepare('DELETE FROM page_threads WHERE pageId=? AND user_id=?')
+        .run(id, userId);
+      this.db
+        .prepare('DELETE FROM pages WHERE id=? AND spaceId=? AND user_id=?')
+        .run(id, spaceId, userId);
       this.db.exec('COMMIT');
       return true;
     } catch (error) {

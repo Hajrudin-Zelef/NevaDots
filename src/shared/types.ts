@@ -41,6 +41,8 @@ export interface UsageReport {
 }
 export interface Task {
   id: string;
+  /** Compte propriétaire (Phase C1) : une tâche appartient à un seul compte. */
+  userId: string;
   prompt: string;
   status: Status;
   intervalSeconds: number | null;
@@ -80,6 +82,8 @@ export interface TaskEvent {
 }
 export interface Memory {
   id: string;
+  /** Compte propriétaire (Phase C1) : une mémoire appartient à un seul compte. */
+  userId: string;
   text: string;
   createdAt: number;
 }
@@ -106,6 +110,8 @@ export interface Space {
 }
 export interface Dot {
   id: string;
+  /** Compte propriétaire (Phase C1) : un Dot appartient à un seul compte. */
+  userId: string;
   /** Default destination for saved pages, not ownership. */
   spaceId: string;
   spaceIds: string[];

@@ -19,7 +19,7 @@ import {
 const stores: { close(): void }[] = [];
 const config: Config = { mode: 'sample', baseUrl: 'https://api.openai.com/v1' };
 function fixture() {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const auth = new AuthStore(':memory:');
   stores.push(store, auth);
   const runner = new Runner(store, config);
@@ -590,7 +590,7 @@ describe('Phase B — POST /api/auth/bootstrap', () => {
 
 describe('POST /api/auth/login + /api/auth/logout', () => {
   it('/api/auth/* → 503 without an auth store', async () => {
-    const store = new Store(':memory:');
+    const store = new Store(':memory:').forUser('owner');
     stores.push(store);
     const runner = new Runner(store, config);
     const bare = createApp({ store, runner, config });

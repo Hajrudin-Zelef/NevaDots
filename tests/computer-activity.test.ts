@@ -2,6 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import { WorkspaceStore } from '../src/server/workspace.js';
 import { ComputerService } from '../src/server/computer-service.js';
 import { computerRoutes } from '../src/server/computer-routes.js';
+import { mountScoped } from './scoped-mount.js';
 import type { ComputerActivityEvent } from '../src/shared/computer-types.js';
 import {
   appendActivityRun,
@@ -17,6 +18,7 @@ const LONG = 'x'.repeat(20000);
 
 function fixture() {
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   stores.push(workspace);
   const id = workspace.dots()[0].id;
   workspace.computers.patch(id, {
@@ -178,7 +180,11 @@ it('le helper fusionne start/end et borne le journal', () => {
 
 it('la route /activity diffuse les événements en NDJSON', async () => {
   const f = fixture();
-  const routes = computerRoutes(f.service);
+  const routes = mountScoped(computerRoutes(), {
+    userId: 'owner',
+    workspace: f.workspace,
+    computers: f.service.forUser('owner', () => false),
+  });
   const response = await routes.request(`/dots/${f.id}/computer/activity`);
   expect(response.status).toBe(200);
   expect(response.headers.get('content-type')).toContain(

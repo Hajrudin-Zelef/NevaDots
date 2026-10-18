@@ -7,6 +7,7 @@ import { WorkspaceStore } from '../src/server/workspace.js';
 it('persists nested page content and revision across restart', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dots-pages-'));
   let store = new WorkspaceStore(join(dir, 'db'), 'owner');
+  store.ensureSeed();
   const space = store.spaces()[0].id;
   const parent = store.pages.create(space, {
     title: 'Plan',
@@ -23,6 +24,7 @@ it('persists nested page content and revision across restart', () => {
   });
   store.close();
   store = new WorkspaceStore(join(dir, 'db'), 'owner');
+  store.ensureSeed();
   expect(store.pages.get(space, child.id)).toMatchObject({
     title: 'New detail',
     content: 'Markdown **body**',
@@ -34,6 +36,7 @@ it('persists nested page content and revision across restart', () => {
 });
 it('rejects cross-space parents, cycles and stale writes without losing content', () => {
   const store = new WorkspaceStore(':memory:', 'owner');
+  store.ensureSeed();
   const a = store.spaces()[0].id;
   const b = store.createSpace('Other', '').id;
   const root = store.pages.create(a, { title: 'Root' });
@@ -61,6 +64,7 @@ it('migrates review receipts and retains their original draft after restart', ()
   );
   legacy.close();
   let store = new WorkspaceStore(path, 'owner');
+  store.ensureSeed();
   const space = store.spaces()[0].id;
   store.pages.createReviewed(
     space,
@@ -81,6 +85,9 @@ it('migrates review receipts and retains their original draft after restart', ()
     .run('earlier-thread', 'earlier-call', olderPage.id, space);
   oldReceipt.close();
   store = new WorkspaceStore(path, 'owner');
+  // C1 : le reçu legacy (user_id NULL) est réclamé au boot.
+  store.claimOrphans('owner');
+  store.ensureSeed();
   expect(store.pages.reviewReceipt('thread', 'call')?.draft).toMatchObject({
     title: 'Original',
     content: 'Reviewed content',
@@ -111,6 +118,7 @@ it('migrates review receipts and retains their original draft after restart', ()
 
 it('deletes a page and reparents descendants safely', () => {
   const store = new WorkspaceStore(':memory:', 'owner');
+  store.ensureSeed();
   const space = store.spaces()[0].id;
   const root = store.pages.create(space, { title: 'Root' });
   const child = store.pages.create(space, {
@@ -147,6 +155,7 @@ it('deletes a page and reparents descendants safely', () => {
 
 it('drops page thread bindings on delete and never recreates a page from a retried review', () => {
   const store = new WorkspaceStore(':memory:', 'owner');
+  store.ensureSeed();
   const space = store.spaces()[0].id;
   const page = store.pages.create(space, { title: 'Draft' });
   store.pages.reserveThread(page.id, 'dot', 'thread-1');

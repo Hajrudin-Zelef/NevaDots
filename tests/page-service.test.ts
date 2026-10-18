@@ -4,6 +4,7 @@ import { PageService } from '../src/server/page-service.js';
 import { pageAccess } from '../src/server/page-tools.js';
 it('reuses one actual Intelligence thread per page and Dot under concurrent requests', async () => {
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   const dot = ws.dots()[0];
   const page = ws.pages.create(dot.spaceId, { title: 'Design' });
   const getOrCreateThread = vi.fn(async () => {});
@@ -26,6 +27,7 @@ it('reuses one actual Intelligence thread per page and Dot under concurrent requ
 });
 it('exports canonical user/assistant text and rejects failed or oversized history without creating a page', async () => {
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   const dot = ws.dots()[0];
   ws.bindThread('thread', dot.id, 'Thread');
   const getThreadMessages = vi.fn(async () => ({
@@ -57,6 +59,7 @@ it('exports canonical user/assistant text and rejects failed or oversized histor
 });
 it('scopes agent tools to the Dot Space and re-reads current context with CAS and pause enforcement', () => {
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   const dot = ws.dots()[0];
   const other = ws.createSpace('Other', '');
   const foreign = ws.pages.create(other.id, { title: 'Private' });
@@ -81,6 +84,7 @@ it('scopes agent tools to the Dot Space and re-reads current context with CAS an
 });
 it('recovers the same reserved thread after a restart lease and a remote-success retry', async () => {
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   const dot = ws.dots()[0];
   const page = ws.pages.create(dot.spaceId, { title: 'Recover' });
   ws.pages.reserveThread(page.id, dot.id, 'stable-thread');
@@ -107,6 +111,7 @@ it('recovers the same reserved thread after a restart lease and a remote-success
 });
 it('rejects a specialist in another Space before Intelligence is accessed', async () => {
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   const dot = ws.dots()[0];
   const space = ws.createSpace('Other', '');
   const page = ws.pages.create(space.id, { title: 'Other' });
@@ -122,6 +127,7 @@ it('rejects a specialist in another Space before Intelligence is accessed', asyn
 });
 it('retries a failed provider creation with the same canonical reserved ID', async () => {
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   const dot = ws.dots()[0];
   const page = ws.pages.create(dot.spaceId, { title: 'Retry' });
   const getOrCreateThread = vi
@@ -143,6 +149,7 @@ it('retries a failed provider creation with the same canonical reserved ID', asy
 
 it('grants multiple Spaces without changing thread identity and enforces revocation on existing tools', async () => {
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   const dot = ws.dots()[0];
   const other = ws.createSpace('Launch', '');
   const page = ws.pages.create(other.id, { title: 'Brief' });

@@ -126,7 +126,33 @@ export class ComputerService {
     private paused: () => boolean,
     private transport: typeof fetch = fetch,
     private deadlineMs = 70000,
-  ) {}
+    private shared?: {
+      activityListeners: Map<string, Set<ComputerActivityListener>>;
+      streamTickets: Map<string, { dotId: string; expiresAt: number }>;
+    },
+  ) {
+    this.shared ??= {
+      activityListeners: new Map(),
+      streamTickets: new Map(),
+    };
+  }
+  /** Vue portée par un utilisateur : même état partagé (tickets, listeners). */
+  forUser(userId: string, paused: () => boolean): ComputerService {
+    return new ComputerService(
+      this.workspace.forUser(userId),
+      this.config,
+      paused,
+      this.transport,
+      this.deadlineMs,
+      this.shared,
+    );
+  }
+  private get activityListeners() {
+    return this.shared!.activityListeners;
+  }
+  private get streamTickets() {
+    return this.shared!.streamTickets;
+  }
   get configured() {
     return !!(
       this.config.computerSupervisorUrl?.trim() &&
@@ -356,11 +382,6 @@ export class ComputerService {
       };
     }
   }
-  private activityListeners = new Map<string, Set<ComputerActivityListener>>();
-  private streamTickets = new Map<
-    string,
-    { dotId: string; expiresAt: number }
-  >();
   /**
    * Mint a single-use stream ticket for a Dot's browser view. Tickets live
    * 30 s and are consumed atomically on upgrade, so a leaked URL dies

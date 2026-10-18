@@ -13,7 +13,9 @@ export async function loginSession(
   password = 'a-strong-password',
 ): Promise<string> {
   if (!auth.getUserByUsername(username))
-    await auth.createUser(username, password, 'user');
+    // Tests : id déterministe 'owner' pour que les fixtures (stores
+    // liés à 'owner') voient les mêmes données que la session.
+    await auth.createUser(username, password, 'user', 'owner');
   const res = await app.request('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -36,7 +38,8 @@ export async function directSession(
   password = 'a-strong-password',
 ): Promise<string> {
   const existing = auth.getUserByUsername(username);
-  const user = existing ?? (await auth.createUser(username, password, 'user'));
+  const user =
+    existing ?? (await auth.createUser(username, password, 'user', 'owner'));
   const { rawId } = auth.createSession(user.id);
   return `nevadots-session=${rawId}`;
 }

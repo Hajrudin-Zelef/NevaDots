@@ -4,6 +4,7 @@ import { WorkspaceStore } from '../src/server/workspace.js';
 import { setupStatus } from '../src/server/platform-config.js';
 it('blocks unbound cross-Dot run and inspector routes before contacting Intelligence', () => {
   const store = new WorkspaceStore(':memory:', 'owner');
+  store.ensureSeed();
   const dot = store.dots()[0];
   store.bindThread('thread-a', dot.id, 'A');
   expect(() =>
@@ -46,6 +47,7 @@ it('reports setup honestly without a standalone agent fallback', () => {
 });
 it('rejects stop scope bypasses and misleading prefixes while allowing canonical owned routes', () => {
   const store = new WorkspaceStore(':memory:', 'owner');
+  store.ensureSeed();
   const dot = store.dots()[0];
   store.bindThread('bound', dot.id, 'Bound');
   for (const path of [

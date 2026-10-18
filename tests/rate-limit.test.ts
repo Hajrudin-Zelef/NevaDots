@@ -16,7 +16,7 @@ afterEach(() => {
 // Phase B (comptes) : les requêtes portent le cookie de session — le
 // rate-limit est par IP (XFF), la session ne change pas les buckets.
 async function fixture() {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const auth = new AuthStore(':memory:');
   stores.push(store, auth);
   const runner = new Runner(store, config);

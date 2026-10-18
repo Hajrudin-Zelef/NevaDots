@@ -140,6 +140,10 @@ export class AuthStore {
     username: string,
     password: string,
     role: UserRole,
+    // Tests uniquement : id déterministe ('owner') pour aligner les
+    // fixtures (stores liés) avec l'utilisateur de session. En prod,
+    // toujours un UUID aléatoire.
+    id: string = randomUUID(),
   ): Promise<User> {
     const name = username.trim();
     if (name.length < 1 || name.length > USERNAME_MAX_LENGTH)
@@ -152,7 +156,6 @@ export class AuthStore {
         `Password must be ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters.`,
       );
     const now = Date.now();
-    const id = randomUUID();
     try {
       this.db
         .prepare(
@@ -266,6 +269,13 @@ export class AuthStore {
   }
   revokeSession(rawId: string) {
     this.db.prepare('DELETE FROM sessions WHERE id=?').run(hashToken(rawId));
+  }
+  /** Id du premier compte créé (Admin du bootstrap) — pour la migration C1. */
+  firstUserId(): string | undefined {
+    const row = this.db
+      .prepare('SELECT id FROM users ORDER BY createdAt LIMIT 1')
+      .get() as { id?: string } | undefined;
+    return typeof row?.id === 'string' ? row.id : undefined;
   }
   revokeAllSessions(userId: string) {
     this.db.prepare('DELETE FROM sessions WHERE userId=?').run(userId);

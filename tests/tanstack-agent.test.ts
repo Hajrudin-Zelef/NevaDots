@@ -15,8 +15,9 @@ afterEach(() => {
 });
 
 function fixture() {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   databases.push(store, workspace);
   const dot = workspace.dots()[0];
   workspace.bindThread('thread', dot.id, 'TanStack');

@@ -26,18 +26,33 @@ const defaults: Settings = {
   replyStyle: 'standard',
   replyLanguage: 'fr',
 };
+/**
+ * Store — Phase C1 : isolation par compte (même contrat que WorkspaceStore).
+ * Un store NON porté ne voit rien ; ses écritures lèvent. claim() est
+ * l'opération système du runner : elle choisit une tâche tous comptes
+ * (en respectant les réglages DE SON propriétaire) puis l'exécution se
+ * fait sur le store porté par task.userId.
+ */
 export class Store {
   private db: DatabaseSync;
-  constructor(path: string) {
-    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
-    this.db = new DatabaseSync(path);
+  constructor(
+    pathOrDb: string | DatabaseSync,
+    readonly userId: string | null = null,
+  ) {
+    if (typeof pathOrDb === 'string') {
+      if (pathOrDb !== ':memory:')
+        mkdirSync(dirname(pathOrDb), { recursive: true });
+      this.db = new DatabaseSync(pathOrDb);
+    } else {
+      this.db = pathOrDb;
+    }
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS setup_telemetry (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, prompt TEXT NOT NULL, status TEXT NOT NULL, intervalSeconds INTEGER, nextRunAt INTEGER, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, error TEXT, lease TEXT, leaseUntil INTEGER);
-      CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, taskId TEXT NOT NULL, status TEXT NOT NULL, startedAt INTEGER NOT NULL, finishedAt INTEGER, result TEXT, error TEXT);
-      CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, taskId TEXT NOT NULL, runId TEXT, text TEXT NOT NULL, createdAt INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, text TEXT NOT NULL, createdAt INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS settings (userId TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, prompt TEXT NOT NULL, status TEXT NOT NULL, intervalSeconds INTEGER, nextRunAt INTEGER, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, error TEXT, lease TEXT, leaseUntil INTEGER, user_id TEXT);
+      CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, taskId TEXT NOT NULL, status TEXT NOT NULL, startedAt INTEGER NOT NULL, finishedAt INTEGER, result TEXT, error TEXT, user_id TEXT);
+      CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, taskId TEXT NOT NULL, runId TEXT, text TEXT NOT NULL, createdAt INTEGER NOT NULL, user_id TEXT);
+      CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, text TEXT NOT NULL, createdAt INTEGER NOT NULL, user_id TEXT);
       CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, model TEXT NOT NULL, promptTokens INTEGER, completionTokens INTEGER, costUsd REAL);
       CREATE INDEX IF NOT EXISTS tasks_due ON tasks(status, nextRunAt);
       CREATE INDEX IF NOT EXISTS runs_task ON runs(taskId, startedAt);
@@ -55,9 +70,57 @@ export class Store {
     } catch {
       // Column already present — nothing to do.
     }
+    // settings : singleton (id=1) -> une ligne par compte (userId).
+    const settingsSql = this.db
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='settings'",
+      )
+      .get() as { sql?: string } | undefined;
+    if (settingsSql?.sql && !/userId/i.test(settingsSql.sql)) {
+      this.db.exec(`BEGIN;
+        CREATE TABLE settings_new(userId TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO settings_new SELECT NULL, value FROM settings;
+        DROP TABLE settings;
+        ALTER TABLE settings_new RENAME TO settings;
+        COMMIT;`);
+    }
+    for (const table of ['tasks', 'runs', 'events', 'memories']) {
+      if (
+        !this.db
+          .prepare(`PRAGMA table_info(${table})`)
+          .all()
+          .some((row) => row.name === 'user_id')
+      )
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`);
+    }
+  }
+  /** Nouvelle instance portée par cet utilisateur, même connexion DB. */
+  forUser(userId: string): Store {
+    return new Store(this.db, userId);
+  }
+  private requireUser(): string {
+    if (this.userId === null)
+      throw new Error('Store: no user bound (call forUser first).');
+    return this.userId;
+  }
+  /** Migration (système) : réclame les lignes orphelines. Idempotente. */
+  claimOrphans(userId: string) {
+    for (const table of ['tasks', 'runs', 'events', 'memories'])
+      this.db
+        .prepare(`UPDATE ${table} SET user_id=? WHERE user_id IS NULL`)
+        .run(userId);
     this.db
-      .prepare('INSERT OR IGNORE INTO settings VALUES (1, ?)')
-      .run(JSON.stringify(defaults));
+      .prepare('UPDATE settings SET userId=? WHERE userId IS NULL')
+      .run(userId);
+    try {
+      this.db
+        .prepare(
+          'UPDATE settings_quarantine SET user_id=? WHERE user_id IS NULL',
+        )
+        .run(userId);
+    } catch {
+      /* table absente : rien à réclamer */
+    }
   }
   setupTelemetryState(): string | undefined {
     return (
@@ -91,10 +154,18 @@ export class Store {
       throw error;
     }
   }
+  /** Réglages du compte porté (graine paresseuse aux défauts) ; défauts si non porté. */
   settings(): Settings {
+    if (this.userId === null) return { ...defaults };
     const row = this.db
-      .prepare('SELECT value FROM settings WHERE id=1')
-      .get() as { value: string };
+      .prepare('SELECT value FROM settings WHERE userId=?')
+      .get(this.userId) as { value: string } | undefined;
+    if (!row) {
+      this.db
+        .prepare('INSERT OR IGNORE INTO settings VALUES (?, ?)')
+        .run(this.userId, JSON.stringify(defaults));
+      return { ...defaults };
+    }
     // Merge defaults so settings rows written before a field existed keep a
     // sane value for the new field.
     try {
@@ -106,11 +177,23 @@ export class Store {
       // settings_quarantine (la plus récente en dernier).
       this.quarantineSettings(row.value, 'unreadable settings JSON');
       this.db
-        .prepare('UPDATE settings SET value=? WHERE id=1')
-        .run(JSON.stringify(defaults));
+        .prepare('UPDATE settings SET value=? WHERE userId=?')
+        .run(JSON.stringify(defaults), this.userId);
       console.warn(
         'Store: ligne settings illisible, défauts appliqués (original mis de côté dans settings_quarantine pour restauration manuelle).',
       );
+      return { ...defaults };
+    }
+  }
+  /** Lecture système : les réglages d'un compte (pour le runner). */
+  private settingsForUser(userId: string): Settings {
+    const row = this.db
+      .prepare('SELECT value FROM settings WHERE userId=?')
+      .get(userId) as { value: string } | undefined;
+    if (!row) return { ...defaults };
+    try {
+      return { ...defaults, ...(JSON.parse(row.value) as Partial<Settings>) };
+    } catch {
       return { ...defaults };
     }
   }
@@ -129,7 +212,7 @@ export class Store {
           'ALTER TABLE settings_quarantine RENAME TO settings_quarantine_legacy',
         );
         this.db.exec(
-          'CREATE TABLE settings_quarantine(id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL, reason TEXT)',
+          'CREATE TABLE settings_quarantine(id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL, reason TEXT, user_id TEXT)',
         );
         try {
           this.db.exec(
@@ -141,24 +224,25 @@ export class Store {
         this.db.exec('DROP TABLE settings_quarantine_legacy');
       }
       this.db.exec(
-        'CREATE TABLE IF NOT EXISTS settings_quarantine(id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL, reason TEXT)',
+        'CREATE TABLE IF NOT EXISTS settings_quarantine(id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL, quarantinedAt INTEGER NOT NULL, reason TEXT, user_id TEXT)',
       );
       this.db
         .prepare(
-          'INSERT INTO settings_quarantine(value, quarantinedAt, reason) VALUES (?, ?, ?)',
+          'INSERT INTO settings_quarantine(value, quarantinedAt, reason, user_id) VALUES (?, ?, ?, ?)',
         )
-        .run(value, Date.now(), reason);
+        .run(value, Date.now(), reason, this.userId ?? null);
     } catch {
       /* mise de côté best-effort */
     }
   }
   updateSettings(patch: Partial<Settings>): Settings {
+    const userId = this.requireUser();
     return this.transaction(() => {
       const previous = this.settings();
       const settings = { ...previous, ...patch };
       this.db
-        .prepare('UPDATE settings SET value=? WHERE id=1')
-        .run(JSON.stringify(settings));
+        .prepare('UPDATE settings SET value=? WHERE userId=?')
+        .run(JSON.stringify(settings), userId);
       if (
         (!previous.paused && settings.paused) ||
         (previous.researchAllowed && !settings.researchAllowed) ||
@@ -176,28 +260,49 @@ export class Store {
       return settings;
     });
   }
+  private mapTask(row: Record<string, unknown>): Task {
+    const { user_id, ...rest } = row;
+    return {
+      ...(rest as unknown as Task),
+      userId: typeof user_id === 'string' ? user_id : '',
+    } as unknown as Task;
+  }
   tasks(): Task[] {
     return this.db
+      .prepare('SELECT * FROM tasks WHERE user_id=? ORDER BY createdAt DESC')
+      .all(this.userId)
+      .map((row) =>
+        this.mapTask(row as Record<string, unknown>),
+      ) as unknown as Task[];
+  }
+  /** Liste système (runner) : toutes les tâches, tous comptes. */
+  tasksAll(): Task[] {
+    return this.db
       .prepare('SELECT * FROM tasks ORDER BY createdAt DESC')
-      .all() as unknown as Task[];
+      .all()
+      .map((row) =>
+        this.mapTask(row as Record<string, unknown>),
+      ) as unknown as Task[];
   }
   task(id: string): Task | undefined {
-    return this.db
-      .prepare('SELECT * FROM tasks WHERE id=?')
-      .get(id) as unknown as Task | undefined;
+    const row = this.db
+      .prepare('SELECT * FROM tasks WHERE id=? AND user_id=?')
+      .get(id, this.userId) as Record<string, unknown> | undefined;
+    return row ? this.mapTask(row) : undefined;
   }
   createTask(
     prompt: string,
     intervalSeconds: number | null = null,
     runAt: number | null = null,
   ): Task {
+    const userId = this.requireUser();
     const now = Date.now();
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO tasks VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, NULL, NULL)",
+        "INSERT INTO tasks VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, NULL, NULL, ?)",
       )
-      .run(id, prompt, intervalSeconds, runAt, now, now);
+      .run(id, prompt, intervalSeconds, runAt, now, now, userId);
     this.event(
       id,
       null,
@@ -212,9 +317,9 @@ export class Store {
     if (!task) return undefined;
     const rows = this.db
       .prepare(
-        'SELECT * FROM runs WHERE taskId=? ORDER BY startedAt DESC, rowid DESC',
+        'SELECT * FROM runs WHERE taskId=? AND user_id=? ORDER BY startedAt DESC, rowid DESC',
       )
-      .all(id) as unknown as (Omit<Run, 'result'> & {
+      .all(id, this.userId) as unknown as (Omit<Run, 'result'> & {
       result: string | null;
     })[];
     return {
@@ -226,31 +331,50 @@ export class Store {
           : null,
       })),
       events: this.db
-        .prepare('SELECT * FROM events WHERE taskId=? ORDER BY id')
-        .all(id) as unknown as TaskEvent[],
+        .prepare(
+          'SELECT * FROM events WHERE taskId=? AND user_id=? ORDER BY id',
+        )
+        .all(id, this.userId) as unknown as TaskEvent[],
     };
   }
+  /** Événement dans le périmètre du store porté. */
   event(taskId: string, runId: string | null, text: string) {
+    const userId = this.requireUser();
+    this.eventFor(taskId, runId, text, userId);
+  }
+  /** Événement système (runner) : l'utilisateur vient de la tâche. */
+  private eventFor(
+    taskId: string,
+    runId: string | null,
+    text: string,
+    userId: string,
+  ) {
     this.db
       .prepare(
-        'INSERT INTO events (taskId, runId, text, createdAt) VALUES (?, ?, ?, ?)',
+        'INSERT INTO events (taskId, runId, text, createdAt, user_id) VALUES (?, ?, ?, ?, ?)',
       )
-      .run(taskId, runId, text, Date.now());
+      .run(taskId, runId, text, Date.now(), userId);
   }
   private invalidate(task: Task, status: string, reason: string) {
     const now = Date.now();
     if (task.lease)
       this.db
         .prepare(
-          "UPDATE runs SET status='interrupted', finishedAt=?, error=? WHERE id=? AND status='running'",
+          "UPDATE runs SET status='interrupted', finishedAt=?, error=? WHERE id=? AND status='running' AND user_id=?",
         )
-        .run(now, reason, task.lease);
+        .run(now, reason, task.lease, task.userId);
     this.db
       .prepare(
-        'UPDATE tasks SET status=?, lease=NULL, leaseUntil=NULL, updatedAt=?, error=? WHERE id=?',
+        'UPDATE tasks SET status=?, lease=NULL, leaseUntil=NULL, updatedAt=?, error=? WHERE id=? AND user_id=?',
       )
-      .run(status, now, status === 'interrupted' ? reason : null, task.id);
-    this.event(task.id, task.lease, reason);
+      .run(
+        status,
+        now,
+        status === 'interrupted' ? reason : null,
+        task.id,
+        task.userId,
+      );
+    this.eventFor(task.id, task.lease, reason, task.userId);
   }
   action(id: string, action: Action): Task | undefined {
     return this.transaction(() => {
@@ -269,8 +393,10 @@ export class Store {
         action === 'run' ? 'Task queued for a new run.' : `Task ${status}.`,
       );
       this.db
-        .prepare('UPDATE tasks SET error=NULL, nextRunAt=NULL WHERE id=?')
-        .run(id);
+        .prepare(
+          'UPDATE tasks SET error=NULL, nextRunAt=NULL WHERE id=? AND user_id=?',
+        )
+        .run(id, task.userId);
       return this.task(id);
     });
   }
@@ -283,9 +409,9 @@ export class Store {
         : null;
     this.db
       .prepare(
-        'UPDATE tasks SET intervalSeconds=?, nextRunAt=?, updatedAt=? WHERE id=?',
+        'UPDATE tasks SET intervalSeconds=?, nextRunAt=?, updatedAt=? WHERE id=? AND user_id=?',
       )
-      .run(intervalSeconds, next, Date.now(), id);
+      .run(intervalSeconds, next, Date.now(), id, task.userId);
     this.event(
       id,
       null,
@@ -295,38 +421,56 @@ export class Store {
     );
     return this.task(id);
   }
+  /**
+   * Réclame la prochaine tâche due. Système : sur un store non porté,
+   * tous comptes (en respectant les réglages de chaque propriétaire) ;
+   * sur un store porté, ce compte seulement.
+   */
   claim(now = Date.now()): Claim | null {
     return this.transaction(() => {
-      const settings = this.settings();
-      if (settings.paused || !settings.researchAllowed) return null;
+      const user = this.userId ?? null;
       const expired = this.db
-        .prepare("SELECT * FROM tasks WHERE status='running' AND leaseUntil<=?")
-        .all(now) as unknown as Task[];
+        .prepare(
+          "SELECT * FROM tasks WHERE status='running' AND leaseUntil<=? AND (? IS NULL OR user_id=?)",
+        )
+        .all(now, user, user) as unknown as Task[];
       for (const task of expired)
         this.invalidate(
-          task,
+          this.mapTask(task as unknown as Record<string, unknown>),
           'interrupted',
           'Worker lease expired. Review completed effects before retrying.',
         );
-      const task = this.db
+      // Les tâches des comptes en pause / sans recherche sont sautées
+      // (jamais réclamées), sans bloquer les autres comptes.
+      // Parenthèses : le filtre compte s'applique aux deux branches
+      // (queued OU completed), pas seulement à la seconde.
+      const due = this.db
         .prepare(
-          "SELECT * FROM tasks WHERE (status='queued' AND (nextRunAt IS NULL OR nextRunAt<=?)) OR (status='completed' AND nextRunAt IS NOT NULL AND nextRunAt<=?) ORDER BY createdAt LIMIT 1",
+          "SELECT * FROM tasks WHERE ((status='queued' AND (nextRunAt IS NULL OR nextRunAt<=?)) OR (status='completed' AND nextRunAt IS NOT NULL AND nextRunAt<=?)) AND (? IS NULL OR user_id=?) ORDER BY createdAt",
         )
-        .get(now, now) as unknown as Task | undefined;
-      if (!task) return null;
-      const lease = randomUUID();
-      this.db
-        .prepare(
-          "UPDATE tasks SET status='running', lease=?, leaseUntil=?, nextRunAt=NULL, error=NULL, updatedAt=? WHERE id=?",
-        )
-        .run(lease, now + 180_000, now, task.id);
-      this.db
-        .prepare(
-          "INSERT INTO runs VALUES (?, ?, 'running', ?, NULL, NULL, NULL)",
-        )
-        .run(lease, task.id, now);
-      this.event(task.id, lease, 'Run started.');
-      return { ...this.task(task.id)!, lease };
+        .all(now, now, user, user) as unknown as Task[];
+      for (const raw of due) {
+        const task = this.mapTask(raw as unknown as Record<string, unknown>);
+        const ownerSettings = this.settingsForUser(task.userId);
+        if (ownerSettings.paused || !ownerSettings.researchAllowed) continue;
+        const lease = randomUUID();
+        this.db
+          .prepare(
+            "UPDATE tasks SET status='running', lease=?, leaseUntil=?, nextRunAt=NULL, error=NULL, updatedAt=? WHERE id=? AND user_id=?",
+          )
+          .run(lease, now + 180_000, now, task.id, task.userId);
+        this.db
+          .prepare(
+            "INSERT INTO runs VALUES (?, ?, 'running', ?, NULL, NULL, NULL, ?)",
+          )
+          .run(lease, task.id, now, task.userId);
+        this.eventFor(task.id, lease, 'Run started.', task.userId);
+        const updated = this.db
+          .prepare('SELECT * FROM tasks WHERE id=?')
+          .get(task.id) as Record<string, unknown>;
+        return { ...this.mapTask(updated), lease };
+      }
+      return null;
     });
   }
   owns(claim: Claim): boolean {
@@ -339,17 +483,18 @@ export class Store {
       const task = this.task(claim.id)!;
       this.db
         .prepare(
-          "UPDATE runs SET status='completed', finishedAt=?, result=? WHERE id=?",
+          "UPDATE runs SET status='completed', finishedAt=?, result=? WHERE id=? AND user_id=?",
         )
-        .run(now, JSON.stringify(result), claim.lease);
+        .run(now, JSON.stringify(result), claim.lease, task.userId);
       this.db
         .prepare(
-          "UPDATE tasks SET status='completed', lease=NULL, leaseUntil=NULL, updatedAt=?, nextRunAt=? WHERE id=?",
+          "UPDATE tasks SET status='completed', lease=NULL, leaseUntil=NULL, updatedAt=?, nextRunAt=? WHERE id=? AND user_id=?",
         )
         .run(
           now,
           task.intervalSeconds ? now + task.intervalSeconds * 1000 : null,
           claim.id,
+          task.userId,
         );
       this.event(
         claim.id,
@@ -368,41 +513,68 @@ export class Store {
     this.transaction(() => {
       if (!this.owns(claim)) return;
       const now = Date.now();
+      const task = this.task(claim.id)!;
       this.db
         .prepare(
-          "UPDATE runs SET status='failed', finishedAt=?, error=? WHERE id=?",
+          "UPDATE runs SET status='failed', finishedAt=?, error=? WHERE id=? AND user_id=?",
         )
-        .run(now, error, claim.lease);
+        .run(now, error, claim.lease, task.userId);
       this.db
         .prepare(
-          "UPDATE tasks SET status='failed', lease=NULL, leaseUntil=NULL, error=?, updatedAt=? WHERE id=?",
+          "UPDATE tasks SET status='failed', lease=NULL, leaseUntil=NULL, error=?, updatedAt=? WHERE id=? AND user_id=?",
         )
-        .run(error, now, claim.id);
+        .run(error, now, claim.id, task.userId);
       this.event(claim.id, claim.lease, error);
     });
   }
   memories(): Memory[] {
     return this.db
-      .prepare('SELECT * FROM memories ORDER BY createdAt DESC')
-      .all() as unknown as Memory[];
+      .prepare('SELECT * FROM memories WHERE user_id=? ORDER BY createdAt DESC')
+      .all(this.userId)
+      .map((row) => {
+        const { user_id, ...rest } = row as Record<string, unknown>;
+        return {
+          ...(rest as unknown as Memory),
+          userId: typeof user_id === 'string' ? user_id : '',
+        };
+      }) as unknown as Memory[];
   }
   saveMemory(text: string, id: string = randomUUID()): Memory {
+    const userId = this.requireUser();
+    // Un id existant chez un AUTRE compte ne doit jamais être écrasé :
+    // l'upsert ci-dessous ne touche que la ligne de ce compte.
+    const existing = this.db
+      .prepare('SELECT user_id FROM memories WHERE id=?')
+      .get(id) as { user_id?: string } | undefined;
+    if (existing && existing.user_id !== userId)
+      throw new Error('Memory not found.');
     this.db
       .prepare(
-        'INSERT INTO memories VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET text=excluded.text',
+        'INSERT INTO memories VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET text=excluded.text',
       )
-      .run(id, text, Date.now());
-    return this.db
-      .prepare('SELECT * FROM memories WHERE id=?')
-      .get(id) as unknown as Memory;
+      .run(id, text, Date.now(), userId);
+    const row = this.db
+      .prepare('SELECT * FROM memories WHERE id=? AND user_id=?')
+      .get(id, userId) as Record<string, unknown> | undefined;
+    const { user_id, ...rest } = row ?? {};
+    return {
+      ...(rest as unknown as Memory),
+      userId: typeof user_id === 'string' ? user_id : userId,
+    } as unknown as Memory;
   }
   deleteMemory(id: string): boolean {
+    this.requireUser();
     return (
-      this.db.prepare('DELETE FROM memories WHERE id=?').run(id).changes > 0
+      this.db
+        .prepare('DELETE FROM memories WHERE id=? AND user_id=?')
+        .run(id, this.userId).changes > 0
     );
   }
   deleteAllMemories(): number {
-    return this.db.prepare('DELETE FROM memories').run().changes as number;
+    this.requireUser();
+    return this.db
+      .prepare('DELETE FROM memories WHERE user_id=?')
+      .run(this.userId).changes as number;
   }
   /** Record one model completion's token usage (best-effort, no throw). */
   recordUsage(entry: {

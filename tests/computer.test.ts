@@ -22,6 +22,7 @@ afterEach(() => {
 });
 function fixture(deadline = 1000) {
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   stores.push(workspace);
   const id = workspace.dots()[0].id;
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -110,6 +111,7 @@ it('defaults every permission off and persists policy and metadata-only audit ac
   const dir = mkdtempSync(join(tmpdir(), 'computers-'));
   const path = join(dir, 'db');
   let workspace = new WorkspaceStore(path, 'owner');
+  workspace.ensureSeed();
   const id = workspace.dots()[0].id;
   expect(workspace.computers.permissions(id)).toEqual({
     enabled: false,
@@ -122,6 +124,7 @@ it('defaults every permission off and persists policy and metadata-only audit ac
   workspace.computers.finish(audit, 'succeeded');
   workspace.close();
   workspace = new WorkspaceStore(path, 'owner');
+  workspace.ensureSeed();
   expect(workspace.computers.permissions(id).files).toBe(true);
   expect(workspace.computers.audit(id)[0]).toMatchObject({
     action: 'files_write',

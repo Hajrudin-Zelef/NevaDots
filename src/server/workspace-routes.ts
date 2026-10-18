@@ -1,6 +1,7 @@
 import { setupInputSchema } from './setup-telemetry.js';
 import { pageRoutes } from './page-routes.js';
 import { Hono } from 'hono';
+import type { AppVariables } from './request-context.js';
 import { z } from 'zod';
 import { Platform } from './platform.js';
 import { VoiceService } from './voice.js';
@@ -34,8 +35,8 @@ export function isNotFoundMessage(text: string): boolean {
 }
 
 export function workspaceRoutes(platform: Platform, voice: VoiceService) {
-  const app = new Hono();
-  app.route('/', pageRoutes(platform));
+  const app = new Hono<{ Variables: AppVariables }>();
+  app.route('/', pageRoutes());
   app.post('/setup-telemetry', async (c) => {
     const parsed = setupInputSchema.safeParse(
       await c.req.json().catch(() => null),
@@ -53,15 +54,17 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     return c.json({ ok: true });
   });
   app.get('/workspace', (c) => {
-    const counts = platform.workspace.pages.countsBySpace();
+    c.get('workspace').ensureSeed();
+    const counts = c.get('workspace').pages.countsBySpace();
     return c.json({
-      spaces: platform.workspace
+      spaces: c
+        .get('workspace')
         .spaces()
         .map((space) => ({ ...space, pageCount: counts[space.id] ?? 0 })),
-      dots: platform.workspace.dots(),
-      conversations: platform.workspace.conversations(),
+      dots: c.get('workspace').dots(),
+      conversations: c.get('workspace').conversations(),
       setup: platform.setup(),
-      calls: platform.workspace.calls(),
+      calls: c.get('workspace').calls(),
     });
   });
   app.get('/models', (c) => {
@@ -111,7 +114,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   // a tier from the network/device; a concrete tier forces it.
   const AVATAR_QUALITIES = ['auto', 'low', 'standard', 'high'] as const;
   app.get('/avatar-quality', (c) => {
-    const raw = platform.workspace.configGet('avatar_quality');
+    const raw = c.get('workspace').configGet('avatar_quality');
     const quality =
       raw && (AVATAR_QUALITIES as readonly string[]).includes(raw)
         ? raw
@@ -125,7 +128,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
       return c.json({ error: 'Invalid avatar quality.' }, 400);
-    platform.workspace.configSet('avatar_quality', parsed.data.quality);
+    c.get('workspace').configSet('avatar_quality', parsed.data.quality);
     return c.json({ ok: true, quality: parsed.data.quality });
   });
   // DeepThink Global: translation settings for the reasoning panel.
@@ -141,8 +144,12 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     provider: '',
     model: '',
   });
-  const readDeepThink = (): DeepThinkSettings => {
-    const raw = platform.workspace.configGet('deepthink');
+  const readDeepThink = (c: {
+    get: (key: 'workspace') => {
+      configGet: (key: string) => string | undefined;
+    };
+  }): DeepThinkSettings => {
+    const raw = c.get('workspace').configGet('deepthink');
     if (!raw) return deepThinkDefaults();
     try {
       const parsed = JSON.parse(raw) as Partial<DeepThinkSettings>;
@@ -160,7 +167,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     }
   };
   app.get('/deepthink', (c) =>
-    c.json({ settings: readDeepThink(), langs: [...DEEPTHINK_LANGS] }),
+    c.json({ settings: readDeepThink(c), langs: [...DEEPTHINK_LANGS] }),
   );
   app.put('/deepthink', async (c) => {
     const parsed = z
@@ -187,7 +194,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       provider: parsed.data.provider,
       model: parsed.data.provider ? parsed.data.model : '',
     };
-    platform.workspace.configSet('deepthink', JSON.stringify(settings));
+    c.get('workspace').configSet('deepthink', JSON.stringify(settings));
     return c.json({ ok: true, settings });
   });
   // Manual translation of reasoning-panel text via a free OpenRouter model.
@@ -203,7 +210,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     // Resolve translator via DeepThink Global settings, falling back to the
     // server default model. The provider registry holds the UI-configured
     // keys; env vars remain as a last-resort fallback.
-    const settings = readDeepThink();
+    const settings = readDeepThink(c);
     const requested = parsed.data.targetLang?.toLowerCase() || settings.lang;
     // Whitelist stricte : une langue hors liste est refusée (jamais injectée
     // telle quelle dans le prompt du traducteur).
@@ -310,7 +317,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         400,
       );
     return c.json(
-      platform.workspace.createSpace(data.data.name, data.data.description),
+      c.get('workspace').createSpace(data.data.name, data.data.description),
       201,
     );
   });
@@ -327,14 +334,12 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         { error: 'Enter a Space name (up to 60 characters).' },
         400,
       );
-    if (!platform.workspace.space(c.req.param('id')))
+    if (!c.get('workspace').space(c.req.param('id')))
       return c.json({ error: 'Space not found.' }, 404);
     return c.json(
-      platform.workspace.updateSpace(
-        c.req.param('id'),
-        data.data.name,
-        data.data.description,
-      ),
+      c
+        .get('workspace')
+        .updateSpace(c.req.param('id'), data.data.name, data.data.description),
     );
   });
   app.post('/dots', async (c) => {
@@ -366,7 +371,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       );
     }
     return c.json(
-      platform.workspace.createDot(
+      c.get('workspace').createDot(
         data.data.spaceId,
         data.data.name,
         data.data.instructions,
@@ -385,7 +390,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     const data = dotSchema.safeParse(await c.req.json().catch(() => null));
     if (!data.success)
       return c.json({ error: 'Invalid specialist settings.' }, 400);
-    const current = platform.workspace.dot(c.req.param('id'));
+    const current = c.get('workspace').dot(c.req.param('id'));
     if (!current) return c.json({ error: 'Dot not found.' }, 404);
     try {
       validateLearningSettings(
@@ -405,10 +410,10 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         400,
       );
     }
-    return c.json(platform.workspace.updateDot(c.req.param('id'), data.data));
+    return c.json(c.get('workspace').updateDot(c.req.param('id'), data.data));
   });
   app.post('/dots/:id/duplicate', (c) => {
-    const copy = platform.workspace.duplicateDot(c.req.param('id'));
+    const copy = c.get('workspace').duplicateDot(c.req.param('id'));
     return copy ? c.json(copy, 201) : c.json({ error: 'Dot not found.' }, 404);
   });
   app.put('/dots/:id/model', async (c) => {
@@ -421,12 +426,12 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       .safeParse(await c.req.json().catch(() => null));
     if (!data.success)
       return c.json({ error: 'Invalid model selection.' }, 400);
-    if (!platform.workspace.dot(c.req.param('id')))
+    if (!c.get('workspace').dot(c.req.param('id')))
       return c.json({ error: 'Dot not found.' }, 404);
     // Clearing the model also clears the provider (back to the default).
     if (!data.data.model)
       return c.json(
-        platform.workspace.setDotModel(c.req.param('id'), null, null),
+        c.get('workspace').setDotModel(c.req.param('id'), null, null),
       );
     const providers = platform.config.providers;
     if (providers?.length) {
@@ -437,18 +442,16 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       if (provider.models.length && !provider.models.includes(data.data.model))
         return c.json({ error: 'Unknown model.' }, 400);
       return c.json(
-        platform.workspace.setDotModel(
-          c.req.param('id'),
-          provider.id,
-          data.data.model,
-        ),
+        c
+          .get('workspace')
+          .setDotModel(c.req.param('id'), provider.id, data.data.model),
       );
     }
     const allowed = platform.config.models ?? [];
     if (allowed.length && !allowed.includes(data.data.model))
       return c.json({ error: 'Unknown model.' }, 400);
     return c.json(
-      platform.workspace.setDotModel(c.req.param('id'), null, data.data.model),
+      c.get('workspace').setDotModel(c.req.param('id'), null, data.data.model),
     );
   });
   app.put('/dots/:id/reasoning', async (c) => {
@@ -460,10 +463,10 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       .safeParse(await c.req.json().catch(() => null));
     if (!data.success)
       return c.json({ error: 'Invalid reasoning effort.' }, 400);
-    if (!platform.workspace.dot(c.req.param('id')))
+    if (!c.get('workspace').dot(c.req.param('id')))
       return c.json({ error: 'Dot not found.' }, 404);
     return c.json(
-      platform.workspace.setDotReasoning(c.req.param('id'), data.data.effort),
+      c.get('workspace').setDotReasoning(c.req.param('id'), data.data.effort),
     );
   });
   // Phase 6 : budget de contexte par Dot (null = Max/agentique).
@@ -477,13 +480,12 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!data.success) return c.json({ error: 'Invalid context budget.' }, 400);
-    if (!platform.workspace.dot(c.req.param('id')))
+    if (!c.get('workspace').dot(c.req.param('id')))
       return c.json({ error: 'Dot not found.' }, 404);
     return c.json(
-      platform.workspace.setDotContextBudget(
-        c.req.param('id'),
-        data.data.budget,
-      ),
+      c
+        .get('workspace')
+        .setDotContextBudget(c.req.param('id'), data.data.budget),
     );
   });
   // Phase 9 : stratégie de compaction par Dot (null = native).
@@ -496,13 +498,12 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       .safeParse(await c.req.json().catch(() => null));
     if (!data.success)
       return c.json({ error: 'Invalid compaction strategy.' }, 400);
-    if (!platform.workspace.dot(c.req.param('id')))
+    if (!c.get('workspace').dot(c.req.param('id')))
       return c.json({ error: 'Dot not found.' }, 404);
     return c.json(
-      platform.workspace.setDotCompactionStrategy(
-        c.req.param('id'),
-        data.data.strategy,
-      ),
+      c
+        .get('workspace')
+        .setDotCompactionStrategy(c.req.param('id'), data.data.strategy),
     );
   });
   app.put('/dots/:id/avatar', async (c) => {
@@ -513,19 +514,20 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!data.success) return c.json({ error: 'Invalid avatar.' }, 400);
-    if (!platform.workspace.dot(c.req.param('id')))
+    if (!c.get('workspace').dot(c.req.param('id')))
       return c.json({ error: 'Dot not found.' }, 404);
     // The main avatar ('leo') belongs to one Dot only: a Dot cannot take it
     // while another already wears it.
     if (
       data.data.avatar === 'leo' &&
-      platform.workspace
+      c
+        .get('workspace')
         .dots()
         .some((dot) => dot.avatar === 'leo' && dot.id !== c.req.param('id'))
     )
       return c.json({ error: 'This avatar is already taken.' }, 409);
     return c.json(
-      platform.workspace.setDotAvatar(c.req.param('id'), data.data.avatar),
+      c.get('workspace').setDotAvatar(c.req.param('id'), data.data.avatar),
     );
   });
   app.post('/conversations', async (c) => {
@@ -544,12 +546,16 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         503,
       );
     return c.json(
-      await platform.createConversation(data.data.dotId, data.data.title),
+      await platform.createConversation(
+        c.get('userId'),
+        data.data.dotId,
+        data.data.title,
+      ),
       201,
     );
   });
   app.get('/conversations/:id/capture', (c) =>
-    c.json(platform.workspace.capture(c.req.param('id'))),
+    c.json(c.get('workspace').capture(c.req.param('id'))),
   );
   // The client posts a finished turn's outcome + activity so the Muse-style
   // activity timeline can show conversations it never had open.
@@ -564,7 +570,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     if (!data.success) return c.json({ error: 'Invalid activity.' }, 400);
     try {
       return c.json(
-        platform.workspace.recordThreadActivity(c.req.param('id'), {
+        c.get('workspace').recordThreadActivity(c.req.param('id'), {
           summary: data.data.summary?.trim() || null,
           activity: data.data.activity ?? [],
         }),
@@ -576,18 +582,18 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   app.get('/conversations/:id/activity', (c) => {
     try {
       return c.json({
-        events: platform.workspace.threadActivity(c.req.param('id')) ?? [],
+        events: c.get('workspace').threadActivity(c.req.param('id')) ?? [],
       });
     } catch {
       return c.json({ error: 'Conversation not found.' }, 404);
     }
   });
   app.delete('/conversations/:id', async (c) => {
-    await platform.deleteConversation(c.req.param('id'));
+    await platform.deleteConversation(c.get('userId'), c.req.param('id'));
     return c.json({ ok: true });
   });
   app.delete('/conversations', async (c) => {
-    const deleted = await platform.deleteAllConversations();
+    const deleted = await platform.deleteAllConversations(c.get('userId'));
     return c.json({ deleted });
   });
   app.post('/voice/calls', async (c) => {
@@ -601,12 +607,17 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         400,
       );
     return c.json(
-      await voice.begin(data.data.threadId, data.data.sdp, c.req.raw.signal),
+      await voice.begin(
+        data.data.threadId,
+        data.data.sdp,
+        c.req.raw.signal,
+        c.get('userId'),
+      ),
       201,
     );
   });
   app.get('/voice/calls/:id', (c) =>
-    c.json(platform.workspace.call(c.req.param('id'))),
+    c.json(c.get('workspace').call(c.req.param('id'))),
   );
   app.post('/voice/calls/:id/active', (c) =>
     c.json(voice.activate(c.req.param('id'))),
@@ -646,10 +657,10 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         { error: 'Transcript exceeds the 20,000 character limit.' },
         400,
       );
-    platform.workspace.anchorCall(c.req.param('id'), data.data.anchorMessageId);
+    c.get('workspace').anchorCall(c.req.param('id'), data.data.anchorMessageId);
     return c.json(await voice.end(c.req.param('id'), data.data.transcript));
   });
-  app.all('/copilotkit/*', (c) => platform.handle(c.req.raw));
+  app.all('/copilotkit/*', (c) => platform.handle(c.req.raw, c.get('userId')));
   app.onError((error, c) => {
     const text = error instanceof Error ? error.message : '';
     if (text.startsWith('Space access must include'))

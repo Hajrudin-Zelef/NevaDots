@@ -16,6 +16,7 @@ afterEach(() =>
 );
 function fixture() {
   const ws = new WorkspaceStore(':memory:', 'owner');
+  ws.ensureSeed();
   cleanup.push(() => ws.close());
   const dot = ws.dots()[0];
   return { ws, dot };
@@ -65,6 +66,7 @@ it('migrates legacy threads without enrolling them and persists configuration ac
     INSERT INTO thread_bindings VALUES ('old', 'dot', 'owner', 'Existing', 1);`);
   legacy.close();
   const ws = new WorkspaceStore(path, 'owner');
+  ws.ensureSeed();
   const dot = ws.dots()[0];
   ws.updateDot(dot.id, {
     ...dot,
@@ -74,6 +76,7 @@ it('migrates legacy threads without enrolling them and persists configuration ac
   ws.bindThread('new', dot.id, 'New');
   ws.close();
   const reopened = new WorkspaceStore(path, 'owner');
+  reopened.ensureSeed();
   cleanup.push(() => reopened.close());
   expect(reopened.requireThread('old').learningContainerId).toBeNull();
   expect(reopened.requireThread('new').learningContainerId).toBe('research');

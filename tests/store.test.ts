@@ -10,7 +10,7 @@ const resources: { store: Store; dir: string }[] = [];
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'opendots-'));
   const path = join(dir, 'test.sqlite');
-  const store = new Store(path);
+  const store = new Store(path).forUser('owner');
   resources.push({ store, dir });
   return { store, path };
 }
@@ -25,7 +25,7 @@ describe('durable task lifecycle', () => {
     const { store, path } = fixture();
     const task = store.createTask('Compare the sample notebooks', 60);
     store.updateSettings({ name: 'Sam' });
-    const reopened = new Store(path);
+    const reopened = new Store(path).forUser('owner');
     expect(reopened.task(task.id)?.prompt).toBe(task.prompt);
     expect(reopened.settings().name).toBe('Sam');
     reopened.close();
@@ -93,7 +93,7 @@ describe('durable task lifecycle', () => {
   it('claims each due job once even through separate database connections', () => {
     const { store, path } = fixture();
     store.createTask('Research one');
-    const second = new Store(path);
+    const second = new Store(path).forUser('owner');
     const firstClaim = store.claim(1000);
     expect(firstClaim).toBeTruthy();
     expect(second.claim(1000)).toBeNull();
@@ -143,7 +143,7 @@ describe('durable task lifecycle', () => {
     store.createTask('Recover me');
     const now = Date.now();
     const old = store.claim(now)!;
-    const restarted = new Store(path);
+    const restarted = new Store(path).forUser('owner');
     try {
       expect(restarted.claim(now + 180_001)).toBeNull();
       expect(restarted.task(old.id)?.status).toBe('interrupted');
@@ -183,6 +183,7 @@ describe('durable task lifecycle', () => {
   it('holds an expired run for review after a local page effect', () => {
     const { store, path } = fixture();
     const workspace = new WorkspaceStore(path, 'synthetic-owner');
+    workspace.ensureSeed();
     try {
       const dot = workspace.dots()[0];
       const thread = workspace.bindThread(

@@ -17,6 +17,7 @@ it('persists spaces, specialist permissions, and canonical thread ownership', ()
 });
 it('rejects a dot in a nonexistent space and does not rebind an existing thread', () => {
   const store = new WorkspaceStore(':memory:', 'owner');
+  store.ensureSeed();
   expect(() => store.createDot('missing', 'Dot', 'Help', true, true)).toThrow();
   const dots = store.dots();
   store.bindThread('one', dots[0].id, 'First');
@@ -60,6 +61,9 @@ it('migrates legacy Space ownership once and never restores revoked access on re
       INSERT INTO dots VALUES ('dot', 'old', 'Dot', 'Help', 1, 1, 1);`);
     legacy.close();
     const ws = new WorkspaceStore(path, 'owner');
+    // C1 : les lignes legacy (user_id NULL) sont réclamées par le premier
+    // compte au boot — ici explicitement, comme le fait index.ts.
+    ws.claimOrphans('owner');
     const dot = ws.dot('dot')!;
     expect(dot.spaceIds).toEqual(['old']);
     expect(ws.canAccessSpace('dot', 'new')).toBe(false);

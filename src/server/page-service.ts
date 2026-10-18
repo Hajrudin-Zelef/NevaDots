@@ -42,7 +42,21 @@ export class PageService {
   constructor(
     private workspace: WorkspaceStore,
     private intelligence: () => PageIntelligence,
-  ) {}
+    sharedPending?: Map<
+      string,
+      Promise<ReturnType<WorkspaceStore['requireThread']>>
+    >,
+  ) {
+    if (sharedPending) this.pending = sharedPending;
+  }
+  /** Vue portée par un utilisateur : même déduplication `pending`. */
+  forUser(userId: string): PageService {
+    return new PageService(
+      this.workspace.forUser(userId),
+      this.intelligence,
+      this.pending,
+    );
+  }
   async conversation(spaceId: string, pageId: string, dotId: string) {
     const page = this.workspace.pages.get(spaceId, pageId);
     const dot = this.workspace.dot(dotId);
@@ -70,7 +84,7 @@ export class PageService {
         await bounded(
           sdk.getOrCreateThread({
             threadId,
-            userId: this.workspace.ownerId,
+            userId: this.workspace.userId ?? '',
             agentId: dotId,
             name: page.title,
           }),
@@ -104,7 +118,7 @@ export class PageService {
     const history = await bounded(
       this.intelligence().getThreadMessages({
         threadId,
-        userId: this.workspace.ownerId,
+        userId: this.workspace.userId ?? '',
       }),
     );
     const chunks: string[] = [];

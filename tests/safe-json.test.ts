@@ -22,12 +22,12 @@ describe('safeJsonParse', () => {
 describe('corrupt database rows never crash the reader', () => {
   it('detail() ignores a corrupt runs.result', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'safe-json-')), 's.sqlite');
-    const store = new Store(path);
+    const store = new Store(path).forUser('owner');
     const task = store.createTask('t');
     const raw = new DatabaseSync(path);
     raw
       .prepare(
-        "INSERT INTO runs VALUES ('r1', ?, 'succeeded', 1, 2, '!!!not-json!!!', NULL)",
+        "INSERT INTO runs VALUES ('r1', ?, 'succeeded', 1, 2, '!!!not-json!!!', NULL, 'owner')",
       )
       .run(task.id);
     raw.close();

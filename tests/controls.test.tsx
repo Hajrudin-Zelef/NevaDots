@@ -12,6 +12,7 @@ const settings: Settings = {
 };
 const task: Task = {
   id: 'one',
+  userId: 'owner',
   prompt: 'A recurring task',
   status: 'completed',
   intervalSeconds: 3600,

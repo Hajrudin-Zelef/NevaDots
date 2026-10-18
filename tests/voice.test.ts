@@ -9,8 +9,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 function fixture() {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   workspace.bindThread('thread', workspace.dots()[0].id, 'A conversation');
   resources.push(() => {
     store.close();
@@ -64,6 +65,7 @@ it('binds voice history and compute to the existing thread, deduplicates tools a
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   expect(f.history).toHaveBeenCalledWith('thread');
   const body = f.transport.mock.calls[0][1]?.body;
@@ -97,13 +99,14 @@ it('rejects unowned threads before provider contact and expires unactivated peer
   vi.useFakeTimers();
   const f = fixture();
   await expect(
-    f.voice.begin('foreign', offer, new AbortController().signal),
+    f.voice.begin('foreign', offer, new AbortController().signal, 'owner'),
   ).rejects.toThrow();
   expect(f.transport).not.toHaveBeenCalled();
   const call = await f.voice.begin(
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   await vi.advanceTimersByTimeAsync(30_001);
   expect(f.workspace.call(call.id).status).toBe('failed');
@@ -115,7 +118,7 @@ it('aborts a pending history lookup without starting a provider session', async 
   const f = fixture();
   f.history.mockImplementation(() => new Promise(() => {}));
   const controller = new AbortController();
-  const pending = f.voice.begin('thread', offer, controller.signal);
+  const pending = f.voice.begin('thread', offer, controller.signal, 'owner');
   controller.abort();
   await expect(pending).rejects.toThrow('cancelled');
   expect(f.transport).not.toHaveBeenCalled();
@@ -126,7 +129,7 @@ it('fails visibly for provider errors and does not claim an active call', async 
     new Response('provider error', { status: 429 }),
   );
   await expect(
-    f.voice.begin('thread', offer, new AbortController().signal),
+    f.voice.begin('thread', offer, new AbortController().signal, 'owner'),
   ).rejects.toThrow('429');
   expect(f.workspace.calls()[0].status).toBe('failed');
 });
@@ -138,7 +141,7 @@ it('hangs up a provisioned peer whose SDP is invalid', async () => {
     }),
   );
   await expect(
-    f.voice.begin('thread', offer, new AbortController().signal),
+    f.voice.begin('thread', offer, new AbortController().signal, 'owner'),
   ).rejects.toThrow('invalid SDP');
   expect(
     f.transport.mock.calls.some(([url]) =>
@@ -153,6 +156,7 @@ it('saves a late transcript after expiry without changing the ended status or du
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   await vi.advanceTimersByTimeAsync(30_001);
   const expired = f.workspace.call(call.id);
@@ -171,6 +175,7 @@ it('defers paused transcript synchronization and resumes it once without a dupli
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   f.store.updateSettings({ paused: true });
   f.voice.abortAll();
@@ -193,6 +198,7 @@ it('reports rejected provider hangup status without exposing its response body',
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   f.transport.mockResolvedValueOnce(
     new Response('sensitive provider details', { status: 409 }),
@@ -208,6 +214,7 @@ it('reports transport hangup failures without exposing transport errors', async 
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   f.transport.mockRejectedValueOnce(new Error('sensitive transport details'));
   const ended = await f.voice.end(call.id, 'Confirmed discussion');
@@ -222,6 +229,7 @@ it('distinguishes provider hangup timeout from transport failure', async () => {
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   f.transport.mockRejectedValueOnce(
     new DOMException('sensitive timeout details', 'TimeoutError'),
@@ -237,6 +245,7 @@ it('sanitizes custom provider transport error names', async () => {
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   const error = new Error('sensitive transport details');
   error.name = 'sensitive provider identifier';
@@ -252,6 +261,7 @@ it('allows a rejected compute call to be retried with the same tool ID', async (
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   f.voice.activate(call.id);
   f.turn.mockRejectedValueOnce(new Error('Provider unavailable'));
@@ -270,6 +280,7 @@ it('counts failed compute attempts toward the six-turn limit', async () => {
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   f.voice.activate(call.id);
   for (let i = 0; i < 6; i++) {
@@ -290,6 +301,7 @@ it('counts a retry of the same tool ID as another attempt', async () => {
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   f.voice.activate(call.id);
   for (let i = 0; i < 6; i++) {
@@ -310,6 +322,7 @@ it('keeps successful compute turns cached and enforces the six-turn cap', async 
     'thread',
     offer,
     new AbortController().signal,
+    'owner',
   );
   f.voice.activate(call.id);
   for (let i = 0; i < 6; i++) {

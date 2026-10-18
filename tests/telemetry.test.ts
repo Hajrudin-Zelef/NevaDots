@@ -21,14 +21,15 @@ globalThis.fetch = async (url, options) => {
 const { Platform } = await import(${JSON.stringify(platformUrl)});
 const { Store } = await import(${JSON.stringify(storeUrl)});
 const { WorkspaceStore } = await import(${JSON.stringify(workspaceUrl)});
-const store = new Store(':memory:');
+const store = new Store(':memory:').forUser('owner');
 const workspace = new WorkspaceStore(':memory:', 'fixture-owner');
+workspace.ensureSeed();
 try {
   const platform = new Platform(store, workspace, {
     intelligenceKey: 'test-project-key-never-sent',
     baseUrl: '', runtimeUrl: '', voiceName: 'marin', slackUsers: [],
   });
-  await platform.handle(new Request('http://localhost/api/copilotkit/info'));
+  await platform.handle(new Request('http://localhost/api/copilotkit/info'), 'fixture-owner');
   const dot = workspace.dots()[0];
   workspace.bindThread('fixture-thread', dot.id, 'Fixture');
   // Reach the SDK request handler, then fail body validation before any agent run.
@@ -37,7 +38,7 @@ try {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ threadId: 'fixture-thread', messages: 'invalid' }),
     },
-  ));
+  ), 'fixture-owner');
   if (response.status !== 400) throw new Error('Expected SDK body validation failure');
   await new Promise(resolve => setImmediate(resolve));
   console.log(JSON.stringify(requests));

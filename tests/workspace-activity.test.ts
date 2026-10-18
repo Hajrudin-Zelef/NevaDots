@@ -8,6 +8,7 @@ afterEach(() => {
 
 it('records and reads a conversation outcome and activity', () => {
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   stores.push(workspace);
   const dot = workspace.dots()[0];
   const created = workspace.bindThread('thread-activity', dot.id, 'Hello');
@@ -32,6 +33,7 @@ it('records and reads a conversation outcome and activity', () => {
 
 it('rejects activity for an unknown conversation', () => {
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   stores.push(workspace);
   expect(() =>
     workspace.recordThreadActivity('missing', { summary: null, activity: [] }),
@@ -40,6 +42,7 @@ it('rejects activity for an unknown conversation', () => {
 
 it('clears stored activity when a conversation is deleted', () => {
   const workspace = new WorkspaceStore(':memory:', 'owner');
+  workspace.ensureSeed();
   stores.push(workspace);
   const dot = workspace.dots()[0];
   workspace.bindThread('thread-delete', dot.id, 'Bye');

@@ -12,7 +12,7 @@ const config: Config = {
 };
 afterEach(() => vi.unstubAllGlobals());
 it('records generic scheduled runs without research wording', async () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const prompt = 'Draft a welcome email.';
   const result = {
     text: 'A concise welcome email.',
@@ -41,7 +41,7 @@ it('records generic scheduled runs without research wording', async () => {
   }
 });
 it('aborts research when permissions are revoked outside the runner instance', async () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const runner = new Runner(store, config);
   let requestSignal: AbortSignal | undefined;
   const request = vi.fn(
@@ -91,7 +91,7 @@ it('checks abort again before sending source evidence or memories to the model',
   expect(fetch).toHaveBeenCalledOnce();
 });
 it('omits stored memories from research when memory permission is disabled', async () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   store.saveMemory('Sensitive preference');
   store.updateSettings({ memoryAllowed: false });
   const task = store.createTask('Read this sample');
@@ -111,7 +111,7 @@ it('omits stored memories from research when memory permission is disabled', asy
   }
 });
 it('holds active work for review on graceful shutdown', async () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const runner = new Runner(store, config);
   const fetch = vi.fn(
     (_url: string, options: RequestInit) =>
@@ -136,7 +136,7 @@ it('holds active work for review on graceful shutdown', async () => {
   store.close();
 });
 it('survives a claim failure and runs work on the next tick', async () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const runner = new Runner(store, { mode: 'sample', baseUrl: '' });
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   const claim = vi.spyOn(store, 'claim').mockImplementationOnce(() => {
@@ -155,14 +155,16 @@ it('survives a claim failure and runs work on the next tick', async () => {
   }
 });
 it('survives failure persistence errors and clears active work', async () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const execute = vi
     .fn()
     .mockRejectedValueOnce(new Error('Provider failure'))
     .mockResolvedValueOnce({ text: 'Recovered', sources: [], memories: [] });
   const runner = new Runner(store, config, execute);
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-  const fail = vi.spyOn(store, 'fail').mockImplementationOnce(() => {
+  // Le runner exécute sur le store porté (nouvelle instance) : espionner
+  // le prototype, pas l'instance de la fixture.
+  const fail = vi.spyOn(Store.prototype, 'fail').mockImplementationOnce(() => {
     throw new Error('SQLITE_BUSY');
   });
   store.createTask('First');
@@ -175,11 +177,12 @@ it('survives failure persistence errors and clears active work', async () => {
     expect(log).toHaveBeenCalledOnce();
   } finally {
     log.mockRestore();
+    fail.mockRestore();
     store.close();
   }
 });
 it('aborts work instead of throwing from an ownership timer', async () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   store.createTask('First');
   const runner = new Runner(
     store,
@@ -191,13 +194,14 @@ it('aborts work instead of throwing from an ownership timer', async () => {
         });
       }),
   );
-  vi.spyOn(store, 'owns').mockImplementationOnce(() => {
+  const owns = vi.spyOn(Store.prototype, 'owns').mockImplementationOnce(() => {
     throw new Error('Database unavailable');
   });
   try {
     await expect(runner.tick()).resolves.toBeUndefined();
     expect(store.tasks()[0].status).toBe('failed');
   } finally {
+    owns.mockRestore();
     store.close();
   }
 });

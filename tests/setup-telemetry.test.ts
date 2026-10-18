@@ -19,7 +19,7 @@ import {
 it('persists bounded offline events with stable IDs and CLI identity across restart', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'opendots-telemetry-'));
   const path = join(dir, 'store.sqlite');
-  let store = new Store(path);
+  let store = new Store(path).forUser('owner');
   const offline = vi.fn(async () => {
     throw new Error('secret transport error');
   });
@@ -35,7 +35,7 @@ it('persists bounded offline events with stable IDs and CLI identity across rest
   const id = state.queue[1].id; // Recovery abandonment drops the oldest full-queue entry.
   const installationId = state.installationId;
   store.close();
-  store = new Store(path);
+  store = new Store(path).forUser('owner');
   const requests: { identity: string; body: unknown }[] = [];
   telemetry = new SetupTelemetry(
     store,
@@ -68,7 +68,7 @@ it.each(['DO_NOT_TRACK', 'COPILOTKIT_TELEMETRY_DISABLED'])(
   'purges pending telemetry for both true and 1 in %s',
   async (key) => {
     for (const value of ['true', '1']) {
-      const store = new Store(':memory:');
+      const store = new Store(':memory:').forUser('owner');
       const env: Record<string, string> = {};
       const send = vi.fn(async () => {});
       const telemetry = new SetupTelemetry(store, env, send);
@@ -84,7 +84,7 @@ it.each(['DO_NOT_TRACK', 'COPILOTKIT_TELEMETRY_DISABLED'])(
 );
 
 it('reuses fallback identity and recovers abandonment without treating ready as activated', () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const first = new SetupTelemetry(store, {}, async () => {});
   first.capture({ kind: 'step_viewed', step: 'ready' });
   const second = new SetupTelemetry(store, {}, async () => {});
@@ -158,7 +158,7 @@ it('activates only after a successful assistant answer and records a bounded fai
 });
 
 it('protects the browser route with session auth and origin guards and rejects forged readiness', async () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'fixture-owner');
   const auth = new AuthStore(':memory:');
   const platform = new Platform(store, workspace, {
@@ -239,7 +239,7 @@ it('does not activate from user text, partial answers or tool-only success', () 
 });
 
 it('uses installation fallback after a CLI identity is removed, and never loses CLI precedence', () => {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const cli = new SetupTelemetry(
     store,
     { CPK_TELEMETRY_ID: 'cli-one' },
@@ -262,7 +262,7 @@ it('uses installation fallback after a CLI identity is removed, and never loses 
 
 it('bounds a shutdown flush and retains events that did not fit its deadline', async () => {
   vi.useFakeTimers();
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   try {
     const send = vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1000));

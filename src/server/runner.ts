@@ -24,12 +24,14 @@ export class Runner {
   stop() {
     clearInterval(this.timer);
     this.timer = undefined;
-    for (const task of this.store.tasks()) {
+    for (const task of this.store.tasksAll()) {
       if (this.active.has(task.id) && task.lease)
-        this.store.interrupt(
-          { ...task, lease: task.lease },
-          'Server stopped during this run. Review completed effects before retrying.',
-        );
+        this.store
+          .forUser(task.userId)
+          .interrupt(
+            { ...task, lease: task.lease },
+            'Server stopped during this run. Review completed effects before retrying.',
+          );
     }
     this.abortAll();
   }
@@ -55,11 +57,14 @@ export class Runner {
     if (this.active.size) return;
     const claim = this.store.claim();
     if (!claim) return;
+    // L'exécution est portée par le propriétaire de la tâche : réglages,
+    // mémoires, événements, finish/fail ne voient que son monde.
+    const scoped = this.store.forUser(claim.userId);
     const controller = new AbortController();
     this.active.set(claim.id, controller);
     const ownershipCheck = setInterval(() => {
       try {
-        if (!this.store.owns(claim))
+        if (!scoped.owns(claim))
           controller.abort(new Error('Run permission or lease was revoked.'));
       } catch {
         controller.abort(new Error('Run ownership check failed.'));
@@ -73,13 +78,13 @@ export class Runner {
       90_000,
     );
     try {
-      const settings = this.store.settings();
-      const memories = settings.memoryAllowed ? this.store.memories() : [];
+      const settings = scoped.settings();
+      const memories = settings.memoryAllowed ? scoped.memories() : [];
       const progress = (text: string) => {
-        if (!this.store.owns(claim))
+        if (!scoped.owns(claim))
           controller.abort(new Error('Run permission or lease was revoked.'));
         controller.signal.throwIfAborted();
-        this.store.event(claim.id, claim.lease, text);
+        scoped.event(claim.id, claim.lease, text);
       };
       const result = this.execute
         ? await this.execute(claim, memories, controller.signal, progress)
@@ -91,9 +96,9 @@ export class Runner {
             progress,
           );
       controller.signal.throwIfAborted();
-      this.store.finish(claim, result);
+      scoped.finish(claim, result);
     } catch (error) {
-      this.store.fail(
+      scoped.fail(
         claim,
         error instanceof Error ? error.message : 'Unexpected research failure.',
       );

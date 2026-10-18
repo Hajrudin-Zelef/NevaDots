@@ -9,7 +9,7 @@ import { loginSession } from './auth-helpers.js';
 const stores: { close(): void }[] = [];
 const config: Config = { mode: 'sample', baseUrl: 'https://api.openai.com/v1' };
 function fixture(origin?: string | string[]) {
-  const store = new Store(':memory:');
+  const store = new Store(':memory:').forUser('owner');
   const auth = new AuthStore(':memory:');
   stores.push(store, auth);
   const runner = new Runner(store, config);

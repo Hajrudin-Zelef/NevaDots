@@ -1,22 +1,19 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
+import type { AppVariables } from './request-context.js';
 import { z } from 'zod';
 import {
   APPROVAL_TTL_MS,
   connectionActionSchema,
   type PendingApproval,
 } from '../shared/connection-types.js';
-import type { WorkspaceStore } from './workspace.js';
-import {
-  connectionInput,
-  isUserFacingConnectionError,
-  type ConnectionService,
-} from './connections.js';
+import { connectionInput, isUserFacingConnectionError } from './connections.js';
 import { errorResponse } from './error-response.js';
-export function connectionRoutes(
-  workspace: WorkspaceStore,
-  connections: ConnectionService,
-) {
-  const app = new Hono();
+export function connectionRoutes() {
+  const app = new Hono<{ Variables: AppVariables }>();
+  type Ctx = Context<{ Variables: AppVariables }>;
+  const ws = (c: Ctx) => c.get('workspace');
+  const conn = (c: Ctx) => c.get('connections');
   app.onError((error, c) =>
     errorResponse(error, c, {
       zodMessage: 'Invalid connection request.',
@@ -26,29 +23,29 @@ export function connectionRoutes(
       logLabel: 'connection',
     }),
   );
-  const requireDot = (id: string) => {
-    if (!workspace.dot(id)) throw new Error('Dot not found.');
+  const requireDot = (c: Ctx, id: string) => {
+    if (!ws(c).dot(id)) throw new Error('Dot not found.');
     return id;
   };
-  const owned = (id: string) => {
-    const connection = connections.store.get(id);
+  const owned = (c: Ctx, id: string) => {
+    const connection = conn(c).store.get(id);
     if (!connection) throw new Error('Connection not found.');
     return connection;
   };
   app.get('/dots/:id/connections', (c) =>
-    c.json(connections.store.list(requireDot(c.req.param('id')))),
+    c.json(conn(c).store.list(requireDot(c, c.req.param('id')))),
   );
   app.post('/dots/:id/connections', async (c) =>
     c.json(
-      await connections.add(
-        requireDot(c.req.param('id')),
+      await conn(c).add(
+        requireDot(c, c.req.param('id')),
         connectionInput.parse(await c.req.json()),
       ),
       201,
     ),
   );
   app.post('/connections/:id/refresh', async (c) =>
-    c.json(await connections.refresh(owned(c.req.param('id')).id)),
+    c.json(await conn(c).refresh(owned(c, c.req.param('id')).id)),
   );
   app.patch('/connections/:id/tools/:name', async (c) => {
     const patch = z
@@ -59,21 +56,21 @@ export function connectionRoutes(
       .strict()
       .parse(await c.req.json());
     return c.json(
-      connections.setTool(
-        owned(c.req.param('id')).id,
+      conn(c).setTool(
+        owned(c, c.req.param('id')).id,
         c.req.param('name'),
         patch,
       ),
     );
   });
   app.delete('/connections/:id', (c) => {
-    connections.store.remove(owned(c.req.param('id')).id);
+    conn(c).store.remove(owned(c, c.req.param('id')).id);
     return c.json({ ok: true });
   });
   // An approval record is usable only from its own conversation, for an
   // hour, and only while the Dot still has that exact tool enabled.
-  const approvalFor = (threadId: string, approvalId: string) => {
-    const approval = connections.store.approval(approvalId);
+  const approvalFor = (c: Ctx, threadId: string, approvalId: string) => {
+    const approval = conn(c).store.approval(approvalId);
     if (!approval || approval.threadId !== threadId)
       throw new Error('Approval request not found.');
     if (Date.now() - approval.createdAt > APPROVAL_TTL_MS)
@@ -82,7 +79,7 @@ export function connectionRoutes(
       );
     return {
       approval,
-      exposed: connections.bound(
+      exposed: conn(c).bound(
         approval.dotId,
         approval.connectionId,
         approval.tool,
@@ -90,8 +87,9 @@ export function connectionRoutes(
     };
   };
   app.get('/conversations/:id/connection-approvals/:approvalId', (c) => {
-    const thread = workspace.requireThread(c.req.param('id'));
+    const thread = ws(c).requireThread(c.req.param('id'));
     const { approval, exposed } = approvalFor(
+      c,
       thread.id,
       c.req.param('approvalId'),
     );
@@ -105,9 +103,9 @@ export function connectionRoutes(
     } satisfies PendingApproval);
   });
   app.get('/conversations/:id/connection-actions/:toolCallId', (c) => {
-    const thread = workspace.requireThread(c.req.param('id'));
+    const thread = ws(c).requireThread(c.req.param('id'));
     return c.json(
-      connections.store.action(thread.id, c.req.param('toolCallId')) ?? null,
+      conn(c).store.action(thread.id, c.req.param('toolCallId')) ?? null,
     );
   });
   // The only path that runs an approval-gated tool: the owner approving a
@@ -118,10 +116,10 @@ export function connectionRoutes(
       .omit({ summary: true })
       .extend({ toolCallId: z.string().min(1).max(200) })
       .parse(await c.req.json());
-    const thread = workspace.requireThread(c.req.param('id'));
+    const thread = ws(c).requireThread(c.req.param('id'));
     // A saved result is returned only for the approval that produced it.
     const recovered = () => {
-      const previous = connections.store.action(thread.id, body.toolCallId);
+      const previous = conn(c).store.action(thread.id, body.toolCallId);
       if (!previous) return undefined;
       if (previous.approvalId !== body.approvalId)
         return c.json(
@@ -134,24 +132,21 @@ export function connectionRoutes(
     };
     const earlier = recovered();
     if (earlier) return earlier;
-    const { approval, exposed } = approvalFor(thread.id, body.approvalId);
+    const { approval, exposed } = approvalFor(c, thread.id, body.approvalId);
     // Single-use approval: the first (threadId, toolCallId) pair owns the
     // approvalId. A replay under another call is rejected without executing.
     // The identical pair falls through to the action claim below, which
     // returns the running/recovered receipt (idempotent retry).
     if (
-      connections.store.claimApproval(
-        approval.id,
-        thread.id,
-        body.toolCallId,
-      ) === 'different'
+      conn(c).store.claimApproval(approval.id, thread.id, body.toolCallId) ===
+      'different'
     )
       return c.json(
         { error: 'This approval was already used by another action.' },
         409,
       );
     if (
-      !connections.store.claimAction(
+      !conn(c).store.claimAction(
         thread.id,
         body.toolCallId,
         approval.id,
@@ -161,8 +156,8 @@ export function connectionRoutes(
     )
       return recovered()!;
     // Not tied to the request: once approved, finish even if the tab closes.
-    const result = await connections.call(exposed, approval.arguments);
-    connections.store.finishAction(thread.id, body.toolCallId, result);
+    const result = await conn(c).call(exposed, approval.arguments);
+    conn(c).store.finishAction(thread.id, body.toolCallId, result);
     return c.json(result);
   });
   return app;
