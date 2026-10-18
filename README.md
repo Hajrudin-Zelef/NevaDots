@@ -14,8 +14,13 @@
 > the app. Anywhere the upstream documentation below mentions "Intelligence",
 > "`copilotkit project select`", `CPK_INTELLIGENCE_API_KEY`,
 > `INTELLIGENCE_*`, managed Slack Channels, or hosted Automatic Learning, read
-> it as **upstream-template behaviour that this fork does not use**. For the
-> actual runtime, see `docs/Opendots/SETUP.md` and `.env.example`. Sections that still
+> it as **upstream-template behaviour that this fork does not use**.
+>
+> **Docs du fork : [`docs/Nevadots/`](docs/Nevadots/SETUP.md)** (français) —
+> [installation](docs/Nevadots/SETUP.md), [computers](docs/Nevadots/COMPUTERS.md),
+> [connexions MCP](docs/Nevadots/CONNECTIONS.md), [télémétrie](docs/Nevadots/TELEMETRY.md).
+> The English docs under [`docs/Opendots/`](docs/Opendots/SETUP.md) are the
+> upstream template documentation, kept for reference; sections that still
 > describe the hosted flow are marked inline.
 
 <div align="center">
