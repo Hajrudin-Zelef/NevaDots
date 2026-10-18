@@ -1,6 +1,6 @@
 # OpenBot computer services
 
-OpenDots builds the computer service and supervisor from CopilotKit/OpenBot revision `b6932d31a8d6e7896c15139dfc27a6c6911deb27` (MIT). Their source is downloaded by BuildKit from the pinned Git context; it is not resolved from a moving branch or a `latest` image.
+NevaDots builds the computer service and supervisor from CopilotKit/OpenBot revision `b6932d31a8d6e7896c15139dfc27a6c6911deb27` (MIT). Their source is downloaded by BuildKit from the pinned Git context; it is not resolved from a moving branch or a `latest` image.
 
 The computer service is unchanged. The supervisor keeps its narrow ensure/stop/reset/list implementation and resource ownership checks. Its image omits the unused SPIRE CLI, and applies two fail-closed patches:
 
@@ -12,10 +12,10 @@ If the pinned upstream line changes, the patches refuse to build. Upgrades requi
 
 ## Dev toolchain image (P4, agentic coding)
 
-`computer-dev.Dockerfile` extends the pinned `opendots-computer:b6932d3` image with one apt layer: `git openssh-client python3 python3-pip python3-venv build-essential pkg-config cmake ripgrep jq tree less`. The base stays byte-identical to upstream; only this additive layer diverges. The supervisor runs the `opendots-computer:b6932d3-dev` tag (`COMPUTER_IMAGE` in `compose.computers.yml`).
+`computer-dev.Dockerfile` extends the pinned `opendots-computer:b6932d3` image with an apt layer (dev tools, diagnostics, `sqlite3`, `ffmpeg`, `curl`) plus pinned release binaries (`yq`, `delta`, `shfmt`, `uv`, `ruff`) and `fd`/`bat` symlinks. The base stays byte-identical to upstream; only this additive layer diverges. The supervisor runs the `opendots-computer:b6932d3-dev` tag (`COMPUTER_IMAGE` in `compose.computers.yml`).
 
 Build order matters (the dev image resolves its `FROM` from local images):
 `docker compose -f compose.computers.yml build computer-image computer-image-dev`,
 then `up -d` the supervisor and recreate computers (`docker rm -f opendots-computer-<id>` + `POST /dots/:id/computer/start`) — volumes are retained.
 
-See [computer setup](../../docs/Opendots/COMPUTERS.md). OpenBot's MIT license is included in [LICENSE.openbot](LICENSE.openbot).
+See [computer setup](../../docs/Nevadots/COMPUTERS.md). OpenBot's MIT license is included in [LICENSE.openbot](LICENSE.openbot).
