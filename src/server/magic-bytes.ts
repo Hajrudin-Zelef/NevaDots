@@ -18,6 +18,10 @@ const SIGNATURES: ReadonlyArray<{ mime: string; prefix: readonly number[] }> = [
   { mime: 'image/jpeg', prefix: [0xff, 0xd8, 0xff] },
   { mime: 'image/gif', prefix: [0x47, 0x49, 0x46, 0x38, 0x37, 0x61] }, // GIF87a
   { mime: 'image/gif', prefix: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61] }, // GIF89a
+  { mime: 'image/bmp', prefix: [0x42, 0x4d] }, // BM
+  { mime: 'image/tiff', prefix: [0x49, 0x49, 0x2a, 0x00] }, // II*\0 (petit-boutiste)
+  { mime: 'image/tiff', prefix: [0x4d, 0x4d, 0x00, 0x2a] }, // MM\0* (gros-boutiste)
+  { mime: 'image/x-icon', prefix: [0x00, 0x00, 0x01, 0x00] }, // ICO
 ];
 
 /** Type détecté par la signature, ou null si aucune signature connue. */
@@ -42,6 +46,19 @@ export function sniffMime(buffer: Uint8Array): string | null {
     buffer[11] === 0x50 // P
   )
     return 'image/webp';
+  // AVIF : taille (4 octets) + ftyp + avif.
+  if (
+    buffer.length >= 12 &&
+    buffer[4] === 0x66 && // f
+    buffer[5] === 0x74 && // t
+    buffer[6] === 0x79 && // y
+    buffer[7] === 0x70 && // p
+    buffer[8] === 0x61 && // a
+    buffer[9] === 0x76 && // v
+    buffer[10] === 0x69 && // i
+    buffer[11] === 0x66 // f
+  )
+    return 'image/avif';
   return null;
 }
 

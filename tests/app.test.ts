@@ -371,6 +371,12 @@ describe('attachment content auth', () => {
           }),
         ),
       ).toMatchObject({ mime: 'application/octet-stream', category: 'other' });
+      // BMP légitime (signature BM) -> conservé.
+      expect(
+        await upload(
+          new File([Buffer.from('BM')], 'photo.bmp', { type: 'image/bmp' }),
+        ),
+      ).toMatchObject({ mime: 'image/bmp', category: 'image' });
     } finally {
       process.chdir(origCwd);
       rmSync(sandbox, { recursive: true, force: true });
