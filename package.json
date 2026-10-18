@@ -45,6 +45,7 @@
     "@tiptap/starter-kit": "3.31.3",
     "@tiptap/suggestion": "3.31.3",
     "@types/ws": "^8.18.2",
+    "hash-wasm": "^4.12.0",
     "hono": "^4.13.11",
     "lucide-react": "^1.48.0",
     "playwright": "^1.63.0",

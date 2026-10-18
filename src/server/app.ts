@@ -16,6 +16,7 @@ import { workspaceRoutes } from './workspace-routes.js';
 import { providerRoutes } from './provider-routes.js';
 import { externalAccountRoutes } from './external-accounts.js';
 import { systemMetrics } from './metrics.js';
+import { AuthStore, verifyPasswordOrDummy } from './auth-store.js';
 const interval = z.number().int().min(60).max(31_536_000).nullable();
 export interface AppOptions {
   store: Store;
@@ -24,6 +25,8 @@ export interface AppOptions {
   ownerToken?: string;
   origin?: string | string[];
   platform?: Platform;
+  /** Phase A (comptes) : store d'auth. Optionnel : sans lui, /api/auth/* → 503. */
+  auth?: AuthStore;
 }
 /**
  * Valeur Set-Cookie du jeton propriétaire : HttpOnly (illisible par le
@@ -32,13 +35,26 @@ export interface AppOptions {
  * maxAge = 0 efface le cookie (logout).
  */
 function authCookie(c: Context, value: string, maxAge?: number): string {
-  const secure =
-    c.req.url.startsWith('https://') ||
-    (c.req.header('origin') ?? '').startsWith('https://');
   return (
     `opendots-auth=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict` +
-    (secure ? '; Secure' : '') +
+    (isSecureRequest(c) ? '; Secure' : '') +
     (maxAge !== undefined ? `; Max-Age=${maxAge}` : '')
+  );
+}
+/** Cookie de session comptes (Phase A) : il porte un id aléatoire, pas un
+ *  secret — la session vit côté serveur (révocable). Mêmes attributs que le
+ *  cookie jeton (HttpOnly + SameSite=Strict + Secure si https). */
+function sessionCookie(c: Context, value: string, maxAge?: number): string {
+  return (
+    `nevadots-session=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict` +
+    (isSecureRequest(c) ? '; Secure' : '') +
+    (maxAge !== undefined ? `; Max-Age=${maxAge}` : '')
+  );
+}
+function isSecureRequest(c: Context): boolean {
+  return (
+    c.req.url.startsWith('https://') ||
+    (c.req.header('origin') ?? '').startsWith('https://')
   );
 }
 
@@ -64,6 +80,7 @@ export function createApp({
   ownerToken,
   origin,
   platform,
+  auth,
 }: AppOptions) {
   const app = new Hono();
   // Simple per-IP fixed-window rate limit for the API. Generous by default
@@ -73,6 +90,10 @@ export function createApp({
     10,
   );
   const buckets = new Map<string, { count: number; resetAt: number }>();
+  // Phase A (comptes) : bucket dédié pour la connexion (5/min/IP) — le
+  // bucket général (1000/min) est trop large pour un endpoint de login.
+  const LOGIN_RATE_LIMIT_PER_MIN = 5;
+  const loginBuckets = new Map<string, { count: number; resetAt: number }>();
   app.use('/api/*', async (c, next) => {
     if (Number.isFinite(rateLimit) && rateLimit > 0) {
       const key = rateLimitKey(c);
@@ -86,6 +107,22 @@ export function createApp({
       if (!bucket || now > bucket.resetAt)
         buckets.set(key, { count: 1, resetAt: now + 60_000 });
       else if (++bucket.count > rateLimit)
+        return c.json({ error: 'Too many requests.' }, 429);
+    }
+    // Bucket login toujours actif, même si le rate-limit général est désactivé
+    // (RATE_LIMIT_PER_MIN=0) : c'est un contrôle anti-brute-force, pas un
+    // budget API.
+    if (c.req.method === 'POST' && c.req.path === '/api/auth/login') {
+      const key = rateLimitKey(c);
+      const now = Date.now();
+      if (loginBuckets.size > 10_000) {
+        for (const [k, b] of loginBuckets)
+          if (now > b.resetAt) loginBuckets.delete(k);
+      }
+      const bucket = loginBuckets.get(key);
+      if (!bucket || now > bucket.resetAt)
+        loginBuckets.set(key, { count: 1, resetAt: now + 60_000 });
+      else if (++bucket.count > LOGIN_RATE_LIMIT_PER_MIN)
         return c.json({ error: 'Too many requests.' }, 429);
     }
     await next();
@@ -137,10 +174,14 @@ export function createApp({
       return c.json({ error: 'Cross-origin requests are not allowed.' }, 403);
     if (c.req.header('sec-fetch-site') === 'cross-site')
       return c.json({ error: 'Cross-site requests are not allowed.' }, 403);
-    // POST /api/login n'a pas encore de cookie : il vérifie le jeton
-    // dans le corps (voir la route ci-dessous) — on saute le contrôle
-    // token ici, les gardes host/origin/sec-fetch restent actives.
-    const isLogin = c.req.method === 'POST' && c.req.path === '/api/login';
+    // POST /api/login et /api/auth/* n'ont pas encore de session : ils
+    // vérifient leurs propres identifiants (jeton / mot de passe / session)
+    // — on saute le contrôle token ici, les gardes host/origin/sec-fetch
+    // restent actives.
+    const isLogin =
+      (c.req.method === 'POST' && c.req.path === '/api/login') ||
+      (c.req.method === 'POST' && c.req.path === '/api/auth/login') ||
+      (c.req.method === 'POST' && c.req.path === '/api/auth/logout');
     if (ownerToken && !isLogin) {
       const expected = Buffer.from(ownerToken);
       const header = c.req.header('authorization')?.replace(/^Bearer /, '');
@@ -176,6 +217,50 @@ export function createApp({
   // POST /api/login vérifie le jeton du corps et pose le cookie ;
   // POST /api/logout l'efface. Le middleware ci-dessus saute le
   // contrôle token pour /api/login (pas encore de cookie).
+  app.post('/api/auth/login', async (c) => {
+    if (!auth)
+      return c.json({ error: 'Authentication is not configured.' }, 503);
+    const parsed = z
+      .object({
+        username: z.string().trim().min(1).max(64),
+        password: z.string().min(1).max(256),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success)
+      return c.json({ error: 'Enter a username and password.' }, 400);
+    const ip = rateLimitKey(c);
+    const row = auth.getUserByUsername(parsed.data.username);
+    // Même message, même vérif (fictive si l'utilisateur n'existe pas) :
+    // on ne révèle jamais si le compte existe, ni s'il est désactivé.
+    const ok = await verifyPasswordOrDummy(
+      parsed.data.password,
+      row?.passwordHash ?? null,
+    );
+    if (!ok || !row || row.disabled) {
+      auth.logAuthEvent('login_failed', parsed.data.username, ip);
+      return c.json({ error: 'Invalid username or password.' }, 401);
+    }
+    const { rawId } = auth.createSession(row.id);
+    auth.setLastLogin(row.id);
+    auth.logAuthEvent('login_ok', row.username, ip);
+    c.header('Set-Cookie', sessionCookie(c, rawId));
+    return c.json({
+      ok: true,
+      user: { username: row.username, role: row.role },
+    });
+  });
+  // Déconnexion comptes : idempotente (200 même sans cookie — la session
+  // peut déjà être expirée/révoquée). Ne touche jamais au cookie jeton.
+  app.post('/api/auth/logout', async (c) => {
+    if (!auth)
+      return c.json({ error: 'Authentication is not configured.' }, 503);
+    const raw = getCookie(c, 'nevadots-session');
+    if (raw) auth.revokeSession(raw);
+    c.header('Set-Cookie', sessionCookie(c, '', 0));
+    return c.json({ ok: true });
+  });
+
   app.post('/api/login', async (c) => {
     const parsed = z
       .object({ token: z.string().min(1) })

@@ -3,6 +3,7 @@ import { createShutdown } from './shutdown.js';
 import { cleanupOrphanAttachments } from './attachment-routes.js';
 import { reportChannelFailure, safeFailure } from './slack-channel.js';
 import { serve } from '@hono/node-server';
+import { AuthStore, resolveAdminMasterPassword } from './auth-store.js';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { compress } from 'hono/compress';
 import { getCookie } from 'hono/cookie';
@@ -40,8 +41,13 @@ if (!ownerToken)
   console.warn(
     'REQUIRE_OWNER_TOKEN=false: API auth disabled — any local process can call this API (host/origin checks only).',
   );
+// Phase A (comptes) : fail-closed aussi sur le mot de passe maître Admin
+// (bootstrap premier Admin + création/suppression de comptes). Sans lui,
+// le serveur refuse de démarrer — ajouter ADMIN_MASTER_PASSWORD au .env.
+resolveAdminMasterPassword();
 const database = process.env.DATABASE_PATH ?? 'data/opendots.sqlite';
 const store = new Store(database);
+const auth = new AuthStore(database);
 const workspace = new WorkspaceStore(
   database,
   process.env.OWNER_ID ?? 'opendots-owner',
@@ -141,7 +147,17 @@ const app = createApp({
   ownerToken,
   origin: appOrigins,
   platform,
+  auth,
 });
+// Phase A (comptes) : purge horaire des sessions expirées (même pattern que
+// le sweep des pièces jointes orphelines).
+setInterval(() => {
+  try {
+    auth.sweepExpiredSessions();
+  } catch {
+    /* ignore */
+  }
+}, 3_600_000);
 app.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('Referrer-Policy', 'no-referrer');
