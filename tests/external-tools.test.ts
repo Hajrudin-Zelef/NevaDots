@@ -155,6 +155,39 @@ describe('external_service_call', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('rejects dot segments and separator smuggling after decoding', async () => {
+    seed(store, 'github', { token: 'ghp_test' });
+    for (const path of [
+      '/../admin',
+      '/a/../b',
+      '/%2e%2e/admin',
+      '/%2E%2E/admin',
+      '/a/%2e%2e/b',
+      '/a%2F..%2Fb',
+      '/a%5C..%5Cb',
+      '/a/%2e/b',
+    ]) {
+      await expect(
+        tool()({ service: 'github', method: 'GET', path }),
+      ).rejects.toThrow('Invalid path');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('lets authentication query parameters win over agent ones', async () => {
+    seed(store, 'trello', { key: 'k123', token: 't456' });
+    await tool()({
+      service: 'trello',
+      method: 'GET',
+      path: '/members/me',
+      query: { key: 'agent-key', token: 'agent-token', extra: 'x' },
+    });
+    const [url] = fetchMock.mock.calls[0] as [URL];
+    expect(url.searchParams.get('key')).toBe('k123');
+    expect(url.searchParams.get('token')).toBe('t456');
+    expect(url.searchParams.get('extra')).toBe('x');
+  });
+
   it('maps 401 to a reconnect hint without leaking the token', async () => {
     seed(store, 'github', { token: 'ghp_bad' });
     fetchMock.mockResolvedValueOnce(
@@ -179,6 +212,62 @@ describe('external_service_call', () => {
     });
     expect(result.length).toBeLessThanOrEqual(6100);
     expect(result).toContain('truncated');
+  });
+
+  it('streams a huge body bounded without buffering it all', async () => {
+    seed(store, 'github', { token: 'ghp_test' });
+    const CHUNK = new Uint8Array(1024).fill(0x78); // 'x'
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 4096) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(CHUNK);
+      },
+    });
+    // Declared length lies (small); the chunk cap must still bound memory.
+    fetchMock.mockResolvedValueOnce(
+      new Response(stream, { headers: { 'content-type': 'text/plain' } }),
+    );
+    const result = await tool()({
+      service: 'github',
+      method: 'GET',
+      path: '/big',
+    });
+    expect(result.length).toBeLessThanOrEqual(6100);
+    expect(result).toContain('truncated');
+    // The reader was cancelled early: the body was not fully drained.
+    expect(pulls).toBeLessThan(100);
+  });
+
+  it('returns an empty result for a body-less 204 response', async () => {
+    seed(store, 'github', { token: 'ghp_test' });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const result = await tool()({
+      service: 'github',
+      method: 'GET',
+      path: '/empty',
+    });
+    expect(result).toBe('');
+  });
+
+  it('reports HTTP failures without echoing the response body', async () => {
+    seed(store, 'github', { token: 'ghp_test' });
+    fetchMock.mockResolvedValueOnce(
+      new Response('internal detail token=leak', { status: 500 }),
+    );
+    let message = '';
+    try {
+      await tool()({ service: 'github', method: 'GET', path: '/x' });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain('HTTP 500');
+    expect(message).not.toContain('internal detail');
+    expect(message).not.toContain('leak');
   });
 
   it('refuses non-HTTP services such as MEGA', async () => {

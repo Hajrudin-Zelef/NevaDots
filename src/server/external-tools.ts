@@ -26,6 +26,20 @@ function buildUrl(apiBase: string, path: string): URL {
     throw new Error('Invalid path: must be empty or start with a single "/".');
   if (/[\\\s]/.test(clean) || clean.includes('://'))
     throw new Error('Invalid path.');
+  // Reject dot segments and separator smuggling AFTER decoding: an upstream
+  // that percent-decodes would traverse on "%2e%2e" or split on "%2F"/"%5C"
+  // even though the literal path looks clean here.
+  for (const segment of clean.split('/')) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      throw new Error('Invalid path.');
+    }
+    if (decoded === '.' || decoded === '..') throw new Error('Invalid path.');
+    if (decoded.includes('/') || decoded.includes('\\'))
+      throw new Error('Invalid path.');
+  }
   const base = new URL(apiBase);
   // Concatenate: new URL('/user', 'https://gitlab.com/api/v4') would drop the
   // '/api/v4' prefix, so join the paths manually.
@@ -35,18 +49,50 @@ function buildUrl(apiBase: string, path: string): URL {
   return base;
 }
 
+/**
+ * Lit la réponse de façon **bornée par chunks** : un corps volumineux est
+ * tronqué, jamais bufferisé en entier, et jamais une erreur. Le
+ * `Content-Length` déclaré n'est qu'un indice (absent ou mensonger possible)
+ * — le plafond appliqué en streaming est la seule garde. Un corps nul (204,
+ * body absent) rend une chaîne vide.
+ */
 async function readResult(response: Response): Promise<string> {
-  const contentType = response.headers.get('content-type') ?? '';
-  let text: string;
-  if (contentType.includes('json')) {
-    const json: unknown = await response.json().catch(() => null);
-    text = JSON.stringify(json);
-  } else {
-    text = await response.text().catch(() => '');
+  const body = response.body;
+  if (!body) return '';
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  let truncated = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.byteLength) continue;
+      received += value.byteLength;
+      if (received > RESULT_LIMIT) {
+        // On garde l'excedent utile jusqu'au plafond, on coupe le reste.
+        const keep = RESULT_LIMIT - (received - value.byteLength);
+        if (keep > 0) chunks.push(value.subarray(0, keep));
+        truncated = true;
+        break;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    // Libère le flux sans attendre la fin (annule la lecture résiduelle).
+    await reader.cancel().catch(() => {});
   }
-  return text.length > RESULT_LIMIT
-    ? `${text.slice(0, RESULT_LIMIT)}\n…[truncated]`
-    : text;
+  let text = Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8');
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!truncated && contentType.includes('json')) {
+    // Compat : un JSON malformé rend 'null' (comme l'ancien .json().catch).
+    try {
+      text = JSON.stringify(JSON.parse(text) as unknown);
+    } catch {
+      text = 'null';
+    }
+  }
+  return truncated ? `${text}\n…[truncated]` : text;
 }
 
 export function externalAccountTools(
@@ -96,9 +142,11 @@ export function externalAccountTools(
         if (!values) throw new Error(`No stored credentials for "${service}".`);
         const auth = def.auth(values);
         const url = buildUrl(def.apiBase, path);
-        for (const [key, value] of Object.entries(auth.query ?? {}))
-          url.searchParams.set(key, value);
+        // L'agent pose ses params d'abord, l'auth ensuite : en cas de
+        // collision de clé, la valeur d'auth (token) gagne toujours.
         for (const [key, value] of Object.entries(query ?? {}))
+          url.searchParams.set(key, value);
+        for (const [key, value] of Object.entries(auth.query ?? {}))
           url.searchParams.set(key, value);
 
         const headers: Record<string, string> = { ...auth.headers };
@@ -132,8 +180,16 @@ export function externalAccountTools(
             `Service "${service}" rejected the stored credentials (HTTP ${response.status}). Ask the owner to reconnect the account.`,
           );
         if (!response.ok)
+          // Statut seul : le corps d'erreur amont n'est jamais transmis au
+          // modèle (peut contenir des détails internes ou des échos de
+          // credentials). Lire et jeter le corps pour libérer la connexion.
           throw new Error(
-            `Service "${service}" returned HTTP ${response.status}: ${(await readResult(response)).slice(0, 300)}`,
+            `Service "${service}" returned HTTP ${response.status}.`,
+            {
+              cause: await readResult(response)
+                .then(() => null)
+                .catch(() => null),
+            },
           );
         return readResult(response);
       },
