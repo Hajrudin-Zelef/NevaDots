@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { promises as fs } from 'node:fs';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { resolveUploadType } from './magic-bytes.js';
 
 /** Configurable so attachments can live on a separate volume in production. */
 export const ATTACHMENTS_DIR =
@@ -131,13 +132,22 @@ export function attachmentRoutes() {
       const dir = attachmentDir(id);
       await fs.mkdir(dir, { recursive: true });
       const buffer = Buffer.from(await file.arrayBuffer());
+      // Magic bytes : ne jamais croire le type déclaré par le navigateur
+      // (cf. magic-bytes.ts). En cas de mismatch, le fichier est dégradé
+      // en octet-stream / 'other' : l'extension (.pdf) ne doit pas non
+      // plus re-monter la catégorie vers 'pdf'.
+      const declared = file.type || 'application/octet-stream';
+      const { mime, ok } = resolveUploadType(buffer, declared, name);
+      const category: AttachmentCategory = ok
+        ? categorizeAttachment(mime, name)
+        : 'other';
       await fs.writeFile(join(dir, 'file'), buffer);
       const meta: AttachmentMeta = {
         id,
         name,
         size: file.size,
-        mime: file.type || 'application/octet-stream',
-        category: categorizeAttachment(file.type || '', name),
+        mime,
+        category,
         createdAt: Date.now(),
       };
       await fs.writeFile(join(dir, 'meta.json'), JSON.stringify(meta));

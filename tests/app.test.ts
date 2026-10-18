@@ -320,4 +320,60 @@ describe('attachment content auth', () => {
       rmSync(sandbox, { recursive: true, force: true });
     }
   });
+  it('downgrades a declared image/pdf whose magic bytes do not match', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const sandbox = mkdtempSync(join(tmpdir(), 'app-att-'));
+    const origCwd = process.cwd();
+    process.chdir(sandbox);
+    try {
+      const { app } = fixture('private-token');
+      const headers = { Authorization: 'Bearer private-token' };
+      const upload = async (file: File) => {
+        const form = new FormData();
+        form.append('files', file);
+        const res = await app.request('/api/attachments', {
+          method: 'POST',
+          headers,
+          body: form,
+        });
+        expect(res.status).toBe(201);
+        return (
+          (await res.json()) as {
+            attachments: { mime: string; category: string }[];
+          }
+        ).attachments[0];
+      };
+      // Faux PNG (HTML déguisé) -> dégradé, jamais rejeté.
+      expect(
+        await upload(
+          new File(['<script>alert(1)</script>'], 'fake.png', {
+            type: 'image/png',
+          }),
+        ),
+      ).toMatchObject({ mime: 'application/octet-stream', category: 'other' });
+      // Vrai PNG (signature minimale) -> conservé.
+      expect(
+        await upload(
+          new File(
+            [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+            'real.png',
+            { type: 'image/png' },
+          ),
+        ),
+      ).toMatchObject({ mime: 'image/png', category: 'image' });
+      // Faux PDF (texte déguisé, extension .pdf) -> dégradé malgré l'extension.
+      expect(
+        await upload(
+          new File(['ceci n est pas un pdf'], 'fake.pdf', {
+            type: 'application/pdf',
+          }),
+        ),
+      ).toMatchObject({ mime: 'application/octet-stream', category: 'other' });
+    } finally {
+      process.chdir(origCwd);
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
 });
