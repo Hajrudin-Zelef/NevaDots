@@ -11,6 +11,7 @@ import ReactMarkdown from 'react-markdown';
 import type { Dot, Result, Status } from '../shared/types';
 import { Mascot } from './Mascot';
 import { ComputerPanel } from './ComputerPanel';
+import { safeHostname, safeHref } from './safe-href';
 export function ResultPane({
   latest,
   status,
@@ -125,11 +126,15 @@ export function ResultPane({
                 img: ({ alt }) => (
                   <span>{alt ? `[Image: ${alt}]` : '[Image omitted]'}</span>
                 ),
-                a: ({ children, href }) => (
-                  <a href={href} target="_blank" rel="noreferrer">
-                    {children}
-                  </a>
-                ),
+                a: ({ children, href }) => {
+                  const safe = safeHref(href);
+                  if (safe === null) return <span>{children}</span>;
+                  return (
+                    <a href={safe} target="_blank" rel="noreferrer">
+                      {children}
+                    </a>
+                  );
+                },
               }}
             >
               {latest.text}
@@ -139,38 +144,55 @@ export function ResultPane({
             <h3>
               Source notes <span>{latest.sources.length}</span>
             </h3>
-            {latest.sources.map((source) =>
-              latest.sample ? (
-                <div className="source-card" key={source.url}>
-                  <span className="source-icon">
-                    <BookOpen size={15} />
-                  </span>
-                  <div>
-                    <strong>{source.title}</strong>
-                    <p>{source.excerpt}</p>
-                    <small>Fictional source · not a live link</small>
+            {latest.sources.map((source) => {
+              if (latest.sample) {
+                return (
+                  <div className="source-card" key={source.url}>
+                    <span className="source-icon">
+                      <BookOpen size={15} />
+                    </span>
+                    <div>
+                      <strong>{source.title}</strong>
+                      <p>{source.excerpt}</p>
+                      <small>Fictional source · not a live link</small>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <a
-                  className="source-card"
-                  href={source.url}
-                  key={source.url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                );
+              }
+              const safe = safeHref(source.url);
+              const hostname = safeHostname(source.url);
+              const body = (
+                <>
                   <span className="source-icon">
                     <ExternalLink size={15} />
                   </span>
                   <div>
                     <strong>{source.title}</strong>
                     <p>{source.excerpt}</p>
-                    <small>{new URL(source.url).hostname}</small>
+                    {hostname ? <small>{hostname}</small> : null}
                   </div>
                   <ArrowUpRight size={15} />
+                </>
+              );
+              if (safe === null) {
+                return (
+                  <div className="source-card" key={source.url}>
+                    {body}
+                  </div>
+                );
+              }
+              return (
+                <a
+                  className="source-card"
+                  href={safe}
+                  key={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {body}
                 </a>
-              ),
-            )}
+              );
+            })}
           </section>
         </div>
       ) : (

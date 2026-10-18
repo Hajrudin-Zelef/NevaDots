@@ -124,6 +124,10 @@ export function FilePreviewModal({
               src={contentUrl}
               title={attachment.name}
               className="file-preview-pdf"
+              // Défense en profondeur : le PDF affiché ne peut rien faire
+              // (pas de scripts, pas de popups) — la protection actuelle
+              // repose déjà sur text/plain + CSP côté serveur.
+              sandbox=""
             />
           ) : attachment.category === 'text' ||
             attachment.category === 'code' ? (

@@ -11,6 +11,7 @@ import {
   type DeletedReview,
 } from './page-review-decision';
 import { openPageLink } from './page-navigation';
+import { safeHref } from './safe-href';
 import type { ReviewedPage } from '../server/pages';
 export function PageReviewCard({
   args,
@@ -151,11 +152,15 @@ export function PageReviewCard({
             remarkPlugins={[remarkGfm]}
             components={{
               img: ({ alt }) => <span>{alt}</span>,
-              a: ({ href, children }) => (
-                <a href={href} target="_blank" rel="noreferrer">
-                  {children}
-                </a>
-              ),
+              a: ({ href, children }) => {
+                const safe = safeHref(href);
+                if (safe === null) return <span>{children}</span>;
+                return (
+                  <a href={safe} target="_blank" rel="noreferrer">
+                    {children}
+                  </a>
+                );
+              },
             }}
           >
             {draft.data.content}

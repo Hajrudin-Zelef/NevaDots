@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { PlugZap, RefreshCw, Trash2 } from 'lucide-react';
 import type { Connection } from '../shared/connection-types';
 import { api } from './api';
+import { safeHost } from './safe-href';
 // Lives inside the Dot form, so it saves immediately through its own
 // requests and keeps Enter from submitting the surrounding form.
 const stayInSection = (event: KeyboardEvent) => {
@@ -79,7 +80,7 @@ export function ConnectionsSection({ dotId }: { dotId: string }) {
             <span>
               <strong>{connection.name}</strong>
               <small>
-                {new URL(connection.url).host}
+                {safeHost(connection.url) ?? ''}
                 {connection.hasToken ? ' · token saved' : ''}
               </small>
             </span>

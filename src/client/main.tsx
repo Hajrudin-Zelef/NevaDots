@@ -13,6 +13,7 @@ import './responsive.css';
 import { initRipple } from './ripple';
 import { watchSystemTheme } from './theme';
 import { initAvatarQuality } from './avatar-quality';
+import { ErrorBoundary } from './ErrorBoundary';
 import { applyMotionPreference } from './motion-pref';
 watchSystemTheme();
 applyMotionPreference();
@@ -20,6 +21,8 @@ initRipple();
 initAvatarQuality();
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );

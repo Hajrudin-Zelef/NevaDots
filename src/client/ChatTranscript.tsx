@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import type { AssistantMessage, Message } from '@ag-ui/core';
 import type { CallReceipt } from '../shared/types';
 import { formatChars, parseUserMessageWithAttachments } from './attachments';
+import { safeHref } from './safe-href';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt';
 import { isScheduledTaskMessage } from '../shared/scheduled-message';
 
@@ -32,21 +33,26 @@ export function isInternalVoiceReceipt(message: Message): boolean {
 // Stable component map so ReactMarkdown does not re-parse on every parent render.
 const markdownComponents = {
   img: ({ alt }: { alt?: string }) => <span>{alt}</span>,
-  a: ({ href, children }: { href?: string; children?: ReactNode }) => (
-    <a
-      onClick={(event) => {
-        if (href?.startsWith('/#/spaces/')) {
-          event.preventDefault();
-          openPageLink(href);
-        }
-      }}
-      href={href}
-      target={href?.startsWith('/#/spaces/') ? undefined : '_blank'}
-      rel="noreferrer"
-    >
-      {children}
-    </a>
-  ),
+  a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+    const safe = safeHref(href);
+    if (safe === null) return <span>{children}</span>;
+    const internal = safe.startsWith('/#/spaces/');
+    return (
+      <a
+        onClick={(event) => {
+          if (internal) {
+            event.preventDefault();
+            openPageLink(safe);
+          }
+        }}
+        href={safe}
+        target={internal ? undefined : '_blank'}
+        rel="noreferrer"
+      >
+        {children}
+      </a>
+    );
+  },
 };
 
 // Time-based follower: the revealed cursor trails arrivals by ~150 ms so bursts
