@@ -9,11 +9,12 @@ import {
  * At-rest encryption for provider keys, MCP bearer tokens and external-account
  * credentials. AES-256-GCM with a key derived (scrypt) from a server secret.
  *
- * The secret MUST come from the environment (`SECRETS_KEY`, falling back to
- * `OWNER_TOKEN`) — never generated and stored in the database, since a key
- * kept next to its ciphertext protects nothing. When no secret is configured,
- * sealing and reading sealed values throw instead of falling back to
- * plaintext.
+ * The SEALING key MUST be `SECRETS_KEY` — never `OWNER_TOKEN` (a leaked owner
+ * token would then grant both API access and decryption) and never generated
+ * or stored in the database, since a key kept next to its ciphertext protects
+ * nothing. `OWNER_TOKEN` is accepted only as a legacy READ fallback for
+ * values sealed before this split. When no secret is configured, sealing and
+ * reading sealed values throw instead of falling back to plaintext.
  *
  * Wire format (versioned):
  *   enc2:<salt b64>:<iv b64>:<tag b64>:<cipher b64>   (per-value random salt)
@@ -43,7 +44,7 @@ function requireSecret(secret: string | undefined): string {
   const value = secret?.trim();
   if (!value)
     throw new Error(
-      'A server secret is required to encrypt or read stored secrets. Set SECRETS_KEY (or OWNER_TOKEN).',
+      'A server secret (SECRETS_KEY) is required to encrypt or read stored secrets.',
     );
   return value;
 }
@@ -66,8 +67,26 @@ export function encryptSecret(plain: string, secret: string): string {
   ].join(':');
 }
 
-export function decryptSecret(payload: string, secret: string): string {
-  const key = requireSecret(secret);
+export function decryptSecret(
+  payload: string,
+  secret: string,
+  legacySecret?: string,
+): string {
+  const primary = secret?.trim();
+  const legacy = legacySecret?.trim();
+  if (!primary && !legacy) requireSecret(secret);
+  if (primary) {
+    try {
+      return openWith(payload, primary);
+    } catch (error) {
+      // Values sealed with the old OWNER_TOKEN-derived key stay readable.
+      if (!legacy || legacy === primary) throw error;
+    }
+  }
+  return openWith(payload, legacy!);
+}
+
+function openWith(payload: string, key: string): string {
   if (payload.startsWith(ENC2)) {
     const [, saltB64, ivB64, tagB64, dataB64] = payload.split(':');
     if (!saltB64 || !ivB64 || !tagB64 || dataB64 === undefined)
@@ -104,10 +123,22 @@ export function isLegacySecret(payload: string): boolean {
 }
 
 /**
- * Resolves the server secret from the environment only. Returns `''` when none
- * is configured — callers must then refuse to seal or read secrets (fail
- * closed) rather than silently storing plaintext.
+ * Resolves the SEALING key from the environment only: `SECRETS_KEY`, never
+ * `OWNER_TOKEN` (a leaked token must not grant decryption). Returns `''` when
+ * unset — callers must then refuse to seal (fail closed) rather than silently
+ * storing plaintext.
  */
 export function resolveSecretKey(env: NodeJS.ProcessEnv = process.env): string {
-  return env.SECRETS_KEY?.trim() || env.OWNER_TOKEN?.trim() || '';
+  return env.SECRETS_KEY?.trim() || '';
+}
+
+/**
+ * Legacy READ-only fallback: `OWNER_TOKEN`, accepted solely to decrypt values
+ * sealed before SECRETS_KEY became the only sealing key. Never pass it to
+ * `encryptSecret`.
+ */
+export function resolveLegacySecretKey(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return env.OWNER_TOKEN?.trim() || '';
 }

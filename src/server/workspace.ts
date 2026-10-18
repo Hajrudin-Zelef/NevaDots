@@ -1,7 +1,7 @@
 import { ComputerStore } from './computer-store.js';
 import { ConnectionStore } from './connection-store.js';
 import { Pages } from './pages.js';
-import { resolveSecretKey } from './secrets.js';
+import { resolveLegacySecretKey, resolveSecretKey } from './secrets.js';
 import { safeJsonParse } from './safe-json.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
@@ -64,7 +64,11 @@ export class WorkspaceStore {
         COMMIT;`);
     }
     this.computers = new ComputerStore(this.db);
-    this.connections = new ConnectionStore(this.db, () => resolveSecretKey());
+    this.connections = new ConnectionStore(
+      this.db,
+      () => resolveSecretKey(),
+      () => resolveLegacySecretKey(),
+    );
     this.pages = new Pages(this.db, (id) =>
       this.spaces().some((space) => space.id === id),
     );

@@ -2,6 +2,7 @@ import { computerRoutes } from './computer-routes.js';
 import { connectionRoutes } from './connection-routes.js';
 import { attachmentRoutes } from './attachment-routes.js';
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getCookie } from 'hono/cookie';
 import { timingSafeEqual } from 'node:crypto';
@@ -24,6 +25,21 @@ export interface AppOptions {
   origin?: string | string[];
   platform?: Platform;
 }
+/**
+ * Clé de rate-limit. X-Forwarded-For n'est lu QUE derrière un reverse-proxy
+ * de confiance (TRUST_PROXY=true) : sinon tout client peut forger l'en-tête
+ * et faire tourner les buckets. Sans proxy, l'adresse du socket est utilisée
+ * (en loopback unique, tout le monde partage le même bucket — arrêt de la
+ * rotation XFF, pas de découpage par utilisateur).
+ */
+function rateLimitKey(c: Context): string {
+  if (process.env.TRUST_PROXY === 'true')
+    return c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const incoming = (
+    c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined
+  )?.incoming;
+  return incoming?.socket?.remoteAddress || 'local';
+}
 export function createApp({
   store,
   runner,
@@ -42,11 +58,10 @@ export function createApp({
   const buckets = new Map<string, { count: number; resetAt: number }>();
   app.use('/api/*', async (c, next) => {
     if (Number.isFinite(rateLimit) && rateLimit > 0) {
-      const key =
-        c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+      const key = rateLimitKey(c);
       const now = Date.now();
-      // Purge opportuniste des fenêtres expirées : une clé forgée (XFF) ne
-      // peut pas faire grossir la Map indéfiniment. Borne dure en taille aussi.
+      // Purge opportuniste des fenêtres expirées : une clé forgée ne peut
+      // pas faire grossir la Map indéfiniment. Borne dure en taille aussi.
       if (buckets.size > 10_000) {
         for (const [k, b] of buckets) if (now > b.resetAt) buckets.delete(k);
       }

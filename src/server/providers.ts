@@ -177,6 +177,7 @@ export class ProviderRegistry {
     private readonly store: SecretConfigStore,
     private readonly secret: string,
     env: NodeJS.ProcessEnv,
+    private readonly legacySecret = '',
   ) {
     this.providers = buildProviders(env);
     this.envModel = splitList(env.OPENAI_MODEL)[0];
@@ -190,7 +191,11 @@ export class ProviderRegistry {
           models?: string[];
         };
         if (config.keyCipher) {
-          provider.apiKey = decryptSecret(config.keyCipher, this.secret);
+          provider.apiKey = decryptSecret(
+            config.keyCipher,
+            this.secret,
+            this.legacySecret,
+          );
           this.explicitKeys.add(id);
         }
         if (config.models) provider.models = config.models;

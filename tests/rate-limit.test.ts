@@ -9,10 +9,12 @@ const stores: Store[] = [];
 afterEach(() => {
   stores.splice(0).forEach((store) => store.close());
   delete process.env.RATE_LIMIT_PER_MIN;
+  delete process.env.TRUST_PROXY;
 });
 
 it('rate-limits /api/* per client and allows under the limit', async () => {
   process.env.RATE_LIMIT_PER_MIN = '3';
+  process.env.TRUST_PROXY = 'true';
   const store = new Store(':memory:');
   stores.push(store);
   const runner = new Runner(store, config);
@@ -33,6 +35,21 @@ it('rate-limits /api/* per client and allows under the limit', async () => {
       })
     ).status,
   ).toBe(200);
+});
+
+it('ignores a forged X-Forwarded-For without TRUST_PROXY', async () => {
+  process.env.RATE_LIMIT_PER_MIN = '2';
+  const store = new Store(':memory:');
+  stores.push(store);
+  const runner = new Runner(store, config);
+  const app = createApp({ store, runner, config });
+  // Each request rotates the forged header; without TRUST_PROXY they all
+  // share the socket bucket, so the limit still triggers.
+  const hit = (xff: string) =>
+    app.request('/api/state', { headers: { 'x-forwarded-for': xff } });
+  expect((await hit('1.1.1.1')).status).toBe(200);
+  expect((await hit('2.2.2.2')).status).toBe(200);
+  expect((await hit('3.3.3.3')).status).toBe(429);
 });
 
 it('RATE_LIMIT_PER_MIN=0 disables the limiter', async () => {

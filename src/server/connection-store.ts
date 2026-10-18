@@ -51,6 +51,9 @@ export class ConnectionStore {
   constructor(
     private db: DatabaseSync,
     private secretProvider?: () => string,
+    /** Legacy READ-only key (OWNER_TOKEN): decrypts values sealed before
+     * SECRETS_KEY became the only sealing key. Never seals. */
+    private legacySecretProvider?: () => string,
   ) {
     db.exec(`CREATE TABLE IF NOT EXISTS mcp_connections(id TEXT PRIMARY KEY, dotId TEXT NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL, token TEXT, tools TEXT NOT NULL, error TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS mcp_approvals(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, dotId TEXT NOT NULL, connectionId TEXT NOT NULL, tool TEXT NOT NULL, arguments TEXT NOT NULL, createdAt INTEGER NOT NULL);
@@ -87,13 +90,20 @@ export class ConnectionStore {
     this.migrateTokens();
   }
   /** Encrypt-at-rest for MCP bearer tokens. Legacy plaintext or `enc1` rows
-   * are re-sealed once, idempotently, using the server secret. Refuses to
-   * store plaintext when no secret is configured (fail closed). */
+   * are re-sealed once, idempotently, with SECRETS_KEY. Refuses to store
+   * plaintext when no sealing key is configured (fail closed). */
   private secret(): string | undefined {
     try {
       return this.secretProvider?.();
     } catch {
       return undefined;
+    }
+  }
+  private legacySecret(): string {
+    try {
+      return this.legacySecretProvider?.() ?? '';
+    } catch {
+      return '';
     }
   }
   private seal(plain: string): string {
@@ -104,7 +114,7 @@ export class ConnectionStore {
   }
   private open(stored: string): string {
     if (!ConnectionStore.sealed(stored)) return stored;
-    return decryptSecret(stored, this.secret() ?? '');
+    return decryptSecret(stored, this.secret() ?? '', this.legacySecret());
   }
   private migrateTokens() {
     if (!this.secretProvider) return;

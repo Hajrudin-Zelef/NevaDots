@@ -15,7 +15,7 @@ import { WorkspaceStore } from './workspace.js';
 import { Platform } from './platform.js';
 import { ProviderRegistry } from './providers.js';
 import { ExternalAccounts } from './external-accounts.js';
-import { resolveSecretKey } from './secrets.js';
+import { resolveLegacySecretKey, resolveSecretKey } from './secrets.js';
 import { attachComputerStream } from './computer-stream.js';
 import type { PlatformConfig } from './platform-config.js';
 const host = process.env.HOST ?? '127.0.0.1';
@@ -50,16 +50,17 @@ const providerRegistry = new ProviderRegistry(
   workspace,
   resolveSecretKey(),
   process.env,
+  resolveLegacySecretKey(),
 );
 if (!process.env.SECRETS_KEY?.trim() && process.env.OWNER_TOKEN?.trim())
   console.warn(
-    'SECRETS_KEY is not set: at-rest encryption falls back to OWNER_TOKEN. ' +
-      'Set SECRETS_KEY in production; rotating it (or OWNER_TOKEN) makes ' +
-      'stored secrets unreadable.',
+    'SECRETS_KEY is not set: sealing NEW secrets is disabled (provider keys, MCP tokens, credentials cannot be stored). ' +
+      'OWNER_TOKEN is only used to read secrets sealed before this change. Set SECRETS_KEY in production; ' +
+      'rotating it makes stored secrets unreadable.',
   );
 else if (!process.env.SECRETS_KEY?.trim())
   console.warn(
-    'No SECRETS_KEY or OWNER_TOKEN: storing provider keys, MCP tokens or ' +
+    'No SECRETS_KEY: storing provider keys, MCP tokens or ' +
       'credentials is disabled until one is set.',
   );
 const config: PlatformConfig = {
@@ -73,7 +74,11 @@ const config: PlatformConfig = {
   baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
   providers: providerRegistry.list(),
   providerRegistry,
-  externalAccounts: new ExternalAccounts(workspace, resolveSecretKey()),
+  externalAccounts: new ExternalAccounts(
+    workspace,
+    resolveSecretKey(),
+    resolveLegacySecretKey(),
+  ),
   contextWindow: process.env.OPENAI_CONTEXT_WINDOW
     ? Number(process.env.OPENAI_CONTEXT_WINDOW)
     : undefined,

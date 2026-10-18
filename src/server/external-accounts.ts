@@ -490,6 +490,7 @@ export class ExternalAccounts {
   constructor(
     private readonly store: SecretConfigStore,
     private readonly secret: string,
+    private readonly legacySecret = '',
   ) {}
 
   private read(id: string): {
@@ -569,7 +570,11 @@ export class ExternalAccounts {
     const stored = this.read(id);
     if (!stored.fieldsCipher) return undefined;
     try {
-      const raw = decryptSecret(stored.fieldsCipher, this.secret);
+      const raw = decryptSecret(
+        stored.fieldsCipher,
+        this.secret,
+        this.legacySecret,
+      );
       return JSON.parse(raw) as Record<string, string>;
     } catch {
       return undefined;

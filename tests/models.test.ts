@@ -12,6 +12,7 @@ import {
   decryptSecret,
   encryptSecret,
   isLegacySecret,
+  resolveLegacySecretKey,
   resolveSecretKey,
   type SecretConfigStore,
 } from '../src/server/secrets';
@@ -158,15 +159,40 @@ describe('secrets', () => {
     expect(isLegacySecret(encryptSecret('x', 's'))).toBe(false);
   });
 
-  it('resolves the secret from the environment only, never the database', () => {
+  it('resolves only SECRETS_KEY for sealing; OWNER_TOKEN is legacy read-only', () => {
     expect(resolveSecretKey({})).toBe('');
     expect(resolveSecretKey({ SECRETS_KEY: 'env' })).toBe('env');
-    expect(resolveSecretKey({ OWNER_TOKEN: 'owner-token' })).toBe(
-      'owner-token',
-    );
+    // OWNER_TOKEN must never be a sealing key: a leaked token would then
+    // grant both API access and decryption.
+    expect(resolveSecretKey({ OWNER_TOKEN: 'owner-token' })).toBe('');
     expect(
       resolveSecretKey({ SECRETS_KEY: 'env', OWNER_TOKEN: 'owner-token' }),
     ).toBe('env');
+    expect(resolveLegacySecretKey({})).toBe('');
+    expect(resolveLegacySecretKey({ OWNER_TOKEN: 'owner-token' })).toBe(
+      'owner-token',
+    );
+    expect(
+      resolveLegacySecretKey({
+        SECRETS_KEY: 'env',
+        OWNER_TOKEN: 'owner-token',
+      }),
+    ).toBe('owner-token');
+  });
+
+  it('reads values sealed with the legacy OWNER_TOKEN key via the fallback', () => {
+    // A value sealed before the split, under the OWNER_TOKEN-derived key.
+    const legacyCipher = encryptSecret('sk-legacy', 'owner-token');
+    // New sealing key + legacy fallback ⇒ readable.
+    expect(decryptSecret(legacyCipher, 'secrets-key', 'owner-token')).toBe(
+      'sk-legacy',
+    );
+    // Only the legacy key (SECRETS_KEY not yet set) ⇒ still readable.
+    expect(decryptSecret(legacyCipher, '', 'owner-token')).toBe('sk-legacy');
+    // No fallback ⇒ unreadable.
+    expect(() => decryptSecret(legacyCipher, 'secrets-key')).toThrow();
+    // The fallback never seals: encryptSecret still requires a real key.
+    expect(() => encryptSecret('x', '')).toThrow(/server secret/i);
   });
 });
 
