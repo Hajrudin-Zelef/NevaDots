@@ -1,6 +1,7 @@
 import { computerRoutes } from './computer-routes.js';
 import { connectionRoutes } from './connection-routes.js';
 import { attachmentRoutes } from './attachment-routes.js';
+import { claimOrphanAttachments } from './attachment-routes.js';
 import { Hono } from 'hono';
 import type { Context, Next } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -528,6 +529,8 @@ export function createApp({
       platform.workspace.claimOrphans(user.id);
       platform.workspace.forUser(user.id).ensureSeed();
     }
+    // C2 : le premier Admin réclame aussi les pièces jointes orphelines.
+    await claimOrphanAttachments(store, user.id);
     if (isForm) return c.redirect('/login?bootstrap=1', 302);
     return c.json(
       { ok: true, user: { username: user.username, role: 'admin' } },

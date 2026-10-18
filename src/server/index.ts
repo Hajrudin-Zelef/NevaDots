@@ -1,6 +1,7 @@
 import { webSearchProvider } from './parallel.js';
 import { createShutdown } from './shutdown.js';
 import { cleanupOrphanAttachments } from './attachment-routes.js';
+import { claimOrphanAttachments } from './attachment-routes.js';
 import { reportChannelFailure, safeFailure } from './slack-channel.js';
 import { serve } from '@hono/node-server';
 import { AuthStore, resolveAdminMasterPassword } from './auth-store.js';
@@ -212,15 +213,24 @@ app.get('*', serveStatic({ path: './dist/client/index.html' }));
 const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   console.log(`NevaDots template listening on http://${host}:${info.port}`);
   runner.start();
-  // Phase 2a : purge les pièces jointes orphelines (> 7 j, jamais rattachées).
-  void cleanupOrphanAttachments()
-    .then((removed) => {
-      if (removed > 0)
+  // C2 : le premier compte réclame d'abord les pièces jointes orphelines
+  // (sans propriétaire), AVANT la purge qui les supprimerait sinon.
+  void (async () => {
+    const firstUser = auth.firstUserId();
+    if (firstUser) {
+      const claimed = await claimOrphanAttachments(store, firstUser);
+      if (claimed > 0)
         console.log(
-          `Attachments: ${removed} fichier(s) orphelin(s) supprimé(s).`,
+          `Attachments: ${claimed} fichier(s) orphelin(s) réclamé(s) par le premier compte.`,
         );
-    })
-    .catch(() => {});
+    }
+    // Phase 2a : purge les pièces jointes orphelines (> 7 j, jamais rattachées).
+    const removed = await cleanupOrphanAttachments();
+    if (removed > 0)
+      console.log(
+        `Attachments: ${removed} fichier(s) orphelin(s) supprimé(s).`,
+      );
+  })().catch(() => {});
   void platform
     .start()
     .catch((error) =>

@@ -672,6 +672,8 @@ export class DotAgent extends AbstractAgent {
             // dans le dernier message utilisateur (avant conversion TanStack).
             const withImages = await injectAttachedImages(
               compacted.messages as ChatMessage[],
+              // C2 : le store porté par le Dot → seules ses images.
+              this.store,
             );
             check();
             const converted = convertInputToTanStackAI({

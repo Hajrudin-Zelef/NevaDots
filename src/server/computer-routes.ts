@@ -14,6 +14,9 @@ export function computerRoutes() {
     errorResponse(error, c, {
       zodMessage: 'Invalid computer request.',
       isSafe: isUserFacingComputerError,
+      // C2 : un Dot d'un autre compte se comporte comme inexistant (404),
+      // jamais comme une requête invalide (400).
+      statusFor: (message) => (message === 'Dot not found.' ? 404 : 400),
       fallback:
         'The computer service could not complete this request. Try again.',
       fallbackStatus: 503,

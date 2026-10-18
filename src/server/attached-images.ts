@@ -1,4 +1,5 @@
 import { claimUnconsumedImages } from './attachment-routes.js';
+import type { Store } from './store.js';
 
 interface MessageLike {
   role: string;
@@ -14,8 +15,9 @@ interface MessageLike {
  */
 export async function injectAttachedImages<T extends MessageLike>(
   messages: T[],
+  store: Store,
 ): Promise<T[]> {
-  const images = await claimUnconsumedImages();
+  const images = await claimUnconsumedImages(store);
   if (!images.length) return messages;
   let idx = -1;
   for (let i = messages.length - 1; i >= 0; i--) {

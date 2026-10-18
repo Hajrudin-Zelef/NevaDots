@@ -118,7 +118,7 @@ export class WorkspaceStore {
         .some((field) => field.name === 'user_id')
     )
       this.db.exec('ALTER TABLE dot_spaces ADD COLUMN user_id TEXT');
-    this.computers = new ComputerStore(this.db);
+    this.computers = new ComputerStore(this.db, userId);
     this.connections = new ConnectionStore(
       this.db,
       () => resolveSecretKey(),
@@ -182,6 +182,19 @@ export class WorkspaceStore {
         .run(userId);
     this.pages.claimOrphans(userId);
     this.connections.claimOrphans(userId);
+    // C2 : les messages du runner (même fichier DB) et les permissions /
+    // le journal des ordinateurs (résolus via le Dot propriétaire).
+    // Les tables runner_* n'existent que si le runner a déjà tourné.
+    for (const table of ['runner_threads', 'runner_runs']) {
+      const exists = this.db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+        .get(table);
+      if (exists)
+        this.db
+          .prepare(`UPDATE ${table} SET user_id=? WHERE user_id IS NULL`)
+          .run(userId);
+    }
+    this.computers.claimOrphans();
   }
   /**
    * Résolutions « système » (jamais de données utilisateur) : servent à

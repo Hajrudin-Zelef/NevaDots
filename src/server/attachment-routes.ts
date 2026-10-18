@@ -3,6 +3,8 @@ import { promises as fs } from 'node:fs';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { resolveUploadType } from './magic-bytes.js';
+import type { AppVariables } from './request-context.js';
+import type { Store } from './store.js';
 
 /** Configurable so attachments can live on a separate volume in production. */
 export const ATTACHMENTS_DIR =
@@ -97,7 +99,12 @@ export async function readMeta(id: string): Promise<AttachmentMeta | null> {
 }
 
 export function attachmentRoutes() {
-  const app = new Hono();
+  const app = new Hono<{ Variables: AppVariables }>();
+  // C2 : chaque pièce jointe appartient au compte qui l'a envoyée
+  // (table `attachment_users` du Store). Une pièce jointe d'un autre
+  // compte se comporte comme si elle n'existait pas (404).
+  const owned = (store: Store, id: string) =>
+    store.attachmentOwner(id) !== undefined;
 
   // Upload multipart : un ou plusieurs fichiers (champ "files").
   app.post('/attachments', async (c) => {
@@ -151,6 +158,9 @@ export function attachmentRoutes() {
         createdAt: Date.now(),
       };
       await fs.writeFile(join(dir, 'meta.json'), JSON.stringify(meta));
+      // C2 : l'upload enregistre le propriétaire (jamais volé ensuite :
+      // claimAttachment ne touche pas une pièce déjà attribuée).
+      c.get('store').claimAttachment(id, c.get('userId'));
       saved.push(meta);
     }
     return c.json({ attachments: saved }, 201);
@@ -160,7 +170,8 @@ export function attachmentRoutes() {
   // ?download=1 force le téléchargement.
   app.get('/attachments/:id/content', async (c) => {
     const meta = await readMeta(c.req.param('id'));
-    if (!meta) return c.json({ error: 'Fichier introuvable.' }, 404);
+    if (!meta || !owned(c.get('store'), meta.id))
+      return c.json({ error: 'Fichier introuvable.' }, 404);
     const data = await fs.readFile(join(attachmentDir(meta.id), 'file'));
     const download = c.req.query('download') === '1';
     // Neutralise le HTML pour éviter toute exécution de script.
@@ -180,14 +191,16 @@ export function attachmentRoutes() {
   // Métadonnées (utile pour vérifier la limite de 5 Mo côté client).
   app.get('/attachments/:id', async (c) => {
     const meta = await readMeta(c.req.param('id'));
-    if (!meta) return c.json({ error: 'Fichier introuvable.' }, 404);
+    if (!meta || !owned(c.get('store'), meta.id))
+      return c.json({ error: 'Fichier introuvable.' }, 404);
     return c.json({ ...meta, previewInline: meta.size <= PREVIEW_LIMIT });
   });
 
   // Contenu texte (aperçu des fichiers text/code côté serveur).
   app.get('/attachments/:id/text', async (c) => {
     const meta = await readMeta(c.req.param('id'));
-    if (!meta) return c.json({ error: 'Fichier introuvable.' }, 404);
+    if (!meta || !owned(c.get('store'), meta.id))
+      return c.json({ error: 'Fichier introuvable.' }, 404);
     if (meta.category !== 'text' && meta.category !== 'code') {
       return c.json({ error: 'Pas un fichier texte.' }, 400);
     }
@@ -204,8 +217,10 @@ export function attachmentRoutes() {
   // Suppression.
   app.delete('/attachments/:id', async (c) => {
     const meta = await readMeta(c.req.param('id'));
-    if (!meta) return c.json({ error: 'Fichier introuvable.' }, 404);
+    if (!meta || !owned(c.get('store'), meta.id))
+      return c.json({ error: 'Fichier introuvable.' }, 404);
     await fs.rm(attachmentDir(meta.id), { recursive: true, force: true });
+    c.get('store').deleteAttachmentOwner(meta.id);
     return c.json({ ok: true });
   });
 
@@ -222,7 +237,8 @@ export function attachmentRoutes() {
     let marked = 0;
     for (const id of ids) {
       const meta = await readMeta(id);
-      if (!meta || meta.attachedAt) continue;
+      // C2 : on ne marque que ses propres pièces jointes.
+      if (!meta || meta.attachedAt || !owned(c.get('store'), meta.id)) continue;
       // Écrit via l'ID relu du meta (pas le paramètre brut).
       await fs.writeFile(
         join(attachmentDir(meta.id), 'meta.json'),
@@ -266,7 +282,34 @@ export async function cleanupOrphanAttachments(
   return removed;
 }
 
-/** Limite d'image envoyée au modèle (5 Mo, cohérent avec PREVIEW_LIMIT). */
+/**
+ * C2 — réclame les pièces jointes orphelines (sans propriétaire) au
+ * premier compte (boot / bootstrap). Les pièces déjà attribuées ne sont
+ * jamais touchées (garde NOT EXISTS dans claimAttachment).
+ */
+export async function claimOrphanAttachments(
+  store: Store,
+  userId: string,
+): Promise<number> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(ATTACHMENTS_DIR);
+  } catch {
+    return 0;
+  }
+  let claimed = 0;
+  for (const entry of entries) {
+    const meta = await readMeta(entry);
+    if (!meta) continue;
+    // Contrôle système : seule une pièce VRAIMENT sans propriétaire
+    // est réclamée (celle d'un autre compte ne l'est jamais).
+    if (store.attachmentOwnerAny(meta.id) === undefined) {
+      store.claimAttachment(meta.id, userId);
+      claimed++;
+    }
+  }
+  return claimed;
+}
 const IMAGE_MODEL_LIMIT = 5 * 1024 * 1024;
 /** Fenêtre de rattachement : l'image doit avoir été jointe récemment. */
 const IMAGE_CLAIM_WINDOW_MS = 10 * 60 * 1000;
@@ -283,7 +326,15 @@ export interface ClaimedImage {
  * Les images > 5 Mo sont marquées consommées mais ignorées (trop lourdes
  * pour l'input modèle).
  */
-export async function claimUnconsumedImages(): Promise<ClaimedImage[]> {
+/**
+ * Phase 5 (multimodal) : récupère les images rattachées à un message mais
+ * pas encore consommées par un run modèle, et les marque comme consommées.
+ * C2 : seules les images DU COMPTE porté par `store` sont réclamées
+ * (un Dot ne consomme jamais l'image d'un autre compte).
+ */
+export async function claimUnconsumedImages(
+  store: Store,
+): Promise<ClaimedImage[]> {
   let entries: string[];
   try {
     entries = await fs.readdir(ATTACHMENTS_DIR);
@@ -298,7 +349,8 @@ export async function claimUnconsumedImages(): Promise<ClaimedImage[]> {
       !meta ||
       meta.category !== 'image' ||
       !meta.attachedAt ||
-      meta.consumedAt
+      meta.consumedAt ||
+      store.attachmentOwner(meta.id) === undefined
     )
       continue;
     if (now - meta.attachedAt > IMAGE_CLAIM_WINDOW_MS) continue;

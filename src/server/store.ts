@@ -53,6 +53,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, taskId TEXT NOT NULL, status TEXT NOT NULL, startedAt INTEGER NOT NULL, finishedAt INTEGER, result TEXT, error TEXT, user_id TEXT);
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, taskId TEXT NOT NULL, runId TEXT, text TEXT NOT NULL, createdAt INTEGER NOT NULL, user_id TEXT);
       CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, text TEXT NOT NULL, createdAt INTEGER NOT NULL, user_id TEXT);
+      CREATE TABLE IF NOT EXISTS attachment_users (attachmentId TEXT PRIMARY KEY, userId TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, model TEXT NOT NULL, promptTokens INTEGER, completionTokens INTEGER, costUsd REAL);
       CREATE INDEX IF NOT EXISTS tasks_due ON tasks(status, nextRunAt);
       CREATE INDEX IF NOT EXISTS runs_task ON runs(taskId, startedAt);
@@ -575,6 +576,46 @@ export class Store {
     return this.db
       .prepare('DELETE FROM memories WHERE user_id=?')
       .run(this.userId).changes as number;
+  }
+  /**
+   * C2 — pièces jointes (fichiers disque) : la table `attachment_users`
+   * relie chaque pièce jointe à son compte. Les routes vérifient la
+   * propriété via `attachmentOwner` (porté : ne renvoie que si c'est
+   * à ce compte) ; `claimAttachment` (système) attribue une pièce
+   * jointe sans propriétaire, sans jamais voler celle d'un autre compte
+   * (garde NOT EXISTS).
+   */
+  attachmentOwner(attachmentId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT userId FROM attachment_users WHERE attachmentId=? AND userId=?',
+      )
+      .get(attachmentId, this.userId) as { userId?: string } | undefined;
+    return typeof row?.userId === 'string' ? row.userId : undefined;
+  }
+  /** Système : le propriétaire, quel que soit le compte (pour le claim). */
+  attachmentOwnerAny(attachmentId: string): string | undefined {
+    const row = this.db
+      .prepare('SELECT userId FROM attachment_users WHERE attachmentId=?')
+      .get(attachmentId) as { userId?: string } | undefined;
+    return typeof row?.userId === 'string' ? row.userId : undefined;
+  }
+  claimAttachment(attachmentId: string, userId: string): void {
+    this.db
+      .prepare(
+        'INSERT INTO attachment_users (attachmentId, userId) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM attachment_users WHERE attachmentId=?)',
+      )
+      .run(attachmentId, userId, attachmentId);
+  }
+  deleteAttachmentOwner(attachmentId: string): boolean {
+    this.requireUser();
+    return (
+      this.db
+        .prepare(
+          'DELETE FROM attachment_users WHERE attachmentId=? AND userId=?',
+        )
+        .run(attachmentId, this.userId).changes > 0
+    );
   }
   /** Record one model completion's token usage (best-effort, no throw). */
   recordUsage(entry: {

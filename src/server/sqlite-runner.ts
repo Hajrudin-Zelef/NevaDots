@@ -53,14 +53,26 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
         agent_id TEXT,
         parent_run_id TEXT,
         events TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        user_id TEXT
       );
       CREATE TABLE IF NOT EXISTS runner_threads (
         thread_id TEXT PRIMARY KEY,
         messages TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        user_id TEXT
       );
     `);
+    // Migration C2 : les bases créées avant C2 n'ont pas user_id.
+    for (const table of ['runner_runs', 'runner_threads']) {
+      if (
+        !this.db
+          .prepare(`PRAGMA table_info(${table})`)
+          .all()
+          .some((row) => row.name === 'user_id')
+      )
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`);
+    }
     this.rehydrate();
   }
 
@@ -122,14 +134,42 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
       );
   }
 
+  /**
+   * C2 — le propriétaire d'un thread = celui de sa fiche (thread_bindings).
+   * Le runner partage le fichier DB du workspace, donc il peut le lire
+   * directement. Un thread sans fiche (jamais lié) est orphelin (NULL) :
+   * il sera réclamé au boot / au bootstrap.
+   */
+  private ownerOfThread(threadId: string): string | null {
+    try {
+      const row = this.db
+        .prepare('SELECT ownerId FROM thread_bindings WHERE id=?')
+        .get(threadId) as { ownerId?: unknown } | undefined;
+      return typeof row?.ownerId === 'string' ? row.ownerId : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Migration (système) : réclame les threads/runs orphelins. */
+  claimOrphans(userId: string) {
+    this.db
+      .prepare('UPDATE runner_threads SET user_id=? WHERE user_id IS NULL')
+      .run(userId);
+    this.db
+      .prepare('UPDATE runner_runs SET user_id=? WHERE user_id IS NULL')
+      .run(userId);
+  }
+
   private persist(threadId: string) {
     const thread = globalStore.peek(threadId);
     if (!thread) return;
+    const owner = this.ownerOfThread(threadId);
     this.db
       .prepare('DELETE FROM runner_runs WHERE thread_id = ?')
       .run(threadId);
     const insert = this.db.prepare(
-      'INSERT INTO runner_runs (thread_id, run_id, agent_id, parent_run_id, events, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO runner_runs (thread_id, run_id, agent_id, parent_run_id, events, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
     for (const run of thread.historicRuns) {
       insert.run(
@@ -139,14 +179,20 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
         run.parentRunId ?? null,
         JSON.stringify(run.events ?? []),
         run.createdAt ?? Date.now(),
+        owner,
       );
     }
     const createdAt = thread.historicRuns[0]?.createdAt ?? Date.now();
     this.db
       .prepare(
-        'INSERT INTO runner_threads (thread_id, messages, created_at) VALUES (?, ?, ?) ON CONFLICT(thread_id) DO UPDATE SET messages = excluded.messages',
+        'INSERT INTO runner_threads (thread_id, messages, created_at, user_id) VALUES (?, ?, ?, ?) ON CONFLICT(thread_id) DO UPDATE SET messages = excluded.messages, user_id = excluded.user_id',
       )
-      .run(threadId, JSON.stringify(thread.messagesSnapshot ?? []), createdAt);
+      .run(
+        threadId,
+        JSON.stringify(thread.messagesSnapshot ?? []),
+        createdAt,
+        owner,
+      );
   }
 
   override run(request: AgentRunnerRunRequest) {
