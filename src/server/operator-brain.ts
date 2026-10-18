@@ -3,12 +3,14 @@ import { join, normalize, relative, sep } from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
   closeSync,
+  constants as fsConstants,
+  lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
   readSync,
-  statSync,
-  writeFileSync,
+  realpathSync,
+  writeSync,
 } from 'node:fs';
 
 /**
@@ -73,22 +75,64 @@ export interface BrainFile {
   content: string;
 }
 
-async function readIfExists(absPath: string): Promise<string | null> {
-  try {
-    return await fs.readFile(absPath, 'utf8');
-  } catch {
-    return null;
+/** Plafond de lecture d'un fichier cerveau (1 Mo) — l'écriture est plafonnée à 100 Ko. */
+const BRAIN_READ_CAP = 1_000_000;
+/** Profondeur maximale des marches du cerveau (anti-boucle). */
+const BRAIN_WALK_DEPTH_MAX = 8;
+
+/**
+ * Vérifie qu'aucun composant du chemin entre root (exclu) et le parent de abs
+ * n'est un symlink. Un composant manquant : échec en lecture (le fichier
+ * n'existe pas), toléré en écriture (mkdir le créera — les composants en
+ * dessous ne peuvent pas exister). Ne protège pas contre un remplacement
+ * entre le contrôle et l'usage (attaquant en course, hors modèle de menace :
+ * les symlinks visés sont plantés dans un dépôt cloné) ; le composant final
+ * est lui verrouillé par O_NOFOLLOW à l'ouverture.
+ */
+async function checkAncestorsNoSymlink(
+  root: string,
+  abs: string,
+  allowMissing: boolean,
+): Promise<boolean> {
+  const parts = relative(root, abs).split(sep).filter(Boolean);
+  let cur = root;
+  for (const part of parts.slice(0, -1)) {
+    cur = join(cur, part);
+    try {
+      if ((await fs.lstat(cur)).isSymbolicLink()) return false;
+    } catch {
+      if (!allowMissing) return false;
+      return true;
+    }
   }
+  return true;
 }
 
-/** Liste les fichiers .md d'une partition (récursif, borné à 100). */
+/**
+ * Liste les fichiers .md d'une partition (récursif, borné à 100).
+ * Les symlinks ne sont ni suivis ni listés (fail-closed) ; profondeur
+ * bornée + ensemble de visités (anti-cycle).
+ */
 export async function listBrainFiles(
   partition: BrainPartition,
 ): Promise<string[]> {
   const root = partitionRoot(partition);
   const out: string[] = [];
-  async function walk(dir: string, prefix: string): Promise<void> {
-    if (out.length >= 100) return;
+  const visited = new Set<string>();
+  async function walk(
+    dir: string,
+    prefix: string,
+    depth: number,
+  ): Promise<void> {
+    if (out.length >= 100 || depth > BRAIN_WALK_DEPTH_MAX) return;
+    let real: string;
+    try {
+      real = await fs.realpath(dir);
+    } catch {
+      return;
+    }
+    if (visited.has(real)) return;
+    visited.add(real);
     let entries: string[];
     try {
       entries = await fs.readdir(dir);
@@ -100,20 +144,21 @@ export async function listBrainFiles(
       if (entry.startsWith('.')) continue;
       const abs = join(dir, entry);
       const rel = prefix ? `${prefix}/${entry}` : entry;
-      let stat: { isDirectory(): boolean };
+      let stat: { isDirectory(): boolean; isSymbolicLink(): boolean };
       try {
-        stat = await fs.stat(abs);
+        stat = await fs.lstat(abs);
       } catch {
         continue;
       }
+      if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory()) {
-        await walk(abs, rel);
+        await walk(abs, rel, depth + 1);
       } else if (entry.endsWith('.md')) {
         out.push(rel);
       }
     }
   }
-  await walk(root, '');
+  await walk(root, '', 0);
   return out;
 }
 
@@ -123,9 +168,26 @@ export async function readBrainFile(
 ): Promise<BrainFile | null> {
   const abs = resolveBrainPath(partition, relPath);
   if (!abs) return null;
-  const content = await readIfExists(abs);
-  if (content === null) return null;
-  return { partition, path: relPath, content };
+  if (!(await checkAncestorsNoSymlink(partitionRoot(partition), abs, false)))
+    return null;
+  // O_NOFOLLOW : l'ouverture échoue (ELOOP) si la cible finale est un symlink,
+  // ce qui ferme la course entre le contrôle et la lecture.
+  try {
+    const handle = await fs.open(
+      abs,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+    );
+    try {
+      const st = await handle.stat();
+      if (!st.isFile() || st.size > BRAIN_READ_CAP) return null;
+      const content = await handle.readFile('utf8');
+      return { partition, path: relPath, content };
+    } finally {
+      await handle.close().catch(() => {});
+    }
+  } catch {
+    return null;
+  }
 }
 
 export async function writeBrainFile(
@@ -136,8 +198,34 @@ export async function writeBrainFile(
   const abs = resolveBrainPath(partition, relPath);
   if (!abs || typeof content !== 'string' || content.length > 100000)
     return null;
+  const root = partitionRoot(partition);
+  if (!(await checkAncestorsNoSymlink(root, abs, true))) return null;
   await fs.mkdir(join(abs, '..'), { recursive: true });
-  await fs.writeFile(abs, content, 'utf8');
+  // Re-vérifie après mkdir (un parent aurait pu être remplacé entre-temps).
+  if (!(await checkAncestorsNoSymlink(root, abs, true))) return null;
+  try {
+    const st = await fs.lstat(abs);
+    if (st.isSymbolicLink() || !st.isFile()) return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null;
+  }
+  try {
+    const handle = await fs.open(
+      abs,
+      fsConstants.O_WRONLY |
+        fsConstants.O_CREAT |
+        fsConstants.O_TRUNC |
+        fsConstants.O_NOFOLLOW,
+      0o644,
+    );
+    try {
+      await handle.writeFile(content, 'utf8');
+    } finally {
+      await handle.close().catch(() => {});
+    }
+  } catch {
+    return null;
+  }
   return { partition, path: relPath, content };
 }
 
@@ -227,7 +315,9 @@ function brainFileHeadline(abs: string): string {
     line.length > 80 ? `${line.slice(0, 80)}…` : line;
   let fd: number | null = null;
   try {
-    fd = openSync(abs, 'r');
+    const st = lstatSync(abs);
+    if (st.isSymbolicLink() || !st.isFile()) return '';
+    fd = openSync(abs, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
     const buf = Buffer.alloc(1024);
     const n = readSync(fd, buf, 0, 1024, 0);
     const lines = buf.toString('utf8', 0, n).split('\n');
@@ -292,12 +382,34 @@ export function consultBrainSync(memories: string[]): string {
     try {
       const abs = resolveBrainPath('user', 'memories.md');
       if (abs) {
-        mkdirSync(join(abs, '..'), { recursive: true });
-        writeFileSync(
-          abs,
-          `# Mémoires utilisateur\n\n${memories.map((m) => `- ${m}`).join('\n')}\n`,
-          'utf8',
-        );
+        // Ne jamais seeder à travers un symlink (cible écrasée).
+        let isLink = false;
+        try {
+          isLink = lstatSync(abs).isSymbolicLink();
+        } catch {
+          // Manquant : création normale.
+        }
+        if (!isLink) {
+          mkdirSync(join(abs, '..'), { recursive: true });
+          const fd = openSync(
+            abs,
+            fsConstants.O_WRONLY |
+              fsConstants.O_CREAT |
+              fsConstants.O_TRUNC |
+              fsConstants.O_NOFOLLOW,
+            0o644,
+          );
+          try {
+            writeSync(
+              fd,
+              `# Mémoires utilisateur\n\n${memories.map((m) => `- ${m}`).join('\n')}\n`,
+              0,
+              'utf8',
+            );
+          } finally {
+            closeSync(fd);
+          }
+        }
       }
     } catch {
       // Seed optionnel : le cerveau reste vide.
@@ -309,16 +421,28 @@ export function consultBrainSync(memories: string[]): string {
   for (const partition of ['user', 'project', 'shared'] as const) {
     const proot = partitionRoot(partition);
     try {
-      const walk = (dir: string, prefix: string): void => {
-        if (found.length >= 100) return;
+      // Symlinks ignorés (ni suivis ni listés) ; profondeur bornée +
+      // ensemble de visités (anti-cycle) — comme listBrainFiles.
+      const visited = new Set<string>();
+      const walk = (dir: string, prefix: string, depth: number): void => {
+        if (found.length >= 100 || depth > BRAIN_WALK_DEPTH_MAX) return;
+        let real: string;
+        try {
+          real = realpathSync(dir);
+        } catch {
+          return;
+        }
+        if (visited.has(real)) return;
+        visited.add(real);
         for (const entry of readdirSync(dir).sort()) {
           if (found.length >= 100) return;
           if (entry.startsWith('.')) continue;
           const abs = join(dir, entry);
           const rel = prefix ? `${prefix}/${entry}` : entry;
           try {
-            const st = statSync(abs);
-            if (st.isDirectory()) walk(abs, rel);
+            const st = lstatSync(abs);
+            if (st.isSymbolicLink()) continue;
+            if (st.isDirectory()) walk(abs, rel, depth + 1);
             else if (entry.endsWith('.md')) {
               if (partition === 'user' && rel.toLowerCase() === 'memories.md')
                 continue;
@@ -330,7 +454,7 @@ export function consultBrainSync(memories: string[]): string {
           }
         }
       };
-      walk(proot, '');
+      walk(proot, '', 0);
     } catch {
       continue;
     }
