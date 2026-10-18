@@ -22,6 +22,10 @@ data/
 # Local fork assets (source images)
 docs/FORKoffLine/
 
+# Upstream OpenDots docs (English) — kept locally for reference, never committed.
+# The fork's tracked docs live in docs/Nevadots/.
+docs/Opendots/
+
 # Confidential fork planning notes and source masters — never committed.
 OffLineFork/
 
