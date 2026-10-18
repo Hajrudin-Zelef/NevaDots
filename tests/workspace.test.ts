@@ -144,3 +144,31 @@ it('refuses an avatar id in the model slot of createDot', () => {
   expect(dot.avatar).toBe('leo');
   store.close();
 });
+
+it('migre un app_config legacy AVEC lignes (prod) sans violer NOT NULL', () => {
+  // Régression C1 : la migration app_config insérait NULL dans une colonne
+  // NOT NULL → le serveur refusait de démarrer sur une base réelle.
+  const dir = mkdtempSync(join(tmpdir(), 'ws-legacy-'));
+  const path = join(dir, 'legacy.sqlite');
+  const setup = new DatabaseSync(path);
+  setup.exec(
+    "CREATE TABLE app_config(key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO app_config VALUES ('k','v');",
+  );
+  setup.close();
+  const store = new WorkspaceStore(path, 'owner');
+  store.claimOrphans('user-1');
+  const row = (
+    store as unknown as {
+      db: DatabaseSync;
+    }
+  ).db
+    .prepare('SELECT user_id, key, value FROM app_config')
+    .get() as {
+    user_id: string;
+    key: string;
+    value: string;
+  };
+  expect(row).toMatchObject({ user_id: 'user-1', key: 'k', value: 'v' });
+  store.close();
+  rmSync(dir, { recursive: true, force: true });
+});

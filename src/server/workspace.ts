@@ -92,7 +92,7 @@ export class WorkspaceStore {
         .some((field) => field.name === 'user_id')
     ) {
       this.db.exec(`BEGIN;
-        CREATE TABLE app_config_new(user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(user_id, key));
+        CREATE TABLE app_config_new(user_id TEXT, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(user_id, key));
         INSERT INTO app_config_new SELECT NULL, key, value FROM app_config;
         DROP TABLE app_config;
         ALTER TABLE app_config_new RENAME TO app_config;
