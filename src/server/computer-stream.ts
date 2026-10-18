@@ -21,9 +21,29 @@ export type StreamUpgradeStatus =
 
 export interface StreamUpgradeHeaders {
   origin?: string | null;
-  host?: string | null;
-  forwardedProto?: string | null;
   fetchSite?: string | null;
+}
+
+/** Hostnames loopback : l'Origin du navigateur même-hôte, tout port. */
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/**
+ * Origine autorisée : exactement une origine configurée, ou une origine
+ * loopback (http/https). Jamais dérivée des en-têtes de la requête (Host /
+ * X-Forwarded-Proto sont contrôlés par le client : un Host forgé rendait
+ * n'importe quelle Origin « autorisée »). L'auth réelle reste le ticket
+ * à usage unique ; ce contrôle n'est que de la défense en profondeur.
+ */
+function isAllowedOrigin(origin: string, origins: string[]): boolean {
+  if (origins.includes(origin)) return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  return LOOPBACK_HOSTNAMES.has(parsed.hostname);
 }
 
 /**
@@ -41,12 +61,8 @@ export function checkStreamUpgrade(
   const match = STREAM_PATH.exec(pathname);
   if (!match) return { status: 'bad-path' };
   const origin = headers.origin ?? null;
-  if (origin) {
-    const host = headers.host ?? '';
-    const proto = headers.forwardedProto?.split(',')[0]?.trim() || 'http';
-    const allowed = new Set([...(origins ?? []), `${proto}://${host}`]);
-    if (!allowed.has(origin)) return { status: 'bad-origin' };
-  }
+  if (origin && !isAllowedOrigin(origin, origins ?? []))
+    return { status: 'bad-origin' };
   if (headers.fetchSite === 'cross-site') return { status: 'bad-origin' };
   if (!ticket) return { status: 'bad-ticket' };
   // Chemin non-UTF8 ou % malformé : 401, ticket non consommé.
@@ -90,11 +106,6 @@ export function attachComputerStream(
         url.searchParams.get('ticket'),
         {
           origin: headers.origin ?? null,
-          host: headers.host ?? null,
-          forwardedProto:
-            (Array.isArray(headers['x-forwarded-proto'])
-              ? headers['x-forwarded-proto'][0]
-              : (headers['x-forwarded-proto'] as string | undefined)) ?? null,
           fetchSite: (headers['sec-fetch-site'] as string | undefined) ?? null,
         },
         origins,
@@ -113,11 +124,22 @@ export function attachComputerStream(
   );
 }
 
+/** Plafonds du tampon pré-upstream : un client qui inonde avant l'ouverture upstream ne fait pas gonfler la mémoire sans limite. */
+const PENDING_MAX_MESSAGES = 50;
+const PENDING_MAX_BYTES = 1_048_576; // 1 Mio
+
+function rawDataBytes(data: RawData): number {
+  if (typeof data === 'string') return Buffer.byteLength(data);
+  if (Array.isArray(data)) return data.reduce((n, b) => n + b.length, 0);
+  return data.byteLength;
+}
+
 function bridge(client: WebSocket, computers: ComputerService, dotId: string) {
   let upstream: WebSocket | undefined;
   let upstreamOpen = false;
   let closed = false;
   const pending: { data: RawData; binary: boolean }[] = [];
+  let pendingBytes = 0;
   const shutdown = () => {
     if (closed) return;
     closed = true;
@@ -136,7 +158,22 @@ function bridge(client: WebSocket, computers: ComputerService, dotId: string) {
   // Attach the client listener before awaiting so early input is buffered.
   client.on('message', (data: RawData, binary: boolean) => {
     if (upstream && upstreamOpen) upstream.send(data, { binary });
-    else pending.push({ data, binary });
+    else {
+      pendingBytes += rawDataBytes(data);
+      pending.push({ data, binary });
+      if (
+        pending.length > PENDING_MAX_MESSAGES ||
+        pendingBytes > PENDING_MAX_BYTES
+      ) {
+        // Flood avant ouverture upstream : fermeture propre, message générique.
+        try {
+          client.close(1011, 'Computer stream failed.');
+        } catch {
+          /* already closing */
+        }
+        shutdown();
+      }
+    }
   });
   client.on('close', shutdown);
   client.on('error', shutdown);
@@ -164,15 +201,11 @@ function bridge(client: WebSocket, computers: ComputerService, dotId: string) {
       });
       socket.on('close', shutdown);
       socket.on('error', shutdown);
-    } catch (error) {
+    } catch {
+      // Message générique : le détail interne (hôte/port/URL du conteneur)
+      // ne part pas au client.
       if (client.readyState === WebSocket.OPEN)
-        client.close(
-          1011,
-          (error instanceof Error
-            ? error.message
-            : 'Computer stream failed.'
-          ).slice(0, 120),
-        );
+        client.close(1011, 'Computer stream failed.');
     }
   })();
 }
