@@ -16,6 +16,8 @@ import { ThinkingOrb } from './ThinkingOrb';
 import type { ActivityEvent } from '../shared/activity';
 import { groupByDay, timeOfDay } from './day-groups';
 import { ActivityDetailModal } from './ActivityDetailModal';
+import { LiveTerminalStrip } from './ComputerTerminal';
+import type { ComputerActivitySnapshot } from './useComputerActivity';
 import type { ComputerStatus } from '../shared/computer-types';
 import type { Conversation, Dot, Settings, Task } from '../shared/types';
 
@@ -47,8 +49,10 @@ export function ActivityPanel({
   mascotState,
   tasks,
   settings,
+  terminalActivity,
   onOpenConversation,
   onOpenComputer,
+  onOpenTerminal,
   onOpenSettings,
   onOpenTasks,
 }: {
@@ -66,8 +70,10 @@ export function ActivityPanel({
   mascotState?: string;
   tasks: Task[];
   settings: Settings;
+  terminalActivity: ComputerActivitySnapshot;
   onOpenConversation: (id: string) => void;
   onOpenComputer?: () => void;
+  onOpenTerminal?: () => void;
   onOpenSettings: () => void;
   onOpenTasks: () => void;
 }) {
@@ -174,6 +180,12 @@ export function ActivityPanel({
               {statusText(running, paused)}
             </span>
           </header>
+          <LiveTerminalStrip
+            dotId={dot.id}
+            dotName={dot.name}
+            activity={terminalActivity}
+            onOpenTerminal={onOpenTerminal}
+          />
           <nav className="muse-tabs" role="tablist">
             {TABS.map(({ id, label, icon: Icon }) => (
               <button

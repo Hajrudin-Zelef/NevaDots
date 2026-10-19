@@ -514,9 +514,191 @@ textarea::placeholder {
   gap: 10px;
 }
 .computer-terminal-log > li {
+  min-width: 0;
+}
+.computer-terminal-run {
+  min-width: 0;
   border: 1px solid var(--nd-border);
   border-radius: 8px;
+  background: var(--nd-bg, #fff);
+  overflow: hidden;
+}
+.computer-terminal-run.failed {
+  border-color: color-mix(in srgb, var(--nd-danger) 45%, var(--nd-border));
+}
+.computer-terminal-run-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.computer-terminal-run-summary::-webkit-details-marker {
+  display: none;
+}
+.computer-terminal-run-summary::before {
+  content: '›';
+  flex: 0 0 10px;
+  color: var(--nd-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+.computer-terminal-run[open] > .computer-terminal-run-summary::before {
+  content: '⌄';
+}
+.computer-terminal-command {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--nd-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.computer-terminal-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  color: var(--nd-success, #0f9f6e);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.computer-terminal-status.failed {
+  color: var(--nd-danger);
+}
+.computer-terminal-expand-hint {
+  flex: 0 0 auto;
+  color: var(--nd-muted);
+  font-size: 10px;
+}
+.computer-terminal-status.running {
+  color: var(--nd-accent);
+}
+.computer-terminal-run-output {
+  position: relative;
+  max-height: 260px;
+  overflow: auto;
+  padding: 0 10px 10px 28px;
+}
+.computer-terminal-run-output pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 4px 0;
+  padding: 9px 10px;
+  border-radius: 6px;
+  font:
+    12px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.computer-terminal-empty,
+.computer-terminal-empty-output {
+  margin: 8px 0;
+  color: var(--nd-muted);
+  font-size: 12px;
+}
+.computer-terminal-log.compact {
+  max-height: 190px;
+  margin: 0;
+  gap: 6px;
+}
+.live-terminal-strip {
+  flex: 0 0 auto;
+  margin: 0 14px 8px;
+  border: 1px solid var(--nd-border);
+  border-radius: 10px;
+  background: var(--nd-bg-sidebar);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--nd-text) 5%, transparent);
+}
+.live-terminal-strip-head {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+  padding: 2px 6px;
+}
+.live-terminal-strip-toggle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px 5px;
+  border: 0;
+  background: transparent;
+  color: var(--nd-text);
+  text-align: left;
+  cursor: pointer;
+}
+.live-terminal-indicator {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--nd-muted);
+}
+.live-terminal-indicator.connected {
+  background: var(--nd-success, #0f9f6e);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--nd-success, #0f9f6e) 15%, transparent);
+}
+.live-terminal-indicator.error {
+  background: var(--nd-danger);
+}
+.live-terminal-strip-latest {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--nd-text-secondary);
+  font:
+    11px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-terminal-open {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--nd-accent);
+  font-size: 11px;
+  cursor: pointer;
+}
+.live-terminal-open:hover {
+  background: var(--nd-bg-hover);
+}
+.live-terminal-strip-body {
+  max-height: min(34vh, 250px);
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+.live-terminal-strip-body .computer-terminal-run-output {
+  max-height: 150px;
+  padding-left: 24px;
+}
+.live-terminal-strip-body .computer-terminal-run-summary {
+  padding: 5px 7px;
+}
+.live-terminal-strip-body .computer-terminal-actor {
+  padding: 1px 6px;
+  font-size: 10px;
+}
+.live-terminal-strip-body .computer-terminal-status {
+  font-size: 10px;
 }
 .computer-terminal-cmd {
   display: flex;

@@ -60,6 +60,7 @@ import { StepCard } from './StepCard';
 import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
 import { CallView } from './CallView';
+import { useComputerActivity } from './useComputerActivity';
 
 export function Chat({
   thread,
@@ -78,6 +79,8 @@ export function Chat({
   onSaved,
   onSchedule,
   onComputer,
+  onAgentTerminalStart,
+  onOpenTerminal,
   conversations,
   tasks,
   settings,
@@ -104,6 +107,8 @@ export function Chat({
   onSaved: () => void;
   onSchedule: () => void;
   onComputer?: () => void;
+  onAgentTerminalStart?: () => void;
+  onOpenTerminal?: () => void;
   conversations?: Conversation[];
   tasks?: Task[];
   settings?: Settings;
@@ -120,6 +125,14 @@ export function Chat({
     runtimeAgentId: dot.id,
     threadId: thread.id,
   });
+  // Le rail garde le flux actif pendant toute la conversation. Si le panneau
+  // Terminal s'ouvre, son hook rejoint le même flux partagé au lieu d'en créer
+  // un second.
+  const terminalActivity = useComputerActivity(
+    dot.id,
+    true,
+    onAgentTerminalStart,
+  );
   const { copilotkit } = useCopilotKit();
   const runError = useRef('');
   // Phase 3 : carte de progression des étapes de l'agent.
@@ -903,6 +916,7 @@ export function Chat({
         conversations={conversations ?? [thread]}
         currentThreadId={thread.id}
         liveEvents={activity}
+        terminalActivity={terminalActivity}
         running={running}
         paused={paused}
         mascotState={mascotState}
@@ -922,6 +936,7 @@ export function Chat({
           onRailChange(false);
           onComputer?.();
         }}
+        onOpenTerminal={onOpenTerminal}
         onOpenSettings={() => onOpenSettings?.()}
         onOpenTasks={() => onOpenTasks?.()}
       />

@@ -88,7 +88,9 @@ beforeEach(() => {
 
 const roots: ReactTestRenderer[] = [];
 afterEach(() => {
-  while (roots.length) roots.pop()?.unmount();
+  act(() => {
+    while (roots.length) roots.pop()?.unmount();
+  });
   vi.unstubAllGlobals();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('document', { hidden: false });
@@ -344,13 +346,11 @@ it('le journal terminal affiche la commande live puis sa sortie', async () => {
     className: 'computer-terminal-actor agent',
   });
   expect(badge).toHaveLength(1);
-  const meta = root.findAllByProps({ className: 'computer-terminal-meta' });
-  expect(
-    (Array.isArray(meta[0].children) ? meta[0].children.join('') : '').replace(
-      /\s+/g,
-      ' ',
-    ),
-  ).toContain('Sortie 0');
+  const statuses = root.findAllByProps({
+    className: 'computer-terminal-status done',
+  });
+  expect(statuses).toHaveLength(1);
+  expect(textOf(statuses[0])).toContain('Terminé · 0.1 s');
   const pres = root
     .findAllByType('pre')
     .map((p) => (Array.isArray(p.children) ? p.children.join('') : ''));

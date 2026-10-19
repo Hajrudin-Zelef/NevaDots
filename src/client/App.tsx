@@ -52,6 +52,7 @@ import { useAttachments } from './useAttachments';
 import { useDotModelControls } from './useDotModelControls';
 import { ThreadList } from './ThreadList';
 import { ResultPane } from './ResultPane';
+import type { ComputerPanelTab } from './ComputerPanel';
 import { TaskRow } from './TaskPresentation';
 import { TaskActions } from './TaskActions';
 import { initialsOf } from './initials';
@@ -203,6 +204,8 @@ export function App() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   const [pane, setPane] = useState(false);
+  const [computerInitialTab, setComputerInitialTab] =
+    useState<ComputerPanelTab>('Browser');
   // Muse-style activity rail: docked, open by default, persisted. It collapses
   // into the pop-pop avatar bubble while the browser pane is open.
   const [rail, setRail] = useState(
@@ -220,6 +223,14 @@ export function App() {
   const changeRail = useCallback((open: boolean) => {
     setRail(open);
     localStorage.setItem('nevadots-rail', open ? 'open' : 'closed');
+  }, []);
+  const openComputer = useCallback(() => {
+    setComputerInitialTab('Browser');
+    setPane(true);
+  }, []);
+  const openComputerTerminal = useCallback(() => {
+    setComputerInitialTab('Terminal');
+    setPane(true);
   }, []);
   const [capture, setCapture] = useState<Result>();
   const [prompt, setPrompt] = useState('');
@@ -322,6 +333,15 @@ export function App() {
     (item) => item.id === selectedThread && item.dotId === dot?.id,
   );
   const configured = !!workspace && workspace.setup.missing.length === 0;
+  const onAgentTerminalStart = useCallback(() => {
+    // Le panneau ordinateur occupe l'espace du rail. À la première commande
+    // du Dot, on le referme et on remet le rail visible derrière le terminal.
+    if (pane) {
+      railBeforePane.current = true;
+      setPane(false);
+    }
+    changeRail(true);
+  }, [pane, changeRail]);
   const setupStep = workspace
     ? dialog?.type === 'settings'
       ? 'settings'
@@ -493,7 +513,7 @@ export function App() {
             className={`module-button ${pane ? 'active' : ''}`}
             onClick={() => {
               setView('chat');
-              setPane(true);
+              openComputer();
               setMobile(false);
             }}
           >
@@ -894,7 +914,9 @@ export function App() {
                   )}
                   paused={state.settings.paused}
                   onSaved={refresh}
-                  onComputer={() => setPane(true)}
+                  onComputer={openComputer}
+                  onAgentTerminalStart={onAgentTerminalStart}
+                  onOpenTerminal={openComputerTerminal}
                   onSchedule={() =>
                     setDialog({ type: 'schedule', threadId: thread.id })
                   }
@@ -1008,7 +1030,7 @@ export function App() {
                             current ? `${text}\n\n${current}` : text,
                           )
                         }
-                        onComputer={() => setPane(true)}
+                        onComputer={openComputer}
                         onCreateDot={() =>
                           setDialog({ type: 'dot', spaceId: dot.spaceId })
                         }
@@ -1112,6 +1134,7 @@ export function App() {
                 latest={capture}
                 dotState="idle"
                 onClose={() => setPane(false)}
+                initialComputerTab={computerInitialTab}
               />
             )}
           </div>
@@ -1296,6 +1319,7 @@ export function App() {
               }
               dotState="idle"
               onClose={() => setPane(false)}
+              initialComputerTab={computerInitialTab}
             />
           </div>
         )}

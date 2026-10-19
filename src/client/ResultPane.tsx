@@ -10,7 +10,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import type { Dot, Result, Status } from '../shared/types';
 import { Mascot } from './Mascot';
-import { ComputerPanel } from './ComputerPanel';
+import { ComputerPanel, type ComputerPanelTab } from './ComputerPanel';
 import { safeHostname, safeHref } from './safe-href';
 export function ResultPane({
   latest,
@@ -19,6 +19,7 @@ export function ResultPane({
   onClose,
   dots,
   defaultDotId,
+  initialComputerTab = 'Browser',
 }: {
   dots: Dot[];
   defaultDotId: string;
@@ -26,6 +27,7 @@ export function ResultPane({
   status?: Status;
   dotState: string;
   onClose: () => void;
+  initialComputerTab?: ComputerPanelTab;
 }) {
   const [resultTab, setResultTab] = useState<'Brief' | 'Computer'>('Computer');
   const [computerDotId, setComputerDotId] = useState(defaultDotId);
@@ -76,7 +78,11 @@ export function ResultPane({
             </select>
           </label>
           {computerDot ? (
-            <ComputerPanel key={computerDot.id} dot={computerDot} />
+            <ComputerPanel
+              key={computerDot.id}
+              dot={computerDot}
+              initialTab={initialComputerTab}
+            />
           ) : (
             <p className="computer-panel">
               Create a Dot to give it a computer.

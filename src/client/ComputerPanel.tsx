@@ -6,6 +6,7 @@ import { api } from './api';
 import { BrowserScreen } from './BrowserScreen';
 import { ThinkingOrb } from './ThinkingOrb';
 import { useComputerActivity } from './useComputerActivity';
+import { ComputerTerminalRunList } from './ComputerTerminal';
 import {
   fileBasename,
   formatFileSize,
@@ -31,10 +32,16 @@ const STATE_LABEL: Record<string, string> = {
   not_configured: 'non configuré',
 };
 
-export function ComputerPanel({ dot }: { dot: Dot }) {
-  const [tab, setTab] = useState<'Browser' | 'Files' | 'Terminal' | 'Activity'>(
-    'Browser',
-  );
+export type ComputerPanelTab = 'Browser' | 'Files' | 'Terminal' | 'Activity';
+
+export function ComputerPanel({
+  dot,
+  initialTab = 'Browser',
+}: {
+  dot: Dot;
+  initialTab?: ComputerPanelTab;
+}) {
+  const [tab, setTab] = useState<ComputerPanelTab>(initialTab);
   const [status, setStatus] = useState<ComputerStatus>();
   const [screen, setScreen] = useState<Screen>();
   const [error, setError] = useState('');
@@ -49,7 +56,6 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [histIndex, setHistIndex] = useState(-1);
   const terminalInputRef = useRef<HTMLTextAreaElement>(null);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [screenError, setScreenError] = useState('');
   // Navigateur de fichiers : état dédié, jamais dans la « Sortie » brute.
   const [filesDir, setFilesDir] = useState('');
@@ -756,74 +762,7 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                     ? 'Journal en direct.'
                     : 'Connexion au journal…'}
                 </p>
-                <ol
-                  className="computer-terminal-log"
-                  aria-label="Journal terminal"
-                >
-                  {terminal.runs.map((run) => (
-                    <li key={run.key}>
-                      <div className="computer-terminal-cmd">
-                        <span
-                          className={`computer-terminal-actor ${run.actor}`}
-                        >
-                          {run.actor === 'agent' ? 'Dot' : 'Vous'}
-                        </span>
-                        <code>$ {run.command}</code>
-                      </div>
-                      {run.running ? (
-                        <p className="computer-terminal-running" role="status">
-                          <ThinkingOrb kind="working" /> En cours…
-                        </p>
-                      ) : run.error ? (
-                        <p className="computer-error" role="alert">
-                          {run.error}
-                        </p>
-                      ) : (
-                        <>
-                          <p className="computer-terminal-meta">
-                            {typeof run.exitCode === 'number'
-                              ? `Sortie ${run.exitCode}`
-                              : 'Terminé'}
-                            {typeof run.elapsedMs === 'number' &&
-                              ` · ${(run.elapsedMs / 1000).toFixed(1)} s`}
-                            {run.timedOut && ' · délai dépassé'}
-                            {run.truncated && ' · sortie tronquée'}
-                          </p>
-                          {run.stdout && (
-                            <div className="computer-terminal-output">
-                              <pre>{run.stdout}</pre>
-                              <button
-                                type="button"
-                                className="computer-terminal-copy"
-                                onClick={() => {
-                                  void navigator.clipboard
-                                    .writeText(run.stdout ?? '')
-                                    .then(() => {
-                                      setCopiedKey(run.key);
-                                      setTimeout(
-                                        () => setCopiedKey(null),
-                                        1500,
-                                      );
-                                    });
-                                }}
-                              >
-                                {copiedKey === run.key ? 'Copié' : 'Copier'}
-                              </button>
-                            </div>
-                          )}
-                          {run.stderr && (
-                            <pre className="computer-terminal-stderr">
-                              {run.stderr}
-                            </pre>
-                          )}
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-                {!terminal.runs.length && (
-                  <p>Aucune commande pour l’instant.</p>
-                )}
+                <ComputerTerminalRunList runs={terminal.runs} />
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();
