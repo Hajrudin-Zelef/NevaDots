@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileText, Globe, Terminal } from 'lucide-react';
 import { z } from 'zod';
 import { api } from './api';
 import { ThinkingOrb } from './ThinkingOrb';
 import { computerToolResult } from '../shared/activity';
+import { useComputerActivity } from './useComputerActivity';
 
 const screenSchema = z.object({
   base64: z
@@ -41,14 +42,18 @@ export function ComputerToolCard({
   dotId,
   dotName,
   showScreen,
+  showTerminal,
   running,
   onExpand,
+  onExpandTerminal,
 }: ComputerToolRenderProps & {
   dotId: string;
   dotName: string;
   showScreen: boolean;
+  showTerminal?: boolean;
   running: boolean;
   onExpand?: () => void;
+  onExpandTerminal?: () => void;
 }) {
   const [screen, setScreen] = useState<z.infer<typeof screenSchema>>();
   const [screenError, setScreenError] = useState('');
@@ -126,9 +131,37 @@ export function ComputerToolCard({
     };
   }, [dotId, showScreen]);
   const isFiles = action.startsWith('files_');
-  const title =
-    action === 'exec' ? 'Terminal' : isFiles ? 'Fichiers' : 'Navigateur';
-  const Icon = action === 'exec' ? Terminal : isFiles ? FileText : Globe;
+  const isExec = action === 'exec';
+  const title = isExec ? 'Terminal' : isFiles ? 'Fichiers' : 'Navigateur';
+  const Icon = isExec ? Terminal : isFiles ? FileText : Globe;
+  // Aperçu terminal en direct, même principe que l'aperçu navigateur :
+  // le flux SSE partagé donne la sortie live pendant l'exec, puis le
+  // résultat final une fois terminé. Actif seulement sur la carte exec
+  // la plus récente pour ne pas multiplier les abonnements visibles.
+  const terminalFeed = useComputerActivity(
+    dotId,
+    isExec && showTerminal === true,
+  );
+  const execCommand =
+    typeof parameters.command === 'string' ? parameters.command : '';
+  const liveRun = useMemo(() => {
+    if (!isExec) return undefined;
+    const runs = terminalFeed.runs;
+    for (let i = runs.length - 1; i >= 0; i--) {
+      if (execCommand && runs[i].command === execCommand) return runs[i];
+    }
+    return [...runs].reverse().find((run) => run.actor === 'agent');
+  }, [isExec, terminalFeed.runs, execCommand]);
+  const liveStdout = liveRun?.stdout ?? '';
+  const liveStderr = liveRun?.stderr ?? '';
+  const liveOutput = [liveStdout, liveStderr].filter(Boolean).join('\n');
+  const finalStdout = typeof data.stdout === 'string' ? data.stdout : '';
+  const finalStderr = typeof data.stderr === 'string' ? data.stderr : '';
+  const previewOutput = (
+    liveOutput || [finalStdout, finalStderr].filter(Boolean).join('\n')
+  ).slice(0, 4000);
+  const previewRunning = liveRun?.running ?? (!complete && running);
+  const expandTerminal = onExpandTerminal ?? onExpand;
   return (
     <section
       className={`inline-computer muse-tool ${showScreen ? 'with-screen' : ''} ${
@@ -154,13 +187,36 @@ export function ComputerToolCard({
       )}
       {error && <p role="alert">{error}</p>}
       {interruption && <p role="status">{interruption}</p>}
-      {action === 'exec' && complete && typeof data.stdout === 'string' && (
-        <pre aria-label="Sortie terminal">{data.stdout.slice(0, 4000)}</pre>
+      {isExec && showTerminal === true && (
+        <div className="muse-preview muse-preview-terminal">
+          <div className="muse-preview-terminal-head">
+            <code>$ {execCommand || 'terminal'}</code>
+            <span className="muse-preview-terminal-status">
+              {previewRunning ? (
+                <>
+                  <ThinkingOrb kind="working" /> En cours…
+                </>
+              ) : (
+                state
+              )}
+            </span>
+          </div>
+          {previewOutput ? (
+            <pre aria-label="Aperçu terminal">{previewOutput}</pre>
+          ) : (
+            <div className="muse-preview-empty" role="status">
+              <ThinkingOrb kind="connecting" size={32} />
+              {terminalFeed.error || 'Connexion au terminal…'}
+            </div>
+          )}
+        </div>
       )}
-      {action === 'exec' &&
-        complete &&
-        typeof data.stderr === 'string' &&
-        data.stderr && <pre>{data.stderr.slice(0, 2000)}</pre>}
+      {isExec && showTerminal !== true && complete && finalStdout && (
+        <pre aria-label="Sortie terminal">{finalStdout.slice(0, 4000)}</pre>
+      )}
+      {isExec && showTerminal !== true && complete && finalStderr && (
+        <pre>{finalStderr.slice(0, 2000)}</pre>
+      )}
       {showScreen && (
         <div className="muse-preview">
           {screen ? (
@@ -176,9 +232,13 @@ export function ComputerToolCard({
           )}
         </div>
       )}
-      {onExpand && (
-        <button type="button" className="muse-open" onClick={onExpand}>
-          Ouvrir l’aperçu
+      {(isExec ? (expandTerminal ?? onExpand) : onExpand) && (
+        <button
+          type="button"
+          className="muse-open"
+          onClick={isExec ? (expandTerminal ?? onExpand) : onExpand}
+        >
+          {isExec ? 'Ouvrir le terminal' : 'Ouvrir l’aperçu'}
         </button>
       )}
     </section>

@@ -616,6 +616,9 @@ export function Chat({
       'scroll',
     ].some((action) => call.function.name === `computer_${action}`),
   );
+  const latestExecCall = computerCalls.findLast(
+    (call) => call.function.name === 'computer_exec',
+  );
   const activeToolName = lastToolCall?.function.name ?? '';
   const searchingNow =
     /search_web|read_public_page|web_search|web_fetch/.test(activeToolName) ||
@@ -665,11 +668,21 @@ export function Chat({
             dotName={dot.name}
             running={running}
             showScreen={props.toolCallId === latestBrowserCall?.id}
+            showTerminal={props.toolCallId === latestExecCall?.id}
             onExpand={onComputer}
+            onExpandTerminal={onOpenTerminal}
           />
         ) : null,
     },
-    [dot.id, dot.name, running, latestBrowserCall?.id, onComputer],
+    [
+      dot.id,
+      dot.name,
+      running,
+      latestBrowserCall?.id,
+      latestExecCall?.id,
+      onComputer,
+      onOpenTerminal,
+    ],
   );
   const visible = agent.messages.filter(
     (message) =>
