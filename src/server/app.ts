@@ -290,7 +290,17 @@ export function createApp({
       return c.json({ error: 'Unrecognized host.' }, 403);
     const requestOrigin = c.req.header('origin');
     const allowedOrigins = new Set(origins ?? [new URL(c.req.url).origin]);
-    if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
+    // `Origin: null` (navigateurs durcis / certains contextes de navigation,
+    // constaté sur /api/auth/bootstrap) n'est PAS une origine étrangère : le
+    // garde-fou Fetch Metadata ci-dessous rejette toujours le vrai cross-site
+    // (y compris les iframes sandboxées, qui envoient aussi `Origin: null`
+    // mais avec Sec-Fetch-Site: cross-site — en-tête posé par le navigateur,
+    // infalsifiable par un site attaquant).
+    if (
+      requestOrigin &&
+      requestOrigin !== 'null' &&
+      !allowedOrigins.has(requestOrigin)
+    ) {
       // Log diagnostique : origine rejetée + client (UA + fetch-metadata)
       // lisibles dans journalctl (cf. bootstrap 403 : Origin: null).
       // L'UA ne contient pas de secret ; le Referer n'est jamais logué.
