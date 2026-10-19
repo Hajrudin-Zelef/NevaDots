@@ -56,8 +56,8 @@ export function checkStreamUpgrade(
   ticket: string | null,
   headers: StreamUpgradeHeaders,
   origins: string[] | undefined,
-  consumeTicket: (ticket: string) => string | null,
-): { status: StreamUpgradeStatus; dotId?: string } {
+  consumeTicket: (ticket: string) => { dotId: string; userId: string } | null,
+): { status: StreamUpgradeStatus; dotId?: string; userId?: string } {
   const match = STREAM_PATH.exec(pathname);
   if (!match) return { status: 'bad-path' };
   const origin = headers.origin ?? null;
@@ -73,8 +73,12 @@ export function checkStreamUpgrade(
     return { status: 'bad-ticket' };
   }
   const bound = consumeTicket(ticket);
-  if (!bound || bound !== pathDot) return { status: 'bad-ticket' };
-  return { status: 'ok', dotId: bound };
+  // Le ticket lie le Dot à son propriétaire (comptes multi-utilisateurs) :
+  // le pont résout ensuite un service porté par cet utilisateur, jamais
+  // l'instance globale qui ne voit aucun Dot.
+  if (!bound || !bound.userId || bound.dotId !== pathDot)
+    return { status: 'bad-ticket' };
+  return { status: 'ok', dotId: bound.dotId, userId: bound.userId };
 }
 
 interface UpgradeServer {
@@ -88,6 +92,7 @@ export function attachComputerStream(
   server: UpgradeServer,
   computers: ComputerService,
   origins: string[] | undefined,
+  resolveService: (userId: string) => ComputerService,
 ): void {
   const wss = new WebSocketServer({ noServer: true });
   server.on(
@@ -111,14 +116,14 @@ export function attachComputerStream(
         origins,
         (ticket) => computers.consumeStreamTicket(ticket),
       );
-      if (checked.status !== 'ok' || !checked.dotId) {
+      if (checked.status !== 'ok' || !checked.dotId || !checked.userId) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
-      const dotId = checked.dotId;
+      const { dotId, userId } = checked;
       wss.handleUpgrade(request, socket, head, (client) => {
-        bridge(client, computers, dotId);
+        bridge(client, dotId, resolveService(userId));
       });
     },
   );
@@ -134,7 +139,7 @@ function rawDataBytes(data: RawData): number {
   return data.byteLength;
 }
 
-function bridge(client: WebSocket, computers: ComputerService, dotId: string) {
+function bridge(client: WebSocket, dotId: string, computers: ComputerService) {
   let upstream: WebSocket | undefined;
   let upstreamOpen = false;
   let closed = false;
@@ -191,6 +196,7 @@ function bridge(client: WebSocket, computers: ComputerService, dotId: string) {
       upstream = socket;
       socket.on('open', () => {
         upstreamOpen = true;
+        console.log(`[computer-stream] upstream ouvert dot=${dotId}`);
         for (const item of pending.splice(0))
           socket.send(item.data, {
             binary: item.binary,
@@ -199,11 +205,25 @@ function bridge(client: WebSocket, computers: ComputerService, dotId: string) {
       socket.on('message', (data: RawData, binary: boolean) => {
         if (client.readyState === WebSocket.OPEN) client.send(data, { binary });
       });
-      socket.on('close', shutdown);
-      socket.on('error', shutdown);
-    } catch {
+      socket.on('close', (code: number, reason: Buffer) => {
+        console.warn(
+          `[computer-stream] upstream fermé dot=${dotId} code=${code} raison=${reason.toString().slice(0, 120)}`,
+        );
+        shutdown();
+      });
+      socket.on('error', (cause: unknown) => {
+        console.warn(
+          `[computer-stream] upstream erreur dot=${dotId} cause=${cause instanceof Error ? cause.message : String(cause).slice(0, 120)}`,
+        );
+        shutdown();
+      });
+    } catch (cause) {
       // Message générique : le détail interne (hôte/port/URL du conteneur)
-      // ne part pas au client.
+      // ne part pas au client. Le log serveur garde la cause (sans secret :
+      // ni token ni URL complète).
+      console.warn(
+        `[computer-stream] cible injoignable dot=${dotId} cause=${cause instanceof Error ? cause.message : String(cause).slice(0, 120)}`,
+      );
       if (client.readyState === WebSocket.OPEN)
         client.close(1011, 'Computer stream failed.');
     }

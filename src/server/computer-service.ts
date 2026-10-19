@@ -128,7 +128,10 @@ export class ComputerService {
     private deadlineMs = 70000,
     private shared?: {
       activityListeners: Map<string, Set<ComputerActivityListener>>;
-      streamTickets: Map<string, { dotId: string; expiresAt: number }>;
+      streamTickets: Map<
+        string,
+        { dotId: string; userId: string; expiresAt: number }
+      >;
     },
   ) {
     this.shared ??= {
@@ -389,6 +392,12 @@ export class ComputerService {
    */
   mintStreamTicket(id: string): string {
     this.requireDot(id);
+    const userId = this.workspace.userId;
+    // Fail-closed : un ticket minté hors contexte utilisateur (instance
+    // globale du pont WS) ne serait rattaché à personne — le pont le
+    // refuserait de toute façon. Le mint n'a lieu que via la route
+    // authentifiée (service porté par l'utilisateur).
+    if (!userId) throw new Error('Dot not found.');
     const now = Date.now();
     for (const [ticket, entry] of this.streamTickets)
       if (entry.expiresAt <= now) this.streamTickets.delete(ticket);
@@ -400,17 +409,20 @@ export class ComputerService {
     const ticket = randomBytes(32).toString('hex');
     this.streamTickets.set(ticket, {
       dotId: id,
+      userId,
       expiresAt: now + STREAM_TICKET_TTL_MS,
     });
     return ticket;
   }
-  /** Consume a ticket once; returns the bound dotId, or null when unknown, expired, or replayed. */
-  consumeStreamTicket(ticket: string): string | null {
+  /** Consume a ticket once; returns the bound dot + owner, or null when unknown, expired, or replayed. */
+  consumeStreamTicket(
+    ticket: string,
+  ): { dotId: string; userId: string } | null {
     const entry = this.streamTickets.get(ticket);
     if (!entry) return null;
     this.streamTickets.delete(ticket);
     if (entry.expiresAt <= Date.now()) return null;
-    return entry.dotId;
+    return { dotId: entry.dotId, userId: entry.userId };
   }
   /** S'abonner aux événements live d'un Dot. En mémoire, mono-processus :
    * le déploiement n'exécute qu'un seul serveur, donc aucun bus externe. */

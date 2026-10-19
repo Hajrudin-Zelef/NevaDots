@@ -243,7 +243,15 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
     );
 });
 // Live CDP screencast proxy for the Dot browser (ticket-authenticated WebSocket).
-attachComputerStream(server, platform.computers, appOrigins);
+// Le ticket lie le Dot à son propriétaire : le pont résout un service porté
+// par cet utilisateur (même motif que le middleware REST dans app.ts) —
+// jamais l'instance globale qui ne voit aucun Dot depuis les comptes.
+attachComputerStream(server, platform.computers, appOrigins, (userId) =>
+  platform.computers.forUser(
+    userId,
+    () => store.forUser(userId).settings().paused,
+  ),
+);
 const shutdown = createShutdown({
   stopRunner: () => runner.stop(),
   stopPlatform: () => platform.stop(),

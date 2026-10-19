@@ -45,7 +45,10 @@ it('mint un ticket lié au Dot, consommé une seule fois', () => {
   const { id, service } = fixture();
   const ticket = service.mintStreamTicket(id);
   expect(ticket).toMatch(/^[0-9a-f]{64}$/);
-  expect(service.consumeStreamTicket(ticket)).toBe(id);
+  expect(service.consumeStreamTicket(ticket)).toEqual({
+    dotId: id,
+    userId: 'owner',
+  });
   // Rejeu : le ticket est brûlé.
   expect(service.consumeStreamTicket(ticket)).toBeNull();
   expect(service.consumeStreamTicket('0'.repeat(64))).toBeNull();
@@ -89,7 +92,7 @@ it("la route émet un ticket et l'upgrade le valide une fois", async () => {
     undefined,
     (t) => service.consumeStreamTicket(t),
   );
-  expect(first).toEqual({ status: 'ok', dotId: id });
+  expect(first).toEqual({ status: 'ok', dotId: id, userId: 'owner' });
   seen.set(ticket, id);
   expect(seen.size).toBe(1);
   // Même ticket rejoué : refusé.
@@ -131,7 +134,7 @@ it("la route émet un ticket et l'upgrade le valide une fois", async () => {
       undefined,
       (t) => service.consumeStreamTicket(t),
     ),
-  ).toEqual({ status: 'ok', dotId: id });
+  ).toEqual({ status: 'ok', dotId: id, userId: 'owner' });
 });
 
 it("un ticket d'un autre Dot ne passe pas sur ce chemin", () => {
@@ -189,7 +192,7 @@ it('mauvaise origine et cross-site sont refusés sans brûler le ticket', () => 
       undefined,
       consume,
     ),
-  ).toEqual({ status: 'ok', dotId: id });
+  ).toEqual({ status: 'ok', dotId: id, userId: 'owner' });
   // X-Forwarded-Proto ne rend plus l'origine légitime non plus.
   const ticket3 = service.mintStreamTicket(id);
   expect(
@@ -244,11 +247,20 @@ it('origines loopback acceptées, pièges de suffixe et schémas refusés', () =
 
 describe('bridge (upgrade réel)', () => {
   async function harness(stub: {
-    consumeStreamTicket: (ticket: string) => string | null;
-    streamTarget: (dotId: string) => Promise<unknown>;
+    consumeStreamTicket: (
+      ticket: string,
+    ) => { dotId: string; userId: string } | null;
+    resolveService: (userId: string) => {
+      streamTarget: (dotId: string) => Promise<unknown>;
+    };
   }) {
     const server = createServer();
-    attachComputerStream(server, stub as unknown as ComputerService, undefined);
+    attachComputerStream(
+      server,
+      stub as unknown as ComputerService,
+      undefined,
+      stub.resolveService as unknown as (userId: string) => ComputerService,
+    );
     await new Promise<void>((resolve) =>
       server.listen(0, '127.0.0.1', resolve),
     );
@@ -267,10 +279,34 @@ describe('bridge (upgrade réel)', () => {
     });
   }
 
+  it("le pont résout le service porté par le propriétaire du ticket (régression comptes : l'instance globale ne voit aucun Dot)", async () => {
+    const seen: string[] = [];
+    const stub = {
+      consumeStreamTicket: () => ({ dotId: 'dot-1', userId: 'owner-9' }),
+      resolveService: (userId: string) => {
+        seen.push(userId);
+        return {
+          streamTarget: () => new Promise(() => {}),
+        };
+      },
+    };
+    const { server, port } = await harness(stub);
+    try {
+      const ws = await connect(port);
+      // bridge() appelle resolveService avant l'ouverture vue par le client.
+      expect(seen).toEqual(['owner-9']);
+      ws.close();
+    } finally {
+      server.close();
+    }
+  });
+
   it('ferme en 1011 quand le tampon pending déborde avant ouverture upstream', async () => {
     const stub = {
-      consumeStreamTicket: () => 'dot-1',
-      streamTarget: () => new Promise(() => {}),
+      consumeStreamTicket: () => ({ dotId: 'dot-1', userId: 'u1' }),
+      resolveService: () => ({
+        streamTarget: () => new Promise(() => {}),
+      }),
     };
     const { server, port } = await harness(stub);
     try {
@@ -291,9 +327,11 @@ describe('bridge (upgrade réel)', () => {
 
   it('fermeture WS avec message générique quand la cible échoue', async () => {
     const stub = {
-      consumeStreamTicket: () => 'dot-1',
-      streamTarget: () =>
-        Promise.reject(new Error('internal detail host:1234 token=secret')),
+      consumeStreamTicket: () => ({ dotId: 'dot-1', userId: 'u1' }),
+      resolveService: () => ({
+        streamTarget: () =>
+          Promise.reject(new Error('internal detail host:1234 token=secret')),
+      }),
     };
     const { server, port } = await harness(stub);
     try {
@@ -334,5 +372,23 @@ it('chemin inconnu refusé, origine configurée acceptée (dev Vite)', () => {
       ['http://localhost:5173', 'http://127.0.0.1:5173'],
       consume,
     ),
-  ).toEqual({ status: 'ok', dotId: id });
+  ).toEqual({ status: 'ok', dotId: id, userId: 'owner' });
+});
+
+it('le ticket porte le propriétaire : mint scopé, consommation partagée', () => {
+  const { id, service } = fixture();
+  const scoped = service.forUser('owner', () => false);
+  const ticket = scoped.mintStreamTicket(id);
+  // La consommation passe par l'instance globale (même carte partagée) :
+  // c'est le chemin réel du pont WS (mint REST scopé → upgrade global).
+  expect(service.consumeStreamTicket(ticket)).toEqual({
+    dotId: id,
+    userId: 'owner',
+  });
+});
+
+it("le mint du ticket est refusé pour le Dot d'un autre compte", () => {
+  const { id, service } = fixture();
+  const intruder = service.forUser('intruder', () => false);
+  expect(() => intruder.mintStreamTicket(id)).toThrow();
 });

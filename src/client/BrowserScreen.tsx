@@ -51,9 +51,13 @@ export function BrowserScreen({
           `/dots/${encodeURIComponent(dotId)}/computer/stream-ticket`,
           'POST',
         ));
-      } catch {
+      } catch (cause) {
         if (closed) return;
-        setError('Flux indisponible');
+        setError(
+          cause instanceof Error
+            ? `Flux indisponible : ${cause.message}`
+            : 'Flux indisponible',
+        );
         retry = setTimeout(connect, 1500);
         return;
       }
@@ -92,9 +96,14 @@ export function BrowserScreen({
           /* skip an unreadable frame */
         }
       };
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (closed) return;
         setReady(false);
+        // Code explicite (1006 = injoignable, 1011 = pont serveur→conteneur
+        // cassé) au lieu d'un « Connexion… » muet : la cause reste lisible
+        // pendant la reconnexion automatique.
+        if (event.code !== 1000 && event.code !== 1005)
+          setError(`Flux interrompu (code ${event.code})`);
         retry = setTimeout(connect, 1500);
       };
       socket.onerror = () => {
