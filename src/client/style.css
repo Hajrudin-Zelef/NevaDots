@@ -4911,7 +4911,9 @@ h3 {
 }
 
 .model-selector-dropdown {
-  position: fixed;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
   z-index: 9999;
   min-width: 240px;
   max-height: 340px;
