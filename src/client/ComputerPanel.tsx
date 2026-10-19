@@ -46,6 +46,10 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
   const [path, setPath] = useState('');
   const [contents, setContents] = useState('');
   const [command, setCommand] = useState('');
+  const [cmdHistory, setCmdHistory] = useState<string[]>([]);
+  const [histIndex, setHistIndex] = useState(-1);
+  const terminalInputRef = useRef<HTMLTextAreaElement>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [screenError, setScreenError] = useState('');
   // Navigateur de fichiers : état dédié, jamais dans la « Sortie » brute.
   const [filesDir, setFilesDir] = useState('');
@@ -268,6 +272,12 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
   const browser = !!running && !!status?.permissions.browser;
   // Journal live du terminal (commandes owner + agent) quand l'onglet est ouvert.
   const terminal = useComputerActivity(dot.id, tab === 'Terminal');
+
+  useEffect(() => {
+    if (tab === 'Terminal') {
+      terminalInputRef.current?.focus();
+    }
+  }, [tab]);
   return (
     <section
       className="computer-panel"
@@ -768,7 +778,28 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                             {run.timedOut && ' · délai dépassé'}
                             {run.truncated && ' · sortie tronquée'}
                           </p>
-                          {run.stdout && <pre>{run.stdout}</pre>}
+                          {run.stdout && (
+                            <div className="computer-terminal-output">
+                              <pre>{run.stdout}</pre>
+                              <button
+                                type="button"
+                                className="computer-terminal-copy"
+                                onClick={() => {
+                                  void navigator.clipboard
+                                    .writeText(run.stdout ?? '')
+                                    .then(() => {
+                                      setCopiedKey(run.key);
+                                      setTimeout(
+                                        () => setCopiedKey(null),
+                                        1500,
+                                      );
+                                    });
+                                }}
+                              >
+                                {copiedKey === run.key ? 'Copié' : 'Copier'}
+                              </button>
+                            </div>
+                          )}
                           {run.stderr && (
                             <pre className="computer-terminal-stderr">
                               {run.stderr}
@@ -785,17 +816,56 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();
+                    if (!command.trim()) return;
+                    setCmdHistory((prev) => [...prev, command]);
+                    setHistIndex(-1);
                     void action('exec', { command, timeoutMs: 30000 });
                   }}
                 >
                   <textarea
+                    ref={terminalInputRef}
                     aria-label="Commande terminal"
                     value={command}
-                    onChange={(event) => setCommand(event.target.value)}
+                    onChange={(event) => {
+                      setCommand(event.target.value);
+                      setHistIndex(-1);
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        (event.metaKey || event.ctrlKey) &&
+                        event.key === 'Enter'
+                      ) {
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
+                        return;
+                      }
+                      if (event.key === 'ArrowUp' && cmdHistory.length) {
+                        event.preventDefault();
+                        const nextIndex =
+                          histIndex === -1
+                            ? cmdHistory.length - 1
+                            : Math.max(0, histIndex - 1);
+                        setHistIndex(nextIndex);
+                        setCommand(cmdHistory[nextIndex]);
+                      } else if (
+                        event.key === 'ArrowDown' &&
+                        histIndex !== -1
+                      ) {
+                        event.preventDefault();
+                        const nextIndex = histIndex + 1;
+                        if (nextIndex >= cmdHistory.length) {
+                          setHistIndex(-1);
+                          setCommand('');
+                        } else {
+                          setHistIndex(nextIndex);
+                          setCommand(cmdHistory[nextIndex]);
+                        }
+                      }
+                    }}
                     maxLength={8000}
                     rows={3}
                     disabled={!running || !status.permissions.shell || busy}
-                    placeholder="pwd"
+                    placeholder="pwd  (↑/↓ historique · Ctrl+Entrée pour exécuter)"
                   />
                   <button
                     disabled={

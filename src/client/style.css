@@ -3326,6 +3326,21 @@ h3 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.computer-terminal-output {
+  position: relative;
+}
+.computer-terminal-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #5b6474;
+  cursor: pointer;
+}
 .computer-audit {
   list-style: none;
   padding: 0;

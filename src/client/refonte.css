@@ -549,6 +549,21 @@ textarea::placeholder {
 .computer-terminal-stderr {
   color: var(--nd-danger);
 }
+.computer-terminal-output {
+  position: relative;
+}
+.computer-terminal-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--nd-border);
+  background: var(--nd-bg-hover);
+  color: var(--nd-text-secondary);
+  cursor: pointer;
+}
 
 /* --- Connexions --- */
 .connection {
