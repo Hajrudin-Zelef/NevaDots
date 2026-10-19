@@ -59,6 +59,11 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
   const [filesError, setFilesError] = useState('');
   const [filesNotice, setFilesNotice] = useState('');
   const [append, setAppend] = useState(false);
+  const [fileModal, setFileModal] = useState<{
+    path: string;
+    contents: string;
+  } | null>(null);
+
   // True while the user edits the address bar, so the screenshot poll does not
   // overwrite what they are typing.
   const urlDirty = useRef(false);
@@ -242,7 +247,7 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
       'text' in result &&
       typeof result.text === 'string'
     ) {
-      setContents(result.text);
+      setFileModal({ path: filePath, contents: result.text });
     } else {
       setFilesError('Réponse de lecture inattendue.');
     }
@@ -980,6 +985,74 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
             </p>
           </details>
         </>
+      )}
+      {fileModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Fichier ${fileModal.path}`}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setFileModal(null);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setFileModal(null)}
+        >
+          <div
+            style={{
+              background: 'var(--color-bg, #fff)',
+              borderRadius: '8px',
+              padding: '24px',
+              width: '80vw',
+              maxWidth: '900px',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <strong style={{ fontFamily: 'monospace' }}>
+                {fileModal.path}
+              </strong>
+              <button
+                onClick={() => setFileModal(null)}
+                style={{ cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+            <textarea
+              readOnly
+              value={fileModal.contents}
+              style={{
+                flex: 1,
+                minHeight: '50vh',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                resize: 'vertical',
+                border: '1px solid var(--color-border, #ccc)',
+                borderRadius: '4px',
+                padding: '12px',
+              }}
+            />
+          </div>
+        </div>
       )}
     </section>
   );

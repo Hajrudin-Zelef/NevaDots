@@ -198,7 +198,8 @@ it('liste cliquable sans JSON brut, clic dossier et fichier', async () => {
   expect(calls.map((c) => JSON.stringify([c.action, c.input]))).toContain(
     JSON.stringify(['files_list', { path: 'docs' }]),
   );
-  // Clic fichier → remplit le chemin + lit dans le textarea.
+  // Clic fichier → ouvre le modal lecture seule (plus de remplissage
+  // du textarea d'édition).
   await act(async () => {
     r.findAllByProps({ title: 'docs' });
   });
@@ -212,10 +213,18 @@ it('liste cliquable sans JSON brut, clic dossier et fichier', async () => {
     action: 'files_read',
     input: { path: 'docs/inner.txt' },
   });
+  const dialog = r.findAllByProps({ role: 'dialog' })[0];
+  expect(dialog.props['aria-label']).toContain('docs/inner.txt');
+  const modalText = (
+    dialog as unknown as {
+      findAllByType(t: string): Array<{ props: Record<string, unknown> }>;
+    }
+  )
+    .findAllByType('textarea')
+    .map((t) => t.props.value);
+  expect(modalText).toContain('bonjour');
   const pathInput = r.findAllByProps({ placeholder: 'notes.txt' })[0];
   expect(pathInput.props.value).toBe('docs/inner.txt');
-  const area = r.findAllByProps({ 'aria-label': 'Contenu à enregistrer' })[0];
-  expect(area.props.value).toBe('bonjour');
 });
 
 it('append → append:true, écrasement confirmé puis rafraîchi', async () => {
