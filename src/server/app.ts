@@ -290,8 +290,14 @@ export function createApp({
       return c.json({ error: 'Unrecognized host.' }, 403);
     const requestOrigin = c.req.header('origin');
     const allowedOrigins = new Set(origins ?? [new URL(c.req.url).origin]);
-    if (requestOrigin && !allowedOrigins.has(requestOrigin))
+    if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
+      // Log diagnostique : la prochaine fois, l'origine rejetée sera
+      // lisible dans journalctl au lieu d'une chasse (cf. bootstrap 403).
+      console.warn(
+        `[origin] rejected Origin ${requestOrigin} for ${requestUrl.pathname}`,
+      );
       return c.json({ error: 'Cross-origin requests are not allowed.' }, 403);
+    }
     if (c.req.header('sec-fetch-site') === 'cross-site')
       return c.json({ error: 'Cross-site requests are not allowed.' }, 403);
     // Phase B : seule la session compte. Le cookie nevadots-session est

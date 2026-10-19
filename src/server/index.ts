@@ -11,7 +11,7 @@ import { getCookie } from 'hono/cookie';
 import { Store } from './store.js';
 import { Runner } from './runner.js';
 import { createApp, createStaticGate } from './app.js';
-import { resolveAppOrigins } from './app-origin.js';
+import { avatarRefererAllowed, resolveAppOrigins } from './app-origin.js';
 import { WorkspaceStore } from './workspace.js';
 import { Platform } from './platform.js';
 import { ProviderRegistry } from './providers.js';
@@ -174,14 +174,11 @@ app.use('/dots/*', async (c, next) => {
   c.header('Cross-Origin-Resource-Policy', 'same-origin');
   if (c.req.header('sec-fetch-site') === 'cross-site') return c.body(null, 403);
   const referer = c.req.header('referer');
-  if (referer) {
-    try {
-      if (new URL(referer).origin !== new URL(c.req.url).origin)
-        return c.body(null, 403);
-    } catch {
-      return c.body(null, 403);
-    }
-  }
+  if (
+    referer &&
+    !avatarRefererAllowed(referer, appOrigins ?? [], new URL(c.req.url).origin)
+  )
+    return c.body(null, 403);
   const raw = getCookie(c, 'nevadots-session');
   if (!raw || !auth.getSession(raw)) return c.body(null, 401);
   await next();
