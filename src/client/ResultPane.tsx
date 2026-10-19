@@ -20,6 +20,7 @@ export function ResultPane({
   dots,
   defaultDotId,
   initialComputerTab = 'Browser',
+  focusTerminalSignal = 0,
 }: {
   dots: Dot[];
   defaultDotId: string;
@@ -28,6 +29,7 @@ export function ResultPane({
   dotState: string;
   onClose: () => void;
   initialComputerTab?: ComputerPanelTab;
+  focusTerminalSignal?: number;
 }) {
   const [resultTab, setResultTab] = useState<'Brief' | 'Computer'>('Computer');
   const [computerDotId, setComputerDotId] = useState(defaultDotId);
@@ -82,6 +84,7 @@ export function ResultPane({
               key={computerDot.id}
               dot={computerDot}
               initialTab={initialComputerTab}
+              focusTerminalSignal={focusTerminalSignal}
             />
           ) : (
             <p className="computer-panel">

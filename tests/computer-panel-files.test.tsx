@@ -140,6 +140,43 @@ async function clickButton(root: never, label: string) {
   await act(async () => {});
 }
 
+it('ouvre directement le terminal sur demande et suit le signal agent', async () => {
+  const dot = { id: 'd1', name: 'Test' } as unknown as Dot;
+  await act(async () => {
+    roots.push(
+      create(createElement(ComputerPanel, { dot, initialTab: 'Terminal' })),
+    );
+  });
+  await act(async () => {});
+  let root = roots[roots.length - 1].root;
+  const terminalSection = root.findAllByProps({
+    className: 'computer-section terminal-emulator',
+  });
+  expect(terminalSection.length).toBe(1);
+  expect(terminalSection[0].props.hidden).toBe(false);
+  await act(async () => {
+    roots.push(create(createElement(ComputerPanel, { dot })));
+  });
+  await act(async () => {});
+  root = roots[roots.length - 1].root;
+  const terminalTab = root
+    .findAllByType('button')
+    .find((b) => textOf(b) === 'Terminal');
+  expect(terminalTab).toBeTruthy();
+  await act(async () => {
+    roots[roots.length - 1].update(
+      createElement(ComputerPanel, { dot, focusTerminalSignal: 1 }),
+    );
+  });
+  await act(async () => {});
+  const rerendered = roots[roots.length - 1].root;
+  const terminalAfter = rerendered.findAllByProps({
+    className: 'computer-section terminal-emulator',
+  });
+  expect(terminalAfter.length).toBe(1);
+  expect(terminalAfter[0].props.hidden).toBe(false);
+});
+
 it('trie dossiers-d’abord, basename et tailles FR', () => {
   expect(sortFileEntries(ROOT_LIST.entries).map((e) => e.path)).toEqual([
     'docs',

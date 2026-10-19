@@ -228,8 +228,13 @@ export function App() {
     setComputerInitialTab('Browser');
     setPane(true);
   }, []);
+  // Signal incrémental : force l'onglet Terminal même si le panneau est
+  // déjà ouvert (le simple changement d'initialTab ne suffit pas quand la
+  // valeur est déjà 'Terminal', ex. l'utilisateur lisait l'onglet Fichiers).
+  const [computerTerminalSignal, setComputerTerminalSignal] = useState(0);
   const openComputerTerminal = useCallback(() => {
     setComputerInitialTab('Terminal');
+    setComputerTerminalSignal((n) => n + 1);
     setPane(true);
   }, []);
   const [capture, setCapture] = useState<Result>();
@@ -333,15 +338,15 @@ export function App() {
     (item) => item.id === selectedThread && item.dotId === dot?.id,
   );
   const configured = !!workspace && workspace.setup.missing.length === 0;
+  // Comme le navigateur (qui ouvre le pane quand l'agent navigue) : à la
+  // première commande exec du Dot, on ouvre le panneau sur l'onglet
+  // Terminal. Le rail se replie derrière (invariant rail && !pane) et
+  // réapparaît — avec son strip — à la fermeture du panneau.
   const onAgentTerminalStart = useCallback(() => {
-    // Le panneau ordinateur occupe l'espace du rail. À la première commande
-    // du Dot, on le referme et on remet le rail visible derrière le terminal.
-    if (pane) {
-      railBeforePane.current = true;
-      setPane(false);
-    }
-    changeRail(true);
-  }, [pane, changeRail]);
+    setComputerInitialTab('Terminal');
+    setComputerTerminalSignal((n) => n + 1);
+    setPane(true);
+  }, []);
   const setupStep = workspace
     ? dialog?.type === 'settings'
       ? 'settings'
@@ -1135,6 +1140,7 @@ export function App() {
                 dotState="idle"
                 onClose={() => setPane(false)}
                 initialComputerTab={computerInitialTab}
+                focusTerminalSignal={computerTerminalSignal}
               />
             )}
           </div>
@@ -1320,6 +1326,7 @@ export function App() {
               dotState="idle"
               onClose={() => setPane(false)}
               initialComputerTab={computerInitialTab}
+              focusTerminalSignal={computerTerminalSignal}
             />
           </div>
         )}

@@ -37,11 +37,24 @@ export type ComputerPanelTab = 'Browser' | 'Files' | 'Terminal' | 'Activity';
 export function ComputerPanel({
   dot,
   initialTab = 'Browser',
+  focusTerminalSignal = 0,
 }: {
   dot: Dot;
   initialTab?: ComputerPanelTab;
+  /** Incrémenté à chaque demande de focus (exec agent, bouton Terminal) :
+   * bascule sur l'onglet Terminal même si le panneau est déjà ouvert. */
+  focusTerminalSignal?: number;
 }) {
   const [tab, setTab] = useState<ComputerPanelTab>(initialTab);
+  // Suit les demandes d'ouverture (bouton Terminal, exec agent). Sans cet
+  // effet, initialTab ne servirait qu'au premier montage et le panneau déjà
+  // ouvert resterait sur son onglet courant.
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+  useEffect(() => {
+    if (focusTerminalSignal) setTab('Terminal');
+  }, [focusTerminalSignal]);
   const [status, setStatus] = useState<ComputerStatus>();
   const [screen, setScreen] = useState<Screen>();
   const [error, setError] = useState('');
@@ -56,6 +69,7 @@ export function ComputerPanel({
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [histIndex, setHistIndex] = useState(-1);
   const terminalInputRef = useRef<HTMLTextAreaElement>(null);
+  const terminalScreenRef = useRef<HTMLDivElement>(null);
   const [screenError, setScreenError] = useState('');
   // Navigateur de fichiers : état dédié, jamais dans la « Sortie » brute.
   const [filesDir, setFilesDir] = useState('');
@@ -289,6 +303,16 @@ export function ComputerPanel({
       terminalInputRef.current?.focus();
     }
   }, [tab]);
+  // Le terminal suit le travail comme l'écran navigateur : les nouvelles
+  // sorties restent visibles sauf si l'utilisateur est remonté les relire.
+  useEffect(() => {
+    if (tab !== 'Terminal') return;
+    const screen = terminalScreenRef.current;
+    if (!screen) return;
+    const nearBottom =
+      screen.scrollHeight - screen.scrollTop - screen.clientHeight < 96;
+    if (nearBottom) screen.scrollTop = screen.scrollHeight;
+  }, [tab, terminal.runs]);
   return (
     <section
       className="computer-panel"
@@ -742,7 +766,7 @@ export function ComputerPanel({
                 )}
               </details>
               <details
-                className="computer-section"
+                className="computer-section terminal-emulator"
                 open
                 hidden={tab !== 'Terminal'}
               >
@@ -752,82 +776,107 @@ export function ComputerPanel({
                   s’arrêtent après 30 secondes. Le journal ci-dessous suit en
                   direct vos commandes et celles du Dot.
                 </p>
-                {terminal.error && (
-                  <p className="computer-error" role="alert">
-                    {terminal.error}
-                  </p>
-                )}
-                <p role="status">
-                  {terminal.connected
-                    ? 'Journal en direct.'
-                    : 'Connexion au journal…'}
-                </p>
-                <ComputerTerminalRunList runs={terminal.runs} />
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (!command.trim()) return;
-                    setCmdHistory((prev) => [...prev, command]);
-                    setHistIndex(-1);
-                    void action('exec', { command, timeoutMs: 30000 });
-                  }}
+                <div
+                  className="terminal-window"
+                  role="group"
+                  aria-label={`Terminal de ${dot.name}`}
                 >
-                  <textarea
-                    ref={terminalInputRef}
-                    aria-label="Commande terminal"
-                    value={command}
-                    onChange={(event) => {
-                      setCommand(event.target.value);
+                  <div className="terminal-titlebar">
+                    <span className="terminal-dots" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <strong>terminal — {dot.name}</strong>
+                    <span
+                      className={`terminal-live ${terminal.error ? 'error' : terminal.connected ? 'connected' : ''}`}
+                      role="status"
+                    >
+                      {terminal.error
+                        ? 'Journal indisponible'
+                        : terminal.connected
+                          ? 'En direct'
+                          : 'Connexion…'}
+                    </span>
+                  </div>
+                  <div className="terminal-screen" ref={terminalScreenRef}>
+                    {terminal.error && (
+                      <p className="computer-error" role="alert">
+                        {terminal.error}
+                      </p>
+                    )}
+                    <ComputerTerminalRunList runs={terminal.runs} />
+                  </div>
+                  <form
+                    className="terminal-prompt"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (!command.trim()) return;
+                      setCmdHistory((prev) => [...prev, command]);
                       setHistIndex(-1);
+                      void action('exec', { command, timeoutMs: 30000 });
                     }}
-                    onKeyDown={(event) => {
-                      if (
-                        (event.metaKey || event.ctrlKey) &&
-                        event.key === 'Enter'
-                      ) {
-                        event.preventDefault();
-                        event.currentTarget.form?.requestSubmit();
-                        return;
-                      }
-                      if (event.key === 'ArrowUp' && cmdHistory.length) {
-                        event.preventDefault();
-                        const nextIndex =
-                          histIndex === -1
-                            ? cmdHistory.length - 1
-                            : Math.max(0, histIndex - 1);
-                        setHistIndex(nextIndex);
-                        setCommand(cmdHistory[nextIndex]);
-                      } else if (
-                        event.key === 'ArrowDown' &&
-                        histIndex !== -1
-                      ) {
-                        event.preventDefault();
-                        const nextIndex = histIndex + 1;
-                        if (nextIndex >= cmdHistory.length) {
-                          setHistIndex(-1);
-                          setCommand('');
-                        } else {
+                  >
+                    <span className="terminal-prompt-sign" aria-hidden="true">
+                      $
+                    </span>
+                    <textarea
+                      ref={terminalInputRef}
+                      aria-label="Commande terminal"
+                      value={command}
+                      onChange={(event) => {
+                        setCommand(event.target.value);
+                        setHistIndex(-1);
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          (event.metaKey || event.ctrlKey) &&
+                          event.key === 'Enter'
+                        ) {
+                          event.preventDefault();
+                          event.currentTarget.form?.requestSubmit();
+                          return;
+                        }
+                        if (event.key === 'ArrowUp' && cmdHistory.length) {
+                          event.preventDefault();
+                          const nextIndex =
+                            histIndex === -1
+                              ? cmdHistory.length - 1
+                              : Math.max(0, histIndex - 1);
                           setHistIndex(nextIndex);
                           setCommand(cmdHistory[nextIndex]);
+                        } else if (
+                          event.key === 'ArrowDown' &&
+                          histIndex !== -1
+                        ) {
+                          event.preventDefault();
+                          const nextIndex = histIndex + 1;
+                          if (nextIndex >= cmdHistory.length) {
+                            setHistIndex(-1);
+                            setCommand('');
+                          } else {
+                            setHistIndex(nextIndex);
+                            setCommand(cmdHistory[nextIndex]);
+                          }
                         }
+                      }}
+                      maxLength={8000}
+                      rows={1}
+                      disabled={!running || !status.permissions.shell || busy}
+                      placeholder="pwd  (↑/↓ historique · Ctrl+Entrée pour exécuter)"
+                    />
+                    <button
+                      disabled={
+                        !running ||
+                        !status.permissions.shell ||
+                        busy ||
+                        !command.trim()
                       }
-                    }}
-                    maxLength={8000}
-                    rows={3}
-                    disabled={!running || !status.permissions.shell || busy}
-                    placeholder="pwd  (↑/↓ historique · Ctrl+Entrée pour exécuter)"
-                  />
-                  <button
-                    disabled={
-                      !running ||
-                      !status.permissions.shell ||
-                      busy ||
-                      !command.trim()
-                    }
-                  >
-                    Exécuter
-                  </button>
-                </form>
+                    >
+                      Exécuter
+                    </button>
+                  </form>
+                </div>
                 {!status.permissions.shell && (
                   <p>
                     Activez la permission Terminal pour exécuter des commandes.
