@@ -9,9 +9,8 @@ import {
   Plus,
   X,
 } from 'lucide-react';
-import { api } from './api';
 import { shouldSubmitComposerOnKeyDown } from './chat-composer';
-import { modelKey, parseModelKey, type ModelsResponse } from '../shared/models';
+import { type ModelsResponse } from '../shared/models';
 import { ModelSelector } from './ModelSelector';
 
 export interface ComposerProps {
