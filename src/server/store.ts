@@ -94,6 +94,14 @@ export class Store {
       )
         this.db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`);
     }
+    // C3 : la consommation est attribuée au compte (via le Dot).
+    if (
+      !this.db
+        .prepare('PRAGMA table_info(usage)')
+        .all()
+        .some((row) => row.name === 'user_id')
+    )
+      this.db.exec('ALTER TABLE usage ADD COLUMN user_id TEXT');
   }
   /** Nouvelle instance portée par cet utilisateur, même connexion DB. */
   forUser(userId: string): Store {
@@ -121,6 +129,17 @@ export class Store {
         .run(userId);
     } catch {
       /* table absente : rien à réclamer */
+    }
+    // C3 : la consommation est réclamée via le Dot propriétaire (la table
+    // dots vit dans le même fichier DB en prod ; absente en test isolé).
+    try {
+      this.db
+        .prepare(
+          'UPDATE usage SET user_id=(SELECT user_id FROM dots WHERE dots.id=usage.dotId) WHERE user_id IS NULL AND dotId IS NOT NULL',
+        )
+        .run();
+    } catch {
+      /* table dots absente : rien à réclamer */
     }
   }
   setupTelemetryState(): string | undefined {
@@ -627,9 +646,12 @@ export class Store {
     cachedTokens?: number | null;
     costUsd: number | null;
   }): void {
+    // C3 : la consommation est attribuée au compte porté par ce store
+    // (le DotAgent écrit via le store porté du Dot). Best-effort : un
+    // store non lié écrit un orphelin (NULL), réclamé via le Dot au boot.
     this.db
       .prepare(
-        'INSERT INTO usage (ts, dotId, model, promptTokens, completionTokens, cachedTokens, costUsd) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO usage (ts, dotId, model, promptTokens, completionTokens, cachedTokens, costUsd, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         entry.ts,
@@ -639,6 +661,7 @@ export class Store {
         entry.completionTokens,
         entry.cachedTokens ?? null,
         entry.costUsd,
+        this.userId,
       );
   }
   /** Totals for two windows: the current calendar day and the last 7 days. */
@@ -654,9 +677,9 @@ export class Store {
                   COALESCE(SUM(cachedTokens), 0) AS cachedTokens,
                   COALESCE(SUM(completionTokens), 0) AS completionTokens,
                   COALESCE(SUM(costUsd), 0) AS costUsd
-             FROM usage WHERE ts >= ?`,
+             FROM usage WHERE ts >= ? AND user_id=?`,
         )
-        .get(since) as {
+        .get(since, this.userId) as {
         runs: number;
         promptTokens: number;
         cachedTokens: number;
@@ -679,10 +702,10 @@ export class Store {
                 COALESCE(SUM(cachedTokens), 0) AS cachedTokens,
                 COALESCE(SUM(completionTokens), 0) AS completionTokens,
                 COALESCE(SUM(costUsd), 0) AS costUsd
-           FROM usage WHERE ts >= ? AND dotId IS NOT NULL
+           FROM usage WHERE ts >= ? AND dotId IS NOT NULL AND user_id=?
           GROUP BY dotId ORDER BY costUsd DESC`,
       )
-      .all(weekStart) as unknown as DotUsage[];
+      .all(weekStart, this.userId) as unknown as DotUsage[];
     return {
       today: aggregate(startOfDay.getTime()),
       week: aggregate(weekStart),

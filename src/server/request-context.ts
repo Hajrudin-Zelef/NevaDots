@@ -12,6 +12,8 @@ import type { WorkspaceStore } from './workspace.js';
  */
 export type AppVariables = {
   userId: string;
+  /** C3 : le rôle de la session (pour les gardes Admin des providers). */
+  role: 'admin' | 'user';
   workspace: WorkspaceStore;
   store: Store;
   connections: ConnectionService;

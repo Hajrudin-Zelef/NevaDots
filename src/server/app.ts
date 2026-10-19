@@ -308,6 +308,12 @@ export function createApp({
       // Phase C1 : la session détermine la portée de TOUTE la requête —
       // les routes lisent ces stores portés, jamais les singletons.
       c.set('userId', session.userId);
+      // C3 : le rôle (Admin / Utilisateur) — fail-closed : un utilisateur
+      // introuvable dans la table comptes n'est jamais Admin.
+      c.set(
+        'role',
+        auth?.getUserById(session.userId)?.role === 'admin' ? 'admin' : 'user',
+      );
       c.set('store', store.forUser(session.userId));
       if (platform) {
         c.set('workspace', platform.workspace.forUser(session.userId));
@@ -731,9 +737,9 @@ export function createApp({
   app.delete('/api/memories', (c) =>
     c.json({ ok: true, removed: c.get('store').deleteAllMemories() }),
   );
-  // Aggregated model usage for the settings cockpit (Phase C3 : périmètre
-  // compte — pour l'instant global, comme avant C1).
-  app.get('/api/usage', (c) => c.json(store.usageSummary()));
+  // Aggregated model usage for the settings cockpit (Phase C3 : par
+  // compte — le store porté filtre sur l'utilisateur de la session).
+  app.get('/api/usage', (c) => c.json(c.get('store').usageSummary()));
   // Unauthenticated liveness probe: cheap, proves the DB is reachable.
   app.get('/health', (c) => {
     try {

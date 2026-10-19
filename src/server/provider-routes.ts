@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { z } from 'zod';
 import type { Platform } from './platform.js';
+import type { AppVariables } from './request-context.js';
 import type { CatalogModel, CreditEntry } from '../shared/models.js';
 
 const CREDIT_TIMEOUT_MS = 8000;
@@ -131,14 +133,26 @@ async function fetchBalance(
 }
 
 export function providerRoutes(platform: Platform) {
-  const app = new Hono();
+  const app = new Hono<{ Variables: AppVariables }>();
   const registry = platform.config.providerRegistry;
+  /**
+   * C3 — les clés des modèles sont GLOBALES (partagées par tous les
+   * comptes) : seules les mutations (clés, modèles activés, défaut) et
+   * la lecture des soldes (/credits, info financière) sont réservées
+   * Admin. Les lectures GET /providers et GET /catalog/:id restent
+   * ouvertes à tout compte connecté (le sélecteur de modèles en a
+   * besoin) — le filtrage par compte (volet Phase E) viendra les restreindre.
+   */
+  const requireAdmin = (c: Context<{ Variables: AppVariables }>) =>
+    c.get('role') !== 'admin' ? c.json({ error: 'Admin only.' }, 403) : null;
 
   app.get('/providers', (c) =>
     c.json({ providers: registry ? registry.view() : [] }),
   );
 
   app.put('/providers/:id', async (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
     const parsed = z
       .object({ key: z.string().trim().min(1).max(400) })
       .strict()
@@ -151,6 +165,8 @@ export function providerRoutes(platform: Platform) {
   });
 
   app.delete('/providers/:id', (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
     if (!registry?.get(c.req.param('id')))
       return c.json({ error: 'Unknown provider.' }, 404);
     registry.deleteKey(c.req.param('id'));
@@ -218,6 +234,8 @@ export function providerRoutes(platform: Platform) {
 
   // The enabled models for a provider (what the per-Dot selector offers).
   app.put('/catalog/:id', async (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
     const parsed = z
       .object({ models: z.array(z.string().trim().min(1).max(160)).max(500) })
       .strict()
@@ -230,6 +248,8 @@ export function providerRoutes(platform: Platform) {
   });
 
   app.put('/model-default', async (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
     const parsed = z
       .object({
         provider: z.string().trim().min(1).max(40),
@@ -246,6 +266,8 @@ export function providerRoutes(platform: Platform) {
 
   // Best-effort remaining balance per configured provider.
   app.get('/credits', async (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
     const credits: CreditEntry[] = [];
     for (const provider of registry?.list() ?? []) {
       const entry: CreditEntry = {
