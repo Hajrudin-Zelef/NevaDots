@@ -154,6 +154,8 @@ export interface Conversation {
   ownerId: string;
   title: string;
   createdAt: number;
+  /** Phase D : true = la session maître du compte (sa 1ère requête). */
+  isMaster: boolean;
   /** Last turn time; falls back to createdAt in the UI when absent. */
   updatedAt?: number | null;
   /** One-line outcome of the last turn (Muse-style activity card subtitle). */

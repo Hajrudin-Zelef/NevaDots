@@ -70,6 +70,7 @@ export class WorkspaceStore {
       ['thread_bindings', 'learningContainerId', 'TEXT'],
       ['thread_bindings', 'updatedAt', 'INTEGER'],
       ['thread_bindings', 'summary', 'TEXT'],
+      ['thread_bindings', 'isMaster', 'INTEGER NOT NULL DEFAULT 0'],
       ['task_threads', 'user_id', 'TEXT'],
       ['calls', 'user_id', 'TEXT'],
       ['captures', 'user_id', 'TEXT'],
@@ -178,6 +179,20 @@ export class WorkspaceStore {
       this.db
         .prepare(
           'UPDATE thread_bindings SET ownerId=? WHERE ownerId NOT IN (SELECT id FROM users)',
+        )
+        .run(userId);
+    // Phase D : le compte réclamant hérite d'une maître = sa plus ancienne
+    // conversation (sa 1ère requête). Si une maître existe déjà, rien.
+    const hasMaster = this.db
+      .prepare('SELECT 1 FROM thread_bindings WHERE ownerId=? AND isMaster=1')
+      .get(userId);
+    if (!hasMaster)
+      this.db
+        .prepare(
+          `UPDATE thread_bindings SET isMaster=1 WHERE id=(
+            SELECT id FROM thread_bindings
+            WHERE ownerId=? AND isMaster=0 ORDER BY createdAt ASC LIMIT 1
+          )`,
         )
         .run(userId);
     this.pages.claimOrphans(userId);
@@ -568,16 +583,33 @@ export class WorkspaceStore {
     return this.dot(id)!;
   }
   conversations(): Conversation[] {
-    return this.db
-      .prepare(
-        'SELECT * FROM thread_bindings WHERE ownerId=? ORDER BY createdAt DESC',
-      )
-      .all(this.userId) as unknown as Conversation[];
+    return (
+      this.db
+        .prepare(
+          'SELECT * FROM thread_bindings WHERE ownerId=? ORDER BY createdAt DESC',
+        )
+        .all(this.userId) as Array<Record<string, unknown>>
+    ).map((row) => ({
+      ...(row as unknown as Conversation),
+      isMaster: !!row.isMaster,
+    }));
   }
-  bindThread(id: string, dotId: string, title: string): Conversation {
+  bindThread(
+    id: string,
+    dotId: string,
+    title: string,
+    opts: { master?: boolean } = {},
+  ): Conversation {
     const userId = this.requireUser();
     const dot = this.dot(dotId);
     if (!dot) throw new Error('Dot not found.');
+    // Phase D : la première conversation du compte est la maître ; si la
+    // maître a été fermée, la prochaine conversation créée devient la
+    // nouvelle maître. Les conversations de page ne deviennent jamais maître.
+    const hasMaster = this.db
+      .prepare('SELECT 1 FROM thread_bindings WHERE ownerId=? AND isMaster=1')
+      .get(userId);
+    const isMaster = opts.master !== false && !hasMaster;
     const value: Conversation = {
       id,
       dotId,
@@ -585,10 +617,11 @@ export class WorkspaceStore {
       title,
       createdAt: Date.now(),
       learningContainerId: dot.learningContainerId ?? null,
+      isMaster,
     };
     this.db
       .prepare(
-        'INSERT INTO thread_bindings (id, dotId, ownerId, title, createdAt, learningContainerId) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO thread_bindings (id, dotId, ownerId, title, createdAt, learningContainerId, isMaster) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,
@@ -597,6 +630,7 @@ export class WorkspaceStore {
         title,
         value.createdAt,
         value.learningContainerId ?? null,
+        isMaster ? 1 : 0,
       );
     return value;
   }
