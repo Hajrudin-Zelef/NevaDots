@@ -6,12 +6,16 @@ import { CopilotKitProvider } from '@copilotkit/react-core/v2';
 import {
   ArrowUpRight,
   BookOpen,
+  CircleHelp,
+  CircleUserRound,
   Clock3,
+  Info,
   LogOut,
   Mic,
   MessageCircle,
   Monitor,
   MoreHorizontal,
+  Palette,
   Pause,
   PanelLeft,
   Play,
@@ -50,6 +54,7 @@ import { ThreadList } from './ThreadList';
 import { ResultPane } from './ResultPane';
 import { TaskRow } from './TaskPresentation';
 import { TaskActions } from './TaskActions';
+import { initialsOf } from './initials';
 import { WorkspaceDialog, type Dialog } from './WorkspaceDialog';
 
 function describeFailure(error: unknown, fallback: string) {
@@ -163,6 +168,29 @@ export function App() {
       current.action === action ? current : { ...current, action },
     );
   const [dialog, setDialog] = useState<Dialog>();
+  /** Phase F : menu avatar (Profil / Apparence / Paramètres / FAQ / À propos / Déconnexion). */
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  /** Phase F : nom du compte connecté → initiales de l'avatar rond. */
+  const [myUsername, setMyUsername] = useState('');
+  useEffect(() => {
+    let active = true;
+    void api<{ username: string }>('/auth/me')
+      .then((value) => {
+        if (active) setMyUsername(value.username);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProfileMenuOpen(false);
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [profileMenuOpen]);
   const [mobile, setMobile] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   // Leaving the compact range must close the off-canvas drawer, otherwise the
@@ -492,21 +520,6 @@ export function App() {
             <BookOpen size={15} />
             Compétences
           </button>
-          <button
-            className="module-button"
-            onClick={async () => {
-              try {
-                await logout();
-              } catch (err) {
-                setError(
-                  err instanceof Error ? err.message : 'Could not log out.',
-                );
-              }
-            }}
-          >
-            <LogOut size={15} />
-            Déconnexion
-          </button>
         </nav>
         <button
           className="new-chat-button"
@@ -653,8 +666,101 @@ export function App() {
         </div>
         <div className="sidebar-bottom">
           <div className="sidebar-profile">
-            <span className="sidebar-avatar">AI</span>
-            <span className="sidebar-profile-name">NevaDots</span>
+            {/* Phase F : le menu avatar — seul chemin de déconnexion. */}
+            <div className="profile-menu-wrap">
+              <button
+                className="profile-menu-button"
+                aria-label="Menu du compte"
+                aria-expanded={profileMenuOpen}
+                onClick={() => setProfileMenuOpen((open) => !open)}
+              >
+                <span className="sidebar-avatar">{initialsOf(myUsername)}</span>
+              </button>
+              {profileMenuOpen && (
+                <>
+                  <div
+                    className="profile-menu-backdrop"
+                    onClick={() => setProfileMenuOpen(false)}
+                  />
+                  <div className="profile-menu" role="menu">
+                    <button
+                      className="profile-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        setDialog({ type: 'profile' });
+                      }}
+                    >
+                      <CircleUserRound size={15} />
+                      Profil
+                    </button>
+                    <button
+                      className="profile-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        setDialog({ type: 'settings', tab: 'appearance' });
+                      }}
+                    >
+                      <Palette size={15} />
+                      Apparence
+                    </button>
+                    <button
+                      className="profile-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        setDialog({ type: 'settings', tab: 'preferences' });
+                      }}
+                    >
+                      <Settings2 size={15} />
+                      Paramètres
+                    </button>
+                    <button
+                      className="profile-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        setDialog({ type: 'faq' });
+                      }}
+                    >
+                      <CircleHelp size={15} />
+                      FAQ
+                    </button>
+                    <button
+                      className="profile-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        setDialog({ type: 'settings', tab: 'about' });
+                      }}
+                    >
+                      <Info size={15} />À propos
+                    </button>
+                    <div className="profile-menu-separator" />
+                    <button
+                      className="profile-menu-item profile-menu-logout"
+                      role="menuitem"
+                      onClick={async () => {
+                        setProfileMenuOpen(false);
+                        try {
+                          await logout();
+                        } catch (err) {
+                          setError(
+                            err instanceof Error
+                              ? err.message
+                              : 'Could not log out.',
+                          );
+                        }
+                      }}
+                    >
+                      <LogOut size={15} />
+                      Déconnexion
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <button
               className="icon-button"
               aria-label={

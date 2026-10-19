@@ -32,6 +32,8 @@ import { ConnectionsSection } from './ConnectionsSection';
 import { ExternalAccountsSection } from './ExternalAccountsSection';
 import { ApiProvidersPanel } from './ApiProvidersPanel';
 import { AccountsPanel } from './AccountsPanel';
+import { FaqDialog } from './FaqDialog';
+import { ProfileDialog } from './ProfileDialog';
 import { ModelSelectorPanel } from './ModelSelectorPanel';
 
 import { DeepThinkPanel } from './DeepThinkPanel';
@@ -52,9 +54,11 @@ import {
 export type Dialog =
   | { type: 'space'; space?: Space }
   | { type: 'dot'; dot?: Dot; spaceId: string }
-  | { type: 'settings' }
+  | { type: 'settings'; tab?: SettingsTab }
   | { type: 'memory'; memory?: Memory }
-  | { type: 'schedule'; threadId: string };
+  | { type: 'schedule'; threadId: string }
+  | { type: 'profile' }
+  | { type: 'faq' };
 
 interface SystemMetrics {
   cpu: number | null;
@@ -166,6 +170,11 @@ export function WorkspaceDialog({
   const [palette, setPalette] = useState(palettePreference);
   const [motion, setMotion] = useState(motionPreference);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('appearance');
+  // Phase F (menu avatar) : l'onglet initial vient du menu
+  // (Apparence → 'appearance', Paramètres → 'preferences', À propos → 'about').
+  useEffect(() => {
+    if (dialog.type === 'settings' && dialog.tab) setSettingsTab(dialog.tab);
+  }, [dialog]);
   const [models, setModels] = useState<ModelsResponse>({
     default: null,
     providers: [],
@@ -250,6 +259,9 @@ export function WorkspaceDialog({
           : dialog.type === 'memory'
             ? 'Something to remember.'
             : 'Let your Dot keep time.';
+  // Phase F (menu avatar) : Profil et FAQ = petits modaux dédiés.
+  if (dialog.type === 'profile') return <ProfileDialog onClose={onClose} />;
+  if (dialog.type === 'faq') return <FaqDialog onClose={onClose} />;
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <section

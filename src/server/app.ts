@@ -469,7 +469,16 @@ export function createApp({
     const session = raw ? auth.getSession(raw) : undefined;
     const user = session ? auth.getUserById(session.userId) : undefined;
     if (!user) return c.json({ error: 'Authentication required.' }, 401);
-    return c.json({ username: user.username, role: user.role });
+    // Phase F (Profil) : les limites du compte connecté (ses propres
+    // données) — Admin = listes NULL (sans restriction).
+    return c.json({
+      username: user.username,
+      role: user.role,
+      maxDots: user.maxDots,
+      monthlyLimitUsd: user.monthlyLimitUsd,
+      allowedProviders: user.allowedProviders,
+      allowedModels: user.allowedModels,
+    });
   });
   // Bootstrap du premier compte Admin : UNIQUEMENT si aucun compte
   // n'existe (sinon 409). Le mot de passe maître (env, fail-closed au

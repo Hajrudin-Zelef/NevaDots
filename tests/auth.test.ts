@@ -431,7 +431,15 @@ describe('Phase B — GET /api/auth/me', () => {
       headers: { Cookie: cookie },
     });
     expect(me.status).toBe(200);
-    expect(await me.json()).toEqual({ username: 'marie', role: 'admin' });
+    // Phase F : /me renvoie aussi les limites du compte (Admin = NULL).
+    expect(await me.json()).toEqual({
+      username: 'marie',
+      role: 'admin',
+      maxDots: null,
+      monthlyLimitUsd: null,
+      allowedProviders: null,
+      allowedModels: null,
+    });
     expect((await app.request('/api/auth/me')).status).toBe(401);
   });
 });

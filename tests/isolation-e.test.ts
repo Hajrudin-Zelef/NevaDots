@@ -349,6 +349,37 @@ describe('WorkspaceStore — enforcement (Phase E)', () => {
       close();
     }
   });
+  it('deleteUserData efface aussi les ordinateurs (résolus via les Dots)', () => {
+    // Régression : les ordinateurs doivent être effacés AVANT les Dots,
+    // sinon leur résolution via dots.user_id ne trouve rien et les lignes
+    // computer_permissions / computer_audit survivent en orphelines.
+    const { db, ws, wsUser, close } = fixture();
+    try {
+      const space = wsUser.createSpace('Atelier', '');
+      const dot = wsUser.createDot(space.id, 'Dot', 'Help', true, true);
+      wsUser.computers.patch(dot.id, {
+        enabled: true,
+        browser: true,
+        files: false,
+        shell: false,
+      });
+      db.prepare(
+        "INSERT INTO computer_audit (id, dotId, action, actor, outcome, createdAt) VALUES ('a1', ?, 'read', 'user', 'ok', 1)",
+      ).run(dot.id);
+      expect(
+        db.prepare('SELECT COUNT(*) AS n FROM computer_permissions').get(),
+      ).toEqual({ n: 1 });
+      ws.deleteUserData(USER);
+      expect(
+        db.prepare('SELECT COUNT(*) AS n FROM computer_permissions').get(),
+      ).toEqual({ n: 0 });
+      expect(
+        db.prepare('SELECT COUNT(*) AS n FROM computer_audit').get(),
+      ).toEqual({ n: 0 });
+    } finally {
+      close();
+    }
+  });
 });
 
 describe('Store — coût mensuel + suppression (Phase E)', () => {

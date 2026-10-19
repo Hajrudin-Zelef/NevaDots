@@ -245,6 +245,11 @@ export class WorkspaceStore {
    * Platform.deleteUserData.
    */
   deleteUserData(userId: string) {
+    // Les ordinateurs D'ABORD (avant la boucle qui efface les Dots) :
+    // leur suppression se résout via les Dots (dots.user_id) — si les
+    // Dots sont effacés avant, rien n'est trouvé et les lignes
+    // computer_permissions / computer_audit survivent en orphelines.
+    this.computers.deleteUserData(userId);
     for (const table of [
       'spaces',
       'dots',
@@ -257,9 +262,6 @@ export class WorkspaceStore {
     ])
       this.db.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(userId);
     this.db.prepare('DELETE FROM thread_bindings WHERE ownerId=?').run(userId);
-    // Les ordinateurs d'abord : leur suppression se résout via les Dots
-    // (dots.user_id) — après la suppression des Dots, rien ne serait trouvé.
-    this.computers.deleteUserData(userId);
     this.pages.deleteUserData(userId);
     this.connections.deleteUserData(userId);
   }
