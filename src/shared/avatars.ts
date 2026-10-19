@@ -35,7 +35,7 @@ export const DEFAULT_AVATAR: AvatarId = 'leo';
  * as a query so the browser (which caches `/dots/` for a day) fetches the new
  * art instead of a stale copy.
  */
-export const AVATAR_ASSET_VERSION = '8';
+export const AVATAR_ASSET_VERSION = '9';
 
 /** Concrete animation tiers, cheapest first. */
 export type AvatarQuality = 'low' | 'standard' | 'high';
@@ -80,7 +80,7 @@ export const AVATAR_FILES: Record<AvatarId, string> = {
   orange: 'classic/orange.png',
   purple: 'classic/purple.png',
   sam: 'sam/idle.webp',
-  leo: 'leo/idle-1.webp',
+  leo: 'leo/idle-6.webp',
   aline: 'aline/idle.png',
 };
 
@@ -134,40 +134,30 @@ export const AVATAR_STATE_FILES: Partial<
     working: 'sam/writing.webp',
     complete: 'sam/idle.webp',
   },
-  // Leo ships several interchangeable variants per state (idle ×5, others ×2-3);
-  // the client picks one at random per state entry so successive requests
-  // differ. `complete` reuses the first idle pose (green "Valider" badge).
+  // Leo — génération MP4 (pastilles blanches, masque rond CSS) : les
+  // anciens clips (idle-1..5, etc.) restent sur disque, débranchés.
+  // `complete` reuse l'idle (badge "Valider" vert).
   leo: {
-    idle: [
-      'leo/idle-1.webp',
-      'leo/idle-2.webp',
-      'leo/idle-3.webp',
-      'leo/idle-4.webp',
-      'leo/idle-5.webp',
-    ],
-    listening: [
-      'leo/listening-1.webp',
-      'leo/listening-2.webp',
-      'leo/listening-3.webp',
-    ],
+    idle: ['leo/idle-6.webp'],
+    listening: ['leo/listening-4.webp', 'leo/listening-5.webp'],
     thinking: [
-      'leo/thinking-1.webp',
-      'leo/thinking-2.webp',
-      'leo/thinking-3.webp',
+      'leo/thinking-4.webp',
+      'leo/thinking-5.webp',
+      'leo/thinking-6.webp',
     ],
-    writing: ['leo/writing-1.webp', 'leo/writing-2.webp'],
+    writing: ['leo/writing-3.webp'],
     analyzing: [
-      'leo/thinking-1.webp',
-      'leo/thinking-2.webp',
-      'leo/thinking-3.webp',
+      'leo/thinking-4.webp',
+      'leo/thinking-5.webp',
+      'leo/thinking-6.webp',
     ],
     searching: [
-      'leo/thinking-1.webp',
-      'leo/thinking-2.webp',
-      'leo/thinking-3.webp',
+      'leo/thinking-4.webp',
+      'leo/thinking-5.webp',
+      'leo/thinking-6.webp',
     ],
-    working: ['leo/writing-1.webp', 'leo/writing-2.webp'],
-    complete: 'leo/idle-1.webp',
+    working: ['leo/writing-3.webp'],
+    complete: 'leo/idle-6.webp',
   },
 };
 

@@ -1030,6 +1030,11 @@ textarea::placeholder {
   background: color-mix(in srgb, var(--nd-danger) 10%, transparent);
   color: var(--nd-danger);
 }
+/* Pastilles avatar MP4 (fond blanc incrusté) : masque rond. Sans effet
+ * sur les clips transparents (coins déjà alpha 0). */
+.template-app .dot-layers > .dot-body {
+  border-radius: 50%;
+}
 /* Phase F — menu avatar (drop-up : le profil est en bas de la barre).
  * L'avatar est rond, seul (40px), avec les initiales du compte. */
 .template-app .profile-menu-wrap {
