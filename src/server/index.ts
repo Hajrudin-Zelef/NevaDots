@@ -33,7 +33,12 @@ resolveAdminMasterPassword();
 const database = process.env.DATABASE_PATH ?? 'data/opendots.sqlite';
 const store = new Store(database);
 const auth = new AuthStore(database);
-const workspace = new WorkspaceStore(database);
+// Phase E : le WorkspaceStore résout la fiche compte (limites / droits)
+// via l'AuthStore — c'est ce qui applique maxDots, providers/modèles
+// autorisés et la limite mensuelle (DotAgent, provider-routes).
+const workspace = new WorkspaceStore(database, null, {
+  getUserRecord: (userId) => auth.getUserById(userId) ?? undefined,
+});
 // Phase C1 : les données orphelines du monde mono-utilisateur (user_id
 // NULL) sont réclamées par le premier compte (Admin du bootstrap). Si
 // aucun compte n'existe encore, elles attendent le bootstrap (qui

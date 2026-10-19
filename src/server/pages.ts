@@ -97,6 +97,11 @@ export class Pages {
         .prepare(`UPDATE ${table} SET user_id=? WHERE user_id IS NULL`)
         .run(userId);
   }
+  /** Phase E (suppression de compte) : efface les pages du compte. */
+  deleteUserData(userId: string) {
+    for (const table of ['pages', 'page_reviews', 'page_threads'])
+      this.db.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(userId);
+  }
   requireSpace(spaceId: string) {
     if (!this.spaceExists(spaceId))
       throw new PageError('Space not found.', 404);

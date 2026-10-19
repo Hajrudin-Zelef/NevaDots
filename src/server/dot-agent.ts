@@ -126,6 +126,14 @@ export class DotAgent extends AbstractAgent {
       try {
         const dot = this.workspace.dot(this.dotId);
         if (!dot) throw new Error('Specialist Dot not found.');
+        // Phase E : limite de consommation mensuelle (dure) — un tour
+        // qui démarre alors que la limite est atteinte est refusé.
+        const limits = this.workspace.userLimits();
+        if (
+          limits?.monthlyLimitUsd != null &&
+          this.store.monthCostUsd() >= limits.monthlyLimitUsd
+        )
+          throw new Error('Monthly usage limit reached.');
         if (
           this.channel &&
           !this.workspace
@@ -162,6 +170,22 @@ export class DotAgent extends AbstractAgent {
             : fallbackDefault?.model) ??
           this.config.model ??
           provider?.models[0];
+        // Phase E : provider / modèle autorisés pour ce compte (le
+        // modèle résolu — explicite ou défaut — doit être autorisé).
+        if (
+          limits?.allowedProviders &&
+          provider &&
+          !limits.allowedProviders.includes(provider.id)
+        )
+          throw new Error(
+            `Provider "${provider.id}" is not allowed for this account.`,
+          );
+        if (
+          limits?.allowedModels &&
+          model &&
+          !limits.allowedModels.includes(model)
+        )
+          throw new Error(`Model "${model}" is not allowed for this account.`);
         if (!apiKey || !model) {
           configurationFailure = true;
           this.setupTelemetry?.capture({

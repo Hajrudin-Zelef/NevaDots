@@ -216,6 +216,14 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
     }
   }
 
+  /** Phase E (suppression de compte) : efface les threads du compte. */
+  deleteUserThreads(userId: string) {
+    const rows = this.db
+      .prepare('SELECT thread_id FROM runner_threads WHERE user_id = ?')
+      .all(userId) as Array<{ thread_id: string }>;
+    for (const row of rows) this.deleteThread(row.thread_id);
+  }
+
   override clearThreads() {
     super.clearThreads();
     this.db.exec('DELETE FROM runner_runs; DELETE FROM runner_threads;');

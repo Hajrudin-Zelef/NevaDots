@@ -1,6 +1,7 @@
 import { ComputerService } from './computer-service.js';
 import { ConnectionService } from './connections.js';
 import { PageService } from './page-service.js';
+import { deleteAttachmentFiles } from './attachment-routes.js';
 import { randomUUID } from 'node:crypto';
 import {
   CopilotRuntime,
@@ -114,6 +115,22 @@ export class Platform {
       this.runner.deleteThread(conversation.id);
     }
     return conversations.length;
+  }
+  /**
+   * Phase E (suppression de compte) : efface TOUTES les données d'un
+   * compte — fichiers des pièces jointes, monde (WorkspaceStore),
+   * Store (tâches, mémoires, usage, …), threads du runner. Les
+   * enregistrements auth (compte, sessions, codes) sont effacés par
+   * AuthStore.deleteUser APRES cet appel.
+   */
+  async deleteUserData(userId: string): Promise<void> {
+    // Pas de requireReady : c'est une suppression de données, pas un
+    // tour — elle ne doit pas être bloquée par l'absence de modèle.
+    const attachmentIds = this.store.attachmentIdsForUser(userId);
+    await deleteAttachmentFiles(attachmentIds);
+    this.workspace.deleteUserData(userId);
+    this.store.deleteUserData(userId);
+    this.runner.deleteUserThreads(userId);
   }
   async history(threadId: string): Promise<string> {
     this.requireReady();

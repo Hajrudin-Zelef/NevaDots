@@ -225,10 +225,13 @@ export function createApp({
     // (RATE_LIMIT_PER_MIN=0) : c'est un contrôle anti-brute-force, pas un
     // budget API.
     if (
-      c.req.method === 'POST' &&
-      (c.req.path === '/api/auth/login' ||
-        c.req.path === '/api/auth/reset' ||
-        c.req.path === '/api/auth/bootstrap')
+      (c.req.method === 'POST' &&
+        (c.req.path === '/api/auth/login' ||
+          c.req.path === '/api/auth/reset' ||
+          c.req.path === '/api/auth/bootstrap')) ||
+      // Phase E : la suppression d'un compte vérifie le mot de passe
+      // maître — même bucket anti-brute-force.
+      (c.req.method === 'DELETE' && c.req.path.startsWith('/api/auth/users/'))
     ) {
       const key = rateLimitKey(c);
       const now = Date.now();
@@ -542,6 +545,196 @@ export function createApp({
       { ok: true, user: { username: user.username, role: 'admin' } },
       201,
     );
+  });
+  // Phase E (module Compte, Admin seulement — vérifié serveur) : gestion
+  // des comptes. Le middleware a déjà validé la session + posé le rôle.
+  const requireAdmin = (c: Context<{ Variables: AppVariables }>) =>
+    c.get('role') !== 'admin' ? c.json({ error: 'Admin only.' }, 403) : null;
+  const limitsSchema = z.object({
+    allowedProviders: z
+      .array(z.string().trim().min(1).max(160))
+      .max(500)
+      .nullable()
+      .optional(),
+    allowedModels: z
+      .array(z.string().trim().min(1).max(160))
+      .max(500)
+      .nullable()
+      .optional(),
+    monthlyLimitUsd: z.number().finite().min(0).nullable().optional(),
+    maxDots: z.number().int().min(1).nullable().optional(),
+  });
+  // Liste des comptes (sans hash).
+  app.get('/api/auth/users', (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
+    if (!auth)
+      return c.json({ error: 'Authentication is not configured.' }, 503);
+    return c.json({ users: auth.listUsers() });
+  });
+  // Création d'un compte : Utilisateur = providers + modèles OBLIGATOIRES
+  // (sélection vide refusée) ; Admin = sans restriction (listes ignorées).
+  app.post('/api/auth/users', async (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
+    if (!auth)
+      return c.json({ error: 'Authentication is not configured.' }, 503);
+    const parsed = z
+      .object({
+        username: z.string().trim().min(1).max(64),
+        password: z.string().min(PASSWORD_MIN_LENGTH).max(256),
+        role: z.enum(['admin', 'user']),
+      })
+      .merge(limitsSchema)
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success)
+      return c.json(
+        { error: 'Enter a username, a password, and a role.' },
+        400,
+      );
+    const data = parsed.data;
+    if (
+      data.role === 'user' &&
+      (!data.allowedProviders?.length || !data.allowedModels?.length)
+    )
+      return c.json(
+        { error: 'Select at least one provider and one model.' },
+        400,
+      );
+    try {
+      const user = await auth.createUser(
+        data.username,
+        data.password,
+        data.role,
+        undefined,
+        {
+          allowedProviders:
+            data.role === 'admin' ? undefined : data.allowedProviders,
+          allowedModels: data.role === 'admin' ? undefined : data.allowedModels,
+          monthlyLimitUsd: data.monthlyLimitUsd,
+          maxDots: data.maxDots,
+        },
+      );
+      auth.logAuthEvent('user_created', user.username, rateLimitKey(c));
+      return c.json({ ok: true, user }, 201);
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Could not create the account.',
+        },
+        400,
+      );
+    }
+  });
+  // Modification d'un compte (rôle / limites / droits). Seuls les champs
+  // fournis changent. Passer à Admin force les listes à NULL.
+  app.patch('/api/auth/users/:id', async (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
+    if (!auth)
+      return c.json({ error: 'Authentication is not configured.' }, 503);
+    const parsed = z
+      .object({ role: z.enum(['admin', 'user']).optional() })
+      .merge(limitsSchema)
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'Invalid account.' }, 400);
+    const target = auth.getUserById(c.req.param('id'));
+    if (!target) return c.json({ error: 'Account not found.' }, 404);
+    try {
+      const user = auth.updateUser(target.id, parsed.data);
+      if (user)
+        auth.logAuthEvent('user_updated', user.username, rateLimitKey(c));
+      return c.json({ ok: true, user });
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Could not update the account.',
+        },
+        400,
+      );
+    }
+  });
+  // Changement du mot de passe d'un compte (Admin) : sessions révoquées.
+  app.post('/api/auth/users/:id/password', async (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
+    if (!auth)
+      return c.json({ error: 'Authentication is not configured.' }, 503);
+    const parsed = z
+      .object({ password: z.string().min(PASSWORD_MIN_LENGTH).max(256) })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success)
+      return c.json(
+        {
+          error: `Enter a password of at least ${PASSWORD_MIN_LENGTH} characters.`,
+        },
+        400,
+      );
+    const target = auth.getUserById(c.req.param('id'));
+    if (!target) return c.json({ error: 'Account not found.' }, 404);
+    await auth.setUserPassword(target.id, parsed.data.password);
+    auth.revokeAllSessions(target.id);
+    auth.logAuthEvent('password_changed', target.username, rateLimitKey(c));
+    return c.json({ ok: true });
+  });
+  // Suppression d'un compte (Admin) : garde-fous — confirmation + mot de
+  // passe maître, jamais soi-même, jamais le dernier Admin. Données
+  // effacées (cascade), irréversible. Le journal d'audit est conservé.
+  app.delete('/api/auth/users/:id', async (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
+    if (!auth)
+      return c.json({ error: 'Authentication is not configured.' }, 503);
+    const parsed = z
+      .object({
+        masterPassword: z.string().min(1).max(256),
+        confirm: z.literal(true),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success)
+      return c.json(
+        { error: 'Confirm the deletion and enter the master password.' },
+        400,
+      );
+    const target = auth.getUserById(c.req.param('id'));
+    if (!target) return c.json({ error: 'Account not found.' }, 404);
+    const master = resolveAdminMasterPassword();
+    const supplied = Buffer.from(parsed.data.masterPassword);
+    const expected = Buffer.from(master);
+    if (
+      supplied.length !== expected.length ||
+      !timingSafeEqual(supplied, expected)
+    ) {
+      auth.logAuthEvent('user_delete_failed', target.username, rateLimitKey(c));
+      return c.json({ error: 'Invalid master password.' }, 401);
+    }
+    if (target.id === c.get('userId'))
+      return c.json({ error: 'Cannot delete your own account.' }, 400);
+    if (target.role === 'admin' && auth.countAdmins() <= 1)
+      return c.json({ error: 'Cannot delete the last admin account.' }, 400);
+    if (!platform) return c.json({ error: 'Platform is not configured.' }, 503);
+    await platform.deleteUserData(target.id);
+    auth.deleteUser(target.id);
+    auth.logAuthEvent('user_deleted', target.username, rateLimitKey(c));
+    return c.json({ ok: true });
+  });
+  // Journal d'audit (Admin) : sans données sensibles.
+  app.get('/api/auth/audit', (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
+    if (!auth)
+      return c.json({ error: 'Authentication is not configured.' }, 503);
+    return c.json({ events: auth.listAuthEvents(100) });
   });
   // Pages /login et /reset : autonomes (sans JS, styles intégrés, logo
   // public) — elles ne dépendent ni de /assets/* ni de /dots/* (verrouillés).

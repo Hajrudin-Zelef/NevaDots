@@ -636,6 +636,38 @@ export class Store {
         .run(attachmentId, this.userId).changes > 0
     );
   }
+  /** Phase E (suppression de compte) : les pièces jointes du compte. */
+  attachmentIdsForUser(userId: string): string[] {
+    return (
+      this.db
+        .prepare('SELECT attachmentId FROM attachment_users WHERE userId=?')
+        .all(userId) as Array<{ attachmentId: string }>
+    ).map((row) => row.attachmentId);
+  }
+  /**
+   * Phase E (suppression de compte) : efface les données du Store d'un
+   * compte (opération système, prend le userId en paramètre). Les
+   * fichiers des pièces jointes sont effacés par
+   * Platform.deleteUserData (via attachmentIdsForUser, AVANT cet appel).
+   */
+  deleteUserData(userId: string) {
+    this.db.prepare('DELETE FROM settings WHERE userId=?').run(userId);
+    // attachment_users utilise userId (pas user_id).
+    this.db.prepare('DELETE FROM attachment_users WHERE userId=?').run(userId);
+    for (const table of ['tasks', 'runs', 'events', 'memories', 'usage'])
+      this.db.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(userId);
+    // settings_quarantine n'existe que si une valeur a été mise de côté.
+    if (
+      this.db
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type='table' AND name='settings_quarantine'",
+        )
+        .get()
+    )
+      this.db
+        .prepare('DELETE FROM settings_quarantine WHERE user_id=?')
+        .run(userId);
+  }
   /** Record one model completion's token usage (best-effort, no throw). */
   recordUsage(entry: {
     ts: number;
@@ -663,6 +695,18 @@ export class Store {
         entry.costUsd,
         this.userId,
       );
+  }
+  /** Phase E : coût du mois calendaire en cours (UTC) pour ce compte. */
+  monthCostUsd(now = Date.now()): number {
+    const start = new Date(now);
+    start.setUTCDate(1);
+    start.setUTCHours(0, 0, 0, 0);
+    const row = this.db
+      .prepare(
+        'SELECT COALESCE(SUM(costUsd), 0) AS cost FROM usage WHERE ts >= ? AND user_id=?',
+      )
+      .get(start.getTime(), this.userId) as { cost: number };
+    return row.cost;
   }
   /** Totals for two windows: the current calendar day and the last 7 days. */
   usageSummary(now = Date.now()): UsageReport {

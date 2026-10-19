@@ -10,6 +10,7 @@ import {
   Plug,
   SlidersHorizontal,
   CircleUserRound,
+  Users,
   X,
 } from 'lucide-react';
 import type {
@@ -30,6 +31,7 @@ import { avatarPoster, isProtectedAvatar } from '../shared/avatars';
 import { ConnectionsSection } from './ConnectionsSection';
 import { ExternalAccountsSection } from './ExternalAccountsSection';
 import { ApiProvidersPanel } from './ApiProvidersPanel';
+import { AccountsPanel } from './AccountsPanel';
 import { ModelSelectorPanel } from './ModelSelectorPanel';
 
 import { DeepThinkPanel } from './DeepThinkPanel';
@@ -72,7 +74,8 @@ type SettingsTab =
   | 'dots'
   | 'connections'
   | 'health'
-  | 'about';
+  | 'about'
+  | 'accounts';
 
 /** Compact token count for the usage card (1.2k, 3.4M). */
 function fmtTokens(n: number): string {
@@ -167,6 +170,8 @@ export function WorkspaceDialog({
     default: null,
     providers: [],
   });
+  /** Phase E : rôle du compte connecté (onglet Comptes = Admin seulement). */
+  const [myRole, setMyRole] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [connectionDot, setConnectionDot] = useState(
     workspace.dots[0]?.id ?? '',
@@ -187,6 +192,12 @@ export function WorkspaceDialog({
     void api<UsageReport>('/usage')
       .then((value) => {
         if (active) setUsage(value);
+      })
+      .catch(() => {});
+    // Phase E : le rôle (Admin = onglet Comptes visible).
+    void api<{ username: string; role: string }>('/auth/me')
+      .then((value) => {
+        if (active) setMyRole(value.role);
       })
       .catch(() => {});
     return () => {
@@ -635,20 +646,24 @@ export function WorkspaceDialog({
                     ['connections', 'Connexions', Plug],
                     ['health', 'Santé', Activity],
                     ['about', 'À propos', Info],
+                    // Phase E : onglet Comptes = Admin seulement.
+                    ['accounts', 'Comptes', Users],
                   ] as const
-                ).map(([id, label, Icon]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    role="tab"
-                    className={`settings-nav-item ${settingsTab === id ? 'active' : ''}`}
-                    aria-selected={settingsTab === id}
-                    onClick={() => setSettingsTab(id)}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                    <span>{label}</span>
-                  </button>
-                ))}
+                )
+                  .filter(([id]) => id !== 'accounts' || myRole === 'admin')
+                  .map(([id, label, Icon]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      className={`settings-nav-item ${settingsTab === id ? 'active' : ''}`}
+                      aria-selected={settingsTab === id}
+                      onClick={() => setSettingsTab(id)}
+                    >
+                      <Icon size={16} aria-hidden="true" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
               </nav>
               <div className="settings-body">
                 {dialog.type === 'settings' && settingsTab === 'appearance' && (
@@ -1284,6 +1299,9 @@ export function WorkspaceDialog({
                     </a>
                   </div>
                 )}
+                {dialog.type === 'settings' &&
+                  settingsTab === 'accounts' &&
+                  myRole === 'admin' && <AccountsPanel />}
               </div>
             </div>
           )}

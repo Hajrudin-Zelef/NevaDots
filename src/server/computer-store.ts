@@ -53,6 +53,18 @@ export class ComputerStore {
        UPDATE computer_audit SET user_id=(SELECT user_id FROM dots WHERE dots.id=computer_audit.dotId) WHERE user_id IS NULL;`,
     );
   }
+  /**
+   * Phase E (suppression de compte) : efface les permissions + le journal
+   * des ordinateurs des Dots du compte (résolus via `dots.user_id`).
+   */
+  deleteUserData(userId: string) {
+    for (const table of ['computer_permissions', 'computer_audit'])
+      this.db
+        .prepare(
+          `DELETE FROM ${table} WHERE dotId IN (SELECT id FROM dots WHERE user_id=?)`,
+        )
+        .run(userId);
+  }
   permissions(id: string): ComputerPermissions {
     const row = this.db
       .prepare(

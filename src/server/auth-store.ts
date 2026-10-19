@@ -33,6 +33,14 @@ export interface User {
   disabled: boolean;
   createdAt: number;
   lastLoginAt: number | null;
+  /** Phase E : providers autorisés (NULL = sans restriction, Admin). */
+  allowedProviders: string[] | null;
+  /** Phase E : modèles autorisés (NULL = sans restriction, Admin). */
+  allowedModels: string[] | null;
+  /** Phase E : limite de consommation mensuelle en $ (NULL = illimitée). */
+  monthlyLimitUsd: number | null;
+  /** Phase E : nombre max de Dots (NULL = illimité). */
+  maxDots: number | null;
 }
 export interface UserRow extends User {
   passwordHash: string;
@@ -45,6 +53,17 @@ interface DbUserRow {
   disabled: number;
   createdAt: number;
   lastLoginAt: number | null;
+  allowedProviders: string | null;
+  allowedModels: string | null;
+  monthlyLimitUsd: number | null;
+  maxDots: number | null;
+}
+/** Limites / droits d'un compte (Phase E), tels que l'AuthStore les stocke. */
+export interface UserLimitsInput {
+  allowedProviders?: string[] | null;
+  allowedModels?: string[] | null;
+  monthlyLimitUsd?: number | null;
+  maxDots?: number | null;
 }
 export interface Session {
   id: string;
@@ -123,9 +142,65 @@ export class AuthStore {
       CREATE TABLE IF NOT EXISTS auth_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, username TEXT NOT NULL, ip TEXT NOT NULL, at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS sessions_user ON sessions(userId);
       CREATE INDEX IF NOT EXISTS auth_audit_at ON auth_audit(at);`);
+    // Phase E : colonnes limites / droits (idempotent, comme workspace.ts).
+    for (const [column, definition] of [
+      ['allowedProviders', 'TEXT'],
+      ['allowedModels', 'TEXT'],
+      ['monthlyLimitUsd', 'REAL'],
+      ['maxDots', 'INTEGER'],
+    ] as const) {
+      if (
+        !this.db
+          .prepare('PRAGMA table_info(users)')
+          .all()
+          .some((field) => field.name === column)
+      )
+        this.db.exec(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);
+    }
   }
   close() {
     this.db.close();
+  }
+
+  /** Parse une colonne JSON (NULL = sans restriction). */
+  private static parseList(raw: string | null): string[] | null {
+    if (raw == null) return null;
+    try {
+      const value: unknown = JSON.parse(raw);
+      if (!Array.isArray(value)) return null;
+      return value.filter(
+        (item): item is string => typeof item === 'string' && item.length > 0,
+      );
+    } catch {
+      return null;
+    }
+  }
+  private static mapUser(row: DbUserRow): UserRow {
+    return {
+      id: row.id,
+      username: row.username,
+      passwordHash: row.passwordHash,
+      role: row.role,
+      disabled: row.disabled === 1,
+      createdAt: row.createdAt,
+      lastLoginAt: row.lastLoginAt,
+      allowedProviders: AuthStore.parseList(row.allowedProviders),
+      allowedModels: AuthStore.parseList(row.allowedModels),
+      monthlyLimitUsd:
+        typeof row.monthlyLimitUsd === 'number' ? row.monthlyLimitUsd : null,
+      maxDots: typeof row.maxDots === 'number' ? row.maxDots : null,
+    };
+  }
+  /** Valide une liste providers/modèles (tableau de chaînes non vides). */
+  private static validateList(value: unknown, field: string): string[] {
+    if (!Array.isArray(value) || value.length === 0)
+      throw new Error(`${field} must be a non-empty array.`);
+    const list = [...new Set(value)];
+    if (
+      list.some((item) => typeof item !== 'string' || item.trim().length === 0)
+    )
+      throw new Error(`${field} must contain only non-empty strings.`);
+    return list as string[];
   }
 
   /** Phase B (bootstrap) : nombre de comptes (0 = premier compte à créer). */
@@ -144,6 +219,10 @@ export class AuthStore {
     // fixtures (stores liés) avec l'utilisateur de session. En prod,
     // toujours un UUID aléatoire.
     id: string = randomUUID(),
+    // Phase E : limites / droits. Un Admin est toujours sans restriction
+    // (listes forcées à NULL) ; un Utilisateur peut être sans restriction
+    // (listes NULL) ou restreint (listes non vides).
+    limits: UserLimitsInput = {},
   ): Promise<User> {
     const name = username.trim();
     if (name.length < 1 || name.length > USERNAME_MAX_LENGTH)
@@ -155,13 +234,46 @@ export class AuthStore {
       throw new Error(
         `Password must be ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters.`,
       );
+    const monthlyLimitUsd =
+      limits.monthlyLimitUsd == null ? null : Number(limits.monthlyLimitUsd);
+    if (
+      monthlyLimitUsd != null &&
+      (!Number.isFinite(monthlyLimitUsd) || monthlyLimitUsd < 0)
+    )
+      throw new Error('monthlyLimitUsd must be a number >= 0 or null.');
+    const maxDots = limits.maxDots == null ? null : Number(limits.maxDots);
+    if (maxDots != null && (!Number.isInteger(maxDots) || maxDots < 1))
+      throw new Error('maxDots must be a positive integer or null.');
+    // Admin = sans restriction ; Utilisateur = listes validées si fournies.
+    const allowedProviders =
+      role === 'admin'
+        ? null
+        : limits.allowedProviders == null
+          ? null
+          : AuthStore.validateList(limits.allowedProviders, 'allowedProviders');
+    const allowedModels =
+      role === 'admin'
+        ? null
+        : limits.allowedModels == null
+          ? null
+          : AuthStore.validateList(limits.allowedModels, 'allowedModels');
     const now = Date.now();
     try {
       this.db
         .prepare(
-          'INSERT INTO users (id, username, passwordHash, role, disabled, createdAt, lastLoginAt) VALUES (?, ?, ?, ?, 0, ?, NULL)',
+          'INSERT INTO users (id, username, passwordHash, role, disabled, createdAt, lastLoginAt, allowedProviders, allowedModels, monthlyLimitUsd, maxDots) VALUES (?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, ?)',
         )
-        .run(id, name, await hashPassword(password), role, now);
+        .run(
+          id,
+          name,
+          await hashPassword(password),
+          role,
+          now,
+          allowedProviders ? JSON.stringify(allowedProviders) : null,
+          allowedModels ? JSON.stringify(allowedModels) : null,
+          monthlyLimitUsd,
+          maxDots,
+        );
     } catch {
       throw new Error('Username already exists.');
     }
@@ -172,6 +284,10 @@ export class AuthStore {
       disabled: false,
       createdAt: now,
       lastLoginAt: null,
+      allowedProviders,
+      allowedModels,
+      monthlyLimitUsd,
+      maxDots,
     };
   }
   getUserByUsername(username: string): UserRow | undefined {
@@ -179,15 +295,7 @@ export class AuthStore {
       .prepare('SELECT * FROM users WHERE username=?')
       .get(username.trim()) as DbUserRow | undefined;
     if (!row) return undefined;
-    return {
-      id: row.id,
-      username: row.username,
-      passwordHash: row.passwordHash,
-      role: row.role,
-      disabled: row.disabled === 1,
-      createdAt: row.createdAt,
-      lastLoginAt: row.lastLoginAt,
-    };
+    return AuthStore.mapUser(row);
   }
   setUserDisabled(id: string, disabled: boolean) {
     this.db
@@ -211,15 +319,121 @@ export class AuthStore {
     const row = this.db.prepare('SELECT * FROM users WHERE id=?').get(id) as
       DbUserRow | undefined;
     if (!row) return undefined;
-    return {
-      id: row.id,
-      username: row.username,
-      passwordHash: row.passwordHash,
-      role: row.role,
-      disabled: row.disabled === 1,
-      createdAt: row.createdAt,
-      lastLoginAt: row.lastLoginAt,
-    };
+    return AuthStore.mapUser(row);
+  }
+  /** Phase E (module Compte) : liste des comptes, sans hash (User, pas UserRow). */
+  listUsers(): User[] {
+    return (
+      this.db
+        .prepare('SELECT * FROM users ORDER BY createdAt')
+        .all() as unknown as DbUserRow[]
+    ).map((row) => {
+      const user = AuthStore.mapUser(row);
+      return {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        disabled: user.disabled,
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
+        allowedProviders: user.allowedProviders,
+        allowedModels: user.allowedModels,
+        monthlyLimitUsd: user.monthlyLimitUsd,
+        maxDots: user.maxDots,
+      };
+    });
+  }
+  /** Phase E : nombre d'Admins (garde-fou : jamais supprimer le dernier). */
+  countAdmins(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin'")
+      .get() as { n: number };
+    return row.n;
+  }
+  /**
+   * Phase E (module Compte) : met à jour rôle / limites / droits d'un
+   * compte. Seuls les champs fournis changent. Passer à Admin force les
+   * listes à NULL (Admin = sans restriction). Retourne le compte mis à
+   * jour, ou undefined s'il n'existe pas.
+   */
+  updateUser(
+    id: string,
+    patch: { role?: UserRole } & UserLimitsInput,
+  ): User | undefined {
+    const current = this.getUserById(id);
+    if (!current) return undefined;
+    const role = patch.role ?? current.role;
+    const sets: string[] = [];
+    const values: Array<string | number | null> = [];
+    if (patch.role !== undefined) {
+      sets.push('role=?');
+      values.push(role);
+    }
+    // Admin = sans restriction : les listes passent à NULL.
+    const allowedProviders =
+      role === 'admin'
+        ? null
+        : patch.allowedProviders === undefined
+          ? undefined
+          : patch.allowedProviders === null
+            ? null
+            : AuthStore.validateList(
+                patch.allowedProviders,
+                'allowedProviders',
+              );
+    const allowedModels =
+      role === 'admin'
+        ? null
+        : patch.allowedModels === undefined
+          ? undefined
+          : patch.allowedModels === null
+            ? null
+            : AuthStore.validateList(patch.allowedModels, 'allowedModels');
+    if (role === 'admin' && patch.role !== undefined) {
+      sets.push('allowedProviders=?', 'allowedModels=?');
+      values.push(null, null);
+    } else {
+      if (allowedProviders !== undefined) {
+        sets.push('allowedProviders=?');
+        values.push(allowedProviders ? JSON.stringify(allowedProviders) : null);
+      }
+      if (allowedModels !== undefined) {
+        sets.push('allowedModels=?');
+        values.push(allowedModels ? JSON.stringify(allowedModels) : null);
+      }
+    }
+    if (patch.monthlyLimitUsd !== undefined) {
+      const value =
+        patch.monthlyLimitUsd == null ? null : Number(patch.monthlyLimitUsd);
+      if (value != null && (!Number.isFinite(value) || value < 0))
+        throw new Error('monthlyLimitUsd must be a number >= 0 or null.');
+      sets.push('monthlyLimitUsd=?');
+      values.push(value);
+    }
+    if (patch.maxDots !== undefined) {
+      const value = patch.maxDots == null ? null : Number(patch.maxDots);
+      if (value != null && (!Number.isInteger(value) || value < 1))
+        throw new Error('maxDots must be a positive integer or null.');
+      sets.push('maxDots=?');
+      values.push(value);
+    }
+    if (sets.length) {
+      this.db
+        .prepare(`UPDATE users SET ${sets.join(', ')} WHERE id=?`)
+        .run(...values, id);
+    }
+    return this.getUserById(id);
+  }
+  /**
+   * Phase E (suppression de compte) : efface le compte + ses sessions +
+   * ses codes reset. Les données du monde (Dots, conversations, …) sont
+   * effacées par Platform.deleteUserData AVANT cet appel. Le journal
+   * d'audit est conservé (trace de sécurité, pas une donnée du compte).
+   */
+  deleteUser(id: string) {
+    this.db.prepare('DELETE FROM sessions WHERE userId=?').run(id);
+    this.db.prepare('DELETE FROM password_resets WHERE userId=?').run(id);
+    this.db.prepare('DELETE FROM users WHERE id=?').run(id);
   }
   setUserRole(id: string, role: UserRole) {
     this.db.prepare('UPDATE users SET role=? WHERE id=?').run(role, id);

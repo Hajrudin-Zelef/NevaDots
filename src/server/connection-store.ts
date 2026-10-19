@@ -135,6 +135,16 @@ export class ConnectionStore {
         .prepare(`UPDATE ${table} SET user_id=? WHERE user_id IS NULL`)
         .run(userId);
   }
+  /** Phase E (suppression de compte) : efface les connexions MCP du compte. */
+  deleteUserData(userId: string) {
+    for (const table of [
+      'mcp_connections',
+      'mcp_approvals',
+      'mcp_actions',
+      'mcp_approval_claims',
+    ])
+      this.db.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(userId);
+  }
   /** Encrypt-at-rest for MCP bearer tokens. Legacy plaintext or `enc1` rows
    * are re-sealed once, idempotently, with SECRETS_KEY. Refuses to store
    * plaintext when no sealing key is configured (fail closed). */

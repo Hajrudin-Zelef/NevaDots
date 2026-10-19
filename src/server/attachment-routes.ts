@@ -88,6 +88,17 @@ export function attachmentDir(id: string): string {
   return join(ATTACHMENTS_DIR, id);
 }
 
+/**
+ * Phase E (suppression de compte) : supprime les fichiers d'une liste de
+ * pièces jointes. Les ids non-UUID sont ignorés (anti-traversal).
+ */
+export async function deleteAttachmentFiles(ids: string[]): Promise<void> {
+  for (const id of ids) {
+    if (!ATTACHMENT_ID_RE.test(id)) continue;
+    await fs.rm(attachmentDir(id), { recursive: true, force: true });
+  }
+}
+
 export async function readMeta(id: string): Promise<AttachmentMeta | null> {
   if (!ATTACHMENT_ID_RE.test(id)) return null;
   try {

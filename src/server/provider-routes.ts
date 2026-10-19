@@ -141,14 +141,26 @@ export function providerRoutes(platform: Platform) {
    * la lecture des soldes (/credits, info financière) sont réservées
    * Admin. Les lectures GET /providers et GET /catalog/:id restent
    * ouvertes à tout compte connecté (le sélecteur de modèles en a
-   * besoin) — le filtrage par compte (volet Phase E) viendra les restreindre.
+   * besoin).
+   * Phase E — les lectures sont FILTRÉES par compte : un Utilisateur
+   * restreint ne voit que ses providers / modèles autorisés (Admin =
+   * tout). Un provider hors liste répond 404 (pas d'énumération).
    */
+  const allowedFor = (c: Context<{ Variables: AppVariables }>) =>
+    platform.workspace.forUser(c.get('userId')).userLimits();
   const requireAdmin = (c: Context<{ Variables: AppVariables }>) =>
     c.get('role') !== 'admin' ? c.json({ error: 'Admin only.' }, 403) : null;
 
-  app.get('/providers', (c) =>
-    c.json({ providers: registry ? registry.view() : [] }),
-  );
+  app.get('/providers', (c) => {
+    const providers = registry ? registry.view() : [];
+    const limits = allowedFor(c);
+    if (!limits?.allowedProviders) return c.json({ providers });
+    return c.json({
+      providers: providers.filter((provider) =>
+        limits.allowedProviders!.includes(provider.id),
+      ),
+    });
+  });
 
   app.put('/providers/:id', async (c) => {
     const denied = requireAdmin(c);
@@ -180,6 +192,17 @@ export function providerRoutes(platform: Platform) {
   app.get('/catalog/:id', async (c) => {
     const provider = registry?.get(c.req.param('id'));
     if (!provider) return c.json({ error: 'Unknown provider.' }, 404);
+    // Phase E : provider hors liste autorisée → 404 (pas d'énumération).
+    const limits = allowedFor(c);
+    if (
+      limits?.allowedProviders &&
+      !limits.allowedProviders.includes(provider.id)
+    )
+      return c.json({ error: 'Unknown provider.' }, 404);
+    const filterModels = (models: CatalogModel[]) =>
+      limits?.allowedModels
+        ? models.filter((model) => limits.allowedModels!.includes(model.id))
+        : models;
     const refresh = c.req.query('refresh') === '1';
     const fallback: CatalogModel[] = provider.models.map((id) => ({
       id,
@@ -190,7 +213,7 @@ export function providerRoutes(platform: Platform) {
         const models = await fetchOpenRouterCatalog(refresh);
         return c.json({
           provider: provider.id,
-          models,
+          models: filterModels(models),
           source: 'live' as const,
         });
       } catch {
@@ -200,7 +223,7 @@ export function providerRoutes(platform: Platform) {
     if (!provider.apiKey)
       return c.json({
         provider: provider.id,
-        models: fallback,
+        models: filterModels(fallback),
         source: 'static' as const,
       });
     try {
@@ -219,13 +242,13 @@ export function providerRoutes(platform: Platform) {
       if (!models.length) throw new Error('Empty model list');
       return c.json({
         provider: provider.id,
-        models,
+        models: filterModels(models),
         source: 'live' as const,
       });
     } catch (error) {
       return c.json({
         provider: provider.id,
-        models: fallback,
+        models: filterModels(fallback),
         source: 'static' as const,
         error: error instanceof Error ? error.message : 'Unavailable',
       });

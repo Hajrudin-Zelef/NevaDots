@@ -31,6 +31,19 @@ import type { CallReceipt, Conversation, Dot, Space } from '../shared/types.js';
  * migration (NULL = ligne orpheline du monde mono-utilisateur, réclamée
  * par claimOrphans au boot / au bootstrap).
  */
+/** Phase E : limites / droits d'un compte (retournés par le callback
+ *  `getUserRecord`, branché dans index.ts sur l'AuthStore). */
+export interface UserLimits {
+  role: string;
+  allowedProviders: string[] | null;
+  allowedModels: string[] | null;
+  monthlyLimitUsd: number | null;
+  maxDots: number | null;
+}
+export interface WorkspaceStoreOptions {
+  /** Résout la fiche compte d'un userId (AuthStore). Absent en test. */
+  getUserRecord?: (userId: string) => UserLimits | undefined;
+}
 export class WorkspaceStore {
   private db: DatabaseSync;
   readonly pages: Pages;
@@ -39,6 +52,7 @@ export class WorkspaceStore {
   constructor(
     pathOrDb: string | DatabaseSync,
     readonly userId: string | null = null,
+    private readonly options: WorkspaceStoreOptions = {},
   ) {
     if (typeof pathOrDb === 'string') {
       if (pathOrDb !== ':memory:')
@@ -141,7 +155,18 @@ export class WorkspaceStore {
   }
   /** Nouvelle instance portée par cet utilisateur, même connexion DB. */
   forUser(userId: string): WorkspaceStore {
-    return new WorkspaceStore(this.db, userId);
+    return new WorkspaceStore(this.db, userId, this.options);
+  }
+  /**
+   * Phase E : limites / droits du compte lié (via le callback AuthStore).
+   * undefined = sans restriction (pas de callback en test, compte
+   * introuvable, ou Admin — un Admin n'est jamais restreint).
+   */
+  userLimits(): UserLimits | undefined {
+    if (this.userId === null || !this.options.getUserRecord) return undefined;
+    const record = this.options.getUserRecord(this.userId);
+    if (!record || record.role === 'admin') return undefined;
+    return record;
   }
   /** Écriture sans utilisateur = erreur (jamais de ligne orpheline neuve). */
   private requireUser(): string {
@@ -210,6 +235,33 @@ export class WorkspaceStore {
           .run(userId);
     }
     this.computers.claimOrphans();
+  }
+  /**
+   * Phase E (suppression de compte) : efface TOUTES les données du monde
+   * d'un compte (opération système, prend le userId en paramètre). Les
+   * tables du Store (tâches, mémoires, usage, …) sont effacées par
+   * Store.deleteUserData, les threads du runner par
+   * SqliteAgentRunner.deleteUserThreads — le tout orchestré par
+   * Platform.deleteUserData.
+   */
+  deleteUserData(userId: string) {
+    for (const table of [
+      'spaces',
+      'dots',
+      'dot_spaces',
+      'task_threads',
+      'calls',
+      'captures',
+      'thread_activity',
+      'app_config',
+    ])
+      this.db.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(userId);
+    this.db.prepare('DELETE FROM thread_bindings WHERE ownerId=?').run(userId);
+    // Les ordinateurs d'abord : leur suppression se résout via les Dots
+    // (dots.user_id) — après la suppression des Dots, rien ne serait trouvé.
+    this.computers.deleteUserData(userId);
+    this.pages.deleteUserData(userId);
+    this.connections.deleteUserData(userId);
   }
   /**
    * Résolutions « système » (jamais de données utilisateur) : servent à
@@ -373,6 +425,22 @@ export class WorkspaceStore {
   setDotModel(id: string, provider: string | null, model: string | null): Dot {
     this.requireUser();
     if (!this.dot(id)) throw new Error('Dot not found.');
+    // Phase E : provider / modèle autorisés pour ce compte.
+    const limits = this.userLimits();
+    if (
+      limits?.allowedProviders &&
+      provider != null &&
+      !limits.allowedProviders.includes(provider)
+    )
+      throw new Error(
+        `Provider "${provider}" is not allowed for this account.`,
+      );
+    if (
+      limits?.allowedModels &&
+      model != null &&
+      !limits.allowedModels.includes(model)
+    )
+      throw new Error(`Model "${model}" is not allowed for this account.`);
     this.db
       .prepare('UPDATE dots SET provider=?, model=? WHERE id=? AND user_id=?')
       .run(provider, model, id, this.userId);
@@ -428,6 +496,16 @@ export class WorkspaceStore {
     avatar: string | null = null,
   ): Dot {
     const userId = this.requireUser();
+    // Phase E : nombre max de Dots + modèle autorisé pour ce compte.
+    const limits = this.userLimits();
+    if (limits?.maxDots != null && this.dots().length >= limits.maxDots)
+      throw new Error('Dot limit reached.');
+    if (
+      limits?.allowedModels &&
+      model != null &&
+      !limits.allowedModels.includes(model)
+    )
+      throw new Error(`Model "${model}" is not allowed for this account.`);
     // Un id d'avatar n'est jamais un modèle : attrape une inversion
     // d'arguments (avatar passé dans le slot model) au lieu d'écrire
     // silencieusement une valeur corrompue.
