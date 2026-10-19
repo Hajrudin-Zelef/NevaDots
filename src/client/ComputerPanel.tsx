@@ -589,92 +589,129 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                   </p>
                 )}
                 {filesNotice && <p role="status">{filesNotice}</p>}
-                <div className="computer-actions">
-                  <button
-                    disabled={!running || !status.permissions.files || busy}
-                    onClick={() => void listDir(filesDir)}
-                  >
-                    {filesListed ? 'Actualiser' : 'Lister'}
-                  </button>
-                  {filesDir && (
+                <div className="computer-files-browser">
+                  <div className="computer-actions">
                     <button
                       disabled={!running || !status.permissions.files || busy}
-                      onClick={() => void listDir(parentDir(filesDir))}
+                      onClick={() => void listDir(filesDir)}
                     >
-                      ↑ Remonter
+                      {filesListed ? 'Actualiser' : 'Lister'}
                     </button>
+                    {filesDir && (
+                      <button
+                        disabled={!running || !status.permissions.files || busy}
+                        onClick={() => void listDir(parentDir(filesDir))}
+                      >
+                        ↑ Remonter
+                      </button>
+                    )}
+                  </div>
+                  {filesListed && (
+                    <>
+                      <div className="computer-files-meta">
+                        <p>
+                          Dossier :{' '}
+                          <strong>
+                            {filesDir ? `/${filesDir}` : '/ (racine)'}
+                          </strong>
+                        </p>
+                        <p className="computer-files-usage">
+                          {(() => {
+                            const usage = summarizeFiles(filesEntries);
+                            return (
+                              <>
+                                Espace utilisé : {formatFileSize(usage.bytes)} ·{' '}
+                                {usage.files} fichier(s)
+                                {!usage.sized
+                                  ? ' (partiel : tailles manquantes)'
+                                  : ''}
+                                {filesTruncated ? ' · liste tronquée' : ''}
+                              </>
+                            );
+                          })()}
+                        </p>
+                      </div>
+                      {filesTruncated && (
+                        <p role="status">
+                          Liste tronquée : affinez le dossier pour tout voir.
+                        </p>
+                      )}
+                      {filesEntries.length === 0 ? (
+                        <p>Dossier vide.</p>
+                      ) : (
+                        <ul className="computer-files">
+                          {filesEntries.map((entry) => (
+                            <li key={entry.path}>
+                              <button
+                                type="button"
+                                title={entry.path}
+                                disabled={
+                                  !running || !status.permissions.files || busy
+                                }
+                                onClick={() => {
+                                  if (isFileDir(entry)) {
+                                    void listDir(entry.path);
+                                  } else {
+                                    setPath(entry.path);
+                                    void readFile(entry.path);
+                                  }
+                                }}
+                              >
+                                {isFileDir(entry) ? '📁' : '📄'}{' '}
+                                {fileBasename(entry.path)}
+                                {!isFileDir(entry) &&
+                                  ` · ${formatFileSize(entry.bytes)}`}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
                   )}
                 </div>
-                {filesListed && (
-                  <>
-                    <p>
-                      Dossier :{' '}
-                      <strong>
-                        {filesDir ? `/${filesDir}` : '/ (racine)'}
-                      </strong>
-                    </p>
-                    <p className="computer-files-usage">
-                      {(() => {
-                        const usage = summarizeFiles(filesEntries);
-                        return (
-                          <>
-                            Espace utilisé : {formatFileSize(usage.bytes)} ·{' '}
-                            {usage.files} fichier(s)
-                            {!usage.sized
-                              ? ' (partiel : tailles manquantes)'
-                              : ''}
-                            {filesTruncated ? ' · liste tronquée' : ''}
-                          </>
-                        );
-                      })()}
-                    </p>
-                    {filesTruncated && (
-                      <p role="status">
-                        Liste tronquée : affinez le dossier pour tout voir.
-                      </p>
-                    )}
-                    {filesEntries.length === 0 ? (
-                      <p>Dossier vide.</p>
-                    ) : (
-                      <ul className="computer-files">
-                        {filesEntries.map((entry) => (
-                          <li key={entry.path}>
-                            <button
-                              type="button"
-                              title={entry.path}
-                              disabled={
-                                !running || !status.permissions.files || busy
-                              }
-                              onClick={() => {
-                                if (isFileDir(entry)) {
-                                  void listDir(entry.path);
-                                } else {
-                                  setPath(entry.path);
-                                  void readFile(entry.path);
-                                }
-                              }}
-                            >
-                              {isFileDir(entry) ? '📁' : '📄'}{' '}
-                              {fileBasename(entry.path)}
-                              {!isFileDir(entry) &&
-                                ` · ${formatFileSize(entry.bytes)}`}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                )}
-                <label>
-                  Chemin
-                  <input
-                    value={path}
-                    onChange={(event) => setPath(event.target.value)}
-                    placeholder="notes.txt"
-                    disabled={!running || !status.permissions.files || busy}
-                  />
-                </label>
-                <div className="computer-actions">
+                <div className="computer-files-editor">
+                  <div className="computer-files-path-row">
+                    <label>
+                      Chemin
+                      <input
+                        value={path}
+                        onChange={(event) => setPath(event.target.value)}
+                        placeholder="notes.txt"
+                        disabled={!running || !status.permissions.files || busy}
+                      />
+                    </label>
+                    <button
+                      disabled={
+                        !running ||
+                        !status.permissions.files ||
+                        busy ||
+                        !path.trim()
+                      }
+                      onClick={() => void readFile(path.trim())}
+                    >
+                      Lire
+                    </button>
+                  </div>
+                  <label>
+                    Contenu du fichier ({contents.length} caractères)
+                    <textarea
+                      aria-label="Contenu à enregistrer"
+                      value={contents}
+                      onChange={(event) => setContents(event.target.value)}
+                      disabled={!running || !status.permissions.files || busy}
+                      maxLength={100000}
+                      rows={5}
+                    />
+                  </label>
+                  <label className="computer-files-append">
+                    <input
+                      type="checkbox"
+                      checked={append}
+                      onChange={(event) => setAppend(event.target.checked)}
+                      disabled={!running || !status.permissions.files || busy}
+                    />{' '}
+                    Ajouter à la fin au lieu de remplacer
+                  </label>
                   <button
                     disabled={
                       !running ||
@@ -682,42 +719,11 @@ export function ComputerPanel({ dot }: { dot: Dot }) {
                       busy ||
                       !path.trim()
                     }
-                    onClick={() => void readFile(path.trim())}
+                    onClick={() => void writeFile()}
                   >
-                    Lire
+                    {append ? 'Ajouter à la fin' : 'Enregistrer (remplacer)'}
                   </button>
                 </div>
-                <label>
-                  Contenu du fichier ({contents.length} caractères)
-                  <textarea
-                    aria-label="Contenu à enregistrer"
-                    value={contents}
-                    onChange={(event) => setContents(event.target.value)}
-                    disabled={!running || !status.permissions.files || busy}
-                    maxLength={100000}
-                    rows={5}
-                  />
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={append}
-                    onChange={(event) => setAppend(event.target.checked)}
-                    disabled={!running || !status.permissions.files || busy}
-                  />{' '}
-                  Ajouter à la fin au lieu de remplacer
-                </label>
-                <button
-                  disabled={
-                    !running ||
-                    !status.permissions.files ||
-                    busy ||
-                    !path.trim()
-                  }
-                  onClick={() => void writeFile()}
-                >
-                  {append ? 'Ajouter à la fin' : 'Enregistrer (remplacer)'}
-                </button>
                 {!status.permissions.files && (
                   <p>
                     Activez la permission Fichiers pour utiliser ces contrôles.

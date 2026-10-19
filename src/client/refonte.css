@@ -3095,6 +3095,15 @@ textarea::placeholder {
   .template-app .chat-transcript .chat-bubble.assistant {
     font-size: 16px;
   }
+  /* Onglet Fichiers : ligne chemin + bouton Lire côte à côte (mobile : empilé). */
+  .computer-files-path-row {
+    display: flex;
+    gap: 8px;
+    align-items: end;
+  }
+  .computer-files-path-row label {
+    flex: 1;
+  }
 }
 
 /* Rail d'activités permanent (tablette/bureau, dès que le rail est docké :
