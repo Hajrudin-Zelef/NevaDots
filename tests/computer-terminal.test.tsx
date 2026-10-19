@@ -1,7 +1,10 @@
 import { createElement } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
-import { LiveTerminalStrip } from '../src/client/ComputerTerminal';
+import {
+  ComputerTerminalRunList,
+  LiveTerminalStrip,
+} from '../src/client/ComputerTerminal';
 import type { ComputerActivitySnapshot } from '../src/client/useComputerActivity';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -130,4 +133,25 @@ it('montre les petites sorties et replie les sorties longues façon OpenCode', (
   expect(JSON.stringify(renderer!.toJSON())).toContain(
     'Cliquer pour développer',
   );
+});
+
+it('transcript plein : sorties longues visibles sans repli', () => {
+  const long = snapshot('agent', false);
+  long.runs[0].stdout = Array.from({ length: 20 }, (_, i) => `ligne ${i}`).join(
+    '\n',
+  );
+  let renderer: ReactTestRenderer;
+  act(() => {
+    renderer = create(
+      createElement(ComputerTerminalRunList, {
+        runs: long.runs,
+        transcript: true,
+      }),
+    );
+  });
+  const details = renderer!.root.findByType('details');
+  expect(details.props.open).toBe(true);
+  const json = JSON.stringify(renderer!.toJSON());
+  expect(json).toContain('ligne 19');
+  expect(json).not.toContain('Cliquer pour développer');
 });

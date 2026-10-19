@@ -805,7 +805,7 @@ export function ComputerPanel({
                         {terminal.error}
                       </p>
                     )}
-                    <ComputerTerminalRunList runs={terminal.runs} />
+                    <ComputerTerminalRunList runs={terminal.runs} transcript />
                   </div>
                   <form
                     className="terminal-prompt"

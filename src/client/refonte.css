@@ -747,6 +747,9 @@ textarea::placeholder {
   cursor: pointer;
 }
 /* --- Vrai terminal (émulateur branché sur le journal live) --- */
+/* theme: fixed .terminal-window */
+/* Surface volontairement sombre dans les deux thèmes : le plugin dark-theme
+   ne doit pas l'inverser (sinon fond clair en mode sombre). */
 .terminal-emulator .terminal-window {
   border: 1px solid #1e293b;
   border-radius: 12px;
@@ -810,11 +813,18 @@ textarea::placeholder {
 }
 .terminal-screen .computer-terminal-log {
   max-height: none;
+  overflow: visible;
   gap: 8px;
 }
 .terminal-screen .computer-terminal-run {
   background: #0f1830;
   border-color: #243152;
+}
+.terminal-screen .computer-terminal-command {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }
 .terminal-screen .computer-terminal-command,
 .terminal-screen .computer-terminal-run-output pre,
@@ -878,6 +888,7 @@ textarea::placeholder {
 .terminal-prompt button {
   flex: 0 0 auto;
 }
+/* theme: end */
 /* --- Onglet Fichiers --- */
 .computer-files-browser {
   border: 1px solid var(--nd-border);
@@ -3273,6 +3284,8 @@ textarea::placeholder {
   padding: 12px;
   text-align: center;
 }
+/* theme: fixed .muse-preview-terminal */
+/* Mini-terminal du chat : volontairement sombre dans les deux thèmes. */
 .muse-preview-terminal {
   background: #0f172a;
   border-color: #0f172a;
@@ -3312,6 +3325,7 @@ textarea::placeholder {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* theme: end */
 .muse-open {
   width: 100%;
   height: 34px;

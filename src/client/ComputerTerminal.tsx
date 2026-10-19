@@ -62,23 +62,36 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export function ComputerTerminalRun({ run }: { run: TerminalRun }) {
+export function ComputerTerminalRun({
+  run,
+  forceOpen = false,
+}: {
+  run: TerminalRun;
+  /** Transcript plein : tout reste visible, sans repli (vrai terminal). */
+  forceOpen?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   const failed = runFailed(run);
   const output = [run.stdout, run.stderr].filter(Boolean).join('\n');
   const shortOutput = output.length <= 600 && output.split('\n').length <= 8;
   const [expanded, setExpanded] = useState(
-    run.running || failed || shortOutput,
+    forceOpen || run.running || failed || shortOutput,
   );
+  const open = forceOpen || expanded;
   useEffect(() => {
+    if (forceOpen) {
+      setExpanded(true);
+      return;
+    }
     if (run.running || failed || shortOutput) setExpanded(true);
     else setExpanded(false);
-  }, [run.running, failed, shortOutput]);
+  }, [run.running, failed, shortOutput, forceOpen]);
   return (
     <details
       className={`computer-terminal-run ${run.running ? 'running' : ''} ${failed ? 'failed' : ''}`}
-      open={expanded}
+      open={open}
       onToggle={(event) => {
+        if (forceOpen) return;
         const next = event.currentTarget.open;
         setExpanded((current) => (current === next ? current : next));
       }}
@@ -94,7 +107,7 @@ export function ComputerTerminalRun({ run }: { run: TerminalRun }) {
           {run.running ? <ThinkingOrb kind="working" /> : failed ? '✕' : '✓'}
           {runStatus(run)}
         </span>
-        {!expanded && output && (
+        {!open && output && (
           <span className="computer-terminal-expand-hint">
             Cliquer pour développer
           </span>
@@ -142,20 +155,23 @@ export function ComputerTerminalRunList({
   runs,
   empty = 'Aucune commande pour l’instant.',
   compact = false,
+  transcript = false,
 }: {
   runs: TerminalRun[];
   empty?: string;
   compact?: boolean;
+  /** Plein terminal : sorties toujours visibles, empilées en bas. */
+  transcript?: boolean;
 }) {
   if (!runs.length) return <p className="computer-terminal-empty">{empty}</p>;
   return (
     <ol
-      className={`computer-terminal-log ${compact ? 'compact' : ''}`}
+      className={`computer-terminal-log ${compact ? 'compact' : ''} ${transcript ? 'transcript' : ''}`}
       aria-label="Journal terminal"
     >
       {runs.map((run) => (
         <li key={run.key}>
-          <ComputerTerminalRun run={run} />
+          <ComputerTerminalRun run={run} forceOpen={transcript} />
         </li>
       ))}
     </ol>
