@@ -291,10 +291,11 @@ export function createApp({
     const requestOrigin = c.req.header('origin');
     const allowedOrigins = new Set(origins ?? [new URL(c.req.url).origin]);
     if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
-      // Log diagnostique : la prochaine fois, l'origine rejetée sera
-      // lisible dans journalctl au lieu d'une chasse (cf. bootstrap 403).
+      // Log diagnostique : origine rejetée + client (UA + fetch-metadata)
+      // lisibles dans journalctl (cf. bootstrap 403 : Origin: null).
+      // L'UA ne contient pas de secret ; le Referer n'est jamais logué.
       console.warn(
-        `[origin] rejected Origin ${requestOrigin} for ${requestUrl.pathname}`,
+        `[origin] rejected Origin ${requestOrigin} for ${requestUrl.pathname} (ua=${c.req.header('user-agent') ?? '?'} sfs=${c.req.header('sec-fetch-site') ?? '?'} mode=${c.req.header('sec-fetch-mode') ?? '?'} dest=${c.req.header('sec-fetch-dest') ?? '?'})`,
       );
       return c.json({ error: 'Cross-origin requests are not allowed.' }, 403);
     }
@@ -494,6 +495,11 @@ export function createApp({
   app.post('/api/auth/bootstrap', async (c) => {
     if (!auth)
       return c.json({ error: 'Authentication is not configured.' }, 503);
+    // Log diagnostique temporaire (bootstrap = une fois par install) :
+    // identifie le client exact (WebView ? VPN ? extension ?).
+    console.warn(
+      `[auth] bootstrap attempt (ua=${c.req.header('user-agent') ?? '?'} sfs=${c.req.header('sec-fetch-site') ?? '?'} mode=${c.req.header('sec-fetch-mode') ?? '?'} dest=${c.req.header('sec-fetch-dest') ?? '?'} origin=${c.req.header('origin') ?? '?'})`,
+    );
     const isForm = (c.req.header('content-type') ?? '').includes(
       'application/x-www-form-urlencoded',
     );
