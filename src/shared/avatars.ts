@@ -35,7 +35,7 @@ export const DEFAULT_AVATAR: AvatarId = 'leo';
  * as a query so the browser (which caches `/dots/` for a day) fetches the new
  * art instead of a stale copy.
  */
-export const AVATAR_ASSET_VERSION = '9';
+export const AVATAR_ASSET_VERSION = '10';
 
 /** Concrete animation tiers, cheapest first. */
 export type AvatarQuality = 'low' | 'standard' | 'high';
