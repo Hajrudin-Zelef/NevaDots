@@ -1225,6 +1225,14 @@ export function App() {
                 )}
                 {taskDetail && (
                   <section className="task-detail-card">
+                    <button
+                      type="button"
+                      className="task-detail-close"
+                      aria-label="Fermer"
+                      onClick={() => setTaskDetail(undefined)}
+                    >
+                      <X size={18} />
+                    </button>
                     <h2>{taskDetail.task.prompt}</h2>
                     <TaskActions
                       task={taskDetail.task}
