@@ -43,7 +43,9 @@ export function ModelSelector({
   onModelError,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -82,9 +84,16 @@ export function ModelSelector({
   return (
     <div className="model-selector" ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
         className="model-selector-trigger"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setDropPos({ top: rect.top - 6, left: rect.left });
+          }
+          setOpen((v) => !v);
+        }}
         title="Changer de modèle"
       >
         {currentMeta && (
@@ -98,7 +107,14 @@ export function ModelSelector({
       </button>
 
       {open && (
-        <div className="model-selector-dropdown">
+        <div
+          className="model-selector-dropdown"
+          style={{
+            top: dropPos.top,
+            left: dropPos.left,
+            transform: 'translateY(-100%)',
+          }}
+        >
           <button
             type="button"
             className={`model-selector-option ${!modelValue ? 'active' : ''}`}
