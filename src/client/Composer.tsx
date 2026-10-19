@@ -12,6 +12,7 @@ import {
 import { api } from './api';
 import { shouldSubmitComposerOnKeyDown } from './chat-composer';
 import { modelKey, parseModelKey, type ModelsResponse } from '../shared/models';
+import { ModelSelector } from './ModelSelector';
 
 export interface ComposerProps {
   // --- Text input ---
@@ -211,48 +212,14 @@ export function Composer(props: ComposerProps) {
           </button>
           {voiceButton}
           {modelOptions.providers.length > 0 && (
-            <select
-              className="model-select"
-              aria-label="Modèle pour ce Dot"
-              title="Modèle pour ce Dot"
-              value={modelValue}
-              onChange={async (event) => {
-                const parsed = parseModelKey(event.target.value);
-                onModelError('');
-                try {
-                  await api(
-                    `/dots/${dotId}/model`,
-                    'PUT',
-                    parsed ?? { model: null },
-                  );
-                  await onModelSaved();
-                } catch (cause) {
-                  onModelError(
-                    cause instanceof Error
-                      ? cause.message
-                      : 'Impossible de changer de modèle.',
-                  );
-                }
-              }}
-            >
-              <option value="">
-                {defaultModelLabel ? `Défaut · ${defaultModelLabel}` : 'Défaut'}
-              </option>
-              {modelOptions.providers.map((provider) => (
-                <optgroup
-                  key={provider.id}
-                  label={`${provider.label}${
-                    provider.configured ? '' : ' (non configuré)'
-                  }`}
-                >
-                  {provider.models.map((model) => (
-                    <option key={model} value={modelKey(provider.id, model)}>
-                      {model}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+            <ModelSelector
+              dotId={dotId}
+              modelValue={modelValue}
+              modelOptions={modelOptions}
+              defaultModelLabel={defaultModelLabel}
+              onModelSaved={onModelSaved}
+              onModelError={onModelError}
+            />
           )}
           <button
             type="button"
