@@ -12,6 +12,9 @@ export interface PlatformConfig extends WebConfig {
   models?: string[];
   /** Model context window in tokens, used for automatic compaction. */
   contextWindow?: number;
+  /** Max output tokens per completion. Too low truncates tool arguments
+   * mid-JSON (large files); default 8192, env MAX_COMPLETION_TOKENS. */
+  maxCompletionTokens?: number;
   apiKey?: string;
   baseUrl: string;
   /** Model providers the agent can use (OpenCode, OpenRouter, DeepSeek…). */

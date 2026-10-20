@@ -206,6 +206,7 @@ function resultName(
 export async function pdfEditAttachment(
   input: PdfEditInput,
   signal?: AbortSignal,
+  claim?: (id: string) => void,
 ): Promise<AttachmentMeta> {
   const { attachmentId, operations } = input;
   const absPath = await resolvePdf(attachmentId);
@@ -380,10 +381,17 @@ export async function pdfEditAttachment(
           { tool: 'doc_save', args: { doc: 1, path: tmpOut } },
         ];
         await runPdfcraftScript(writeSteps, signal);
-        return finishEdit(attachmentId, operations, tmpOut, tmpDocx, {
-          remplacements: replaced,
-          pages: [...pagesHit].sort((a, b) => a - b),
-        });
+        return finishEdit(
+          attachmentId,
+          operations,
+          tmpOut,
+          tmpDocx,
+          {
+            remplacements: replaced,
+            pages: [...pagesHit].sort((a, b) => a - b),
+          },
+          claim,
+        );
       }
     }
     const wantsDocx = operations.some((o) => o.op === 'to_docx');
@@ -399,6 +407,7 @@ export async function pdfEditAttachment(
       tmpOut,
       tmpDocx,
       isFileOp ? undefined : undefined,
+      claim,
     );
   } finally {
     await fs.rm(join(ATTACHMENTS_DIR, tmpOut), { force: true }).catch(() => {});
@@ -429,6 +438,7 @@ async function finishEdit(
   tmpOut: string,
   tmpDocx: string,
   extra?: Record<string, unknown>,
+  claim?: (id: string) => void,
 ): Promise<AttachmentMeta & { extra?: Record<string, unknown> }> {
   try {
     const wantsDocx = operations.some((o) => o.op === 'to_docx');
@@ -442,6 +452,7 @@ async function finishEdit(
     const base = (meta?.name ?? 'document.pdf').replace(/\.[^.]*$/, '');
     const { name, mime } = resultName(base, operations);
     const saved = await saveBinaryAttachment(name, buffer, mime);
+    claim?.(saved.id);
     return extra ? { ...saved, extra } : saved;
   } finally {
     await fs.rm(join(ATTACHMENTS_DIR, tmpOut), { force: true }).catch(() => {});
@@ -460,6 +471,7 @@ export interface PdfOcrInput {
 export async function pdfOcrAttachment(
   input: PdfOcrInput,
   signal?: AbortSignal,
+  claim?: (id: string) => void,
 ): Promise<AttachmentMeta> {
   const { attachmentId, language = 'fra+eng', mode = 'skip' } = input;
   const absPath = await resolvePdf(attachmentId);
@@ -509,7 +521,9 @@ export async function pdfOcrAttachment(
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
     throw new Error("L'OCR n'a produit aucun fichier.");
   }
-  return saveBinaryAttachment(`${base}-ocr.pdf`, buffer, PDF_MIME);
+  const saved = await saveBinaryAttachment(`${base}-ocr.pdf`, buffer, PDF_MIME);
+  claim?.(saved.id);
+  return saved;
 }
 
 function downloadResult(meta: AttachmentMeta) {
@@ -522,7 +536,10 @@ function downloadResult(meta: AttachmentMeta) {
 }
 
 /** Outils agent : modifier un PDF / ajouter une couche OCR française. */
-export function pdfWriteTools(signal?: AbortSignal) {
+export function pdfWriteTools(
+  signal?: AbortSignal,
+  claim?: (id: string) => void,
+) {
   const tools = [];
   if (existsSync(pdfcraftCliPath()))
     tools.push(
@@ -544,7 +561,7 @@ export function pdfWriteTools(signal?: AbortSignal) {
             ),
         }),
         execute: async (input: PdfEditInput) =>
-          downloadResult(await pdfEditAttachment(input, signal)),
+          downloadResult(await pdfEditAttachment(input, signal, claim)),
       }),
     );
   if (existsSync(OCRMYPDF_PATH()))
@@ -570,7 +587,7 @@ export function pdfWriteTools(signal?: AbortSignal) {
             ),
         }),
         execute: async (input: PdfOcrInput) =>
-          downloadResult(await pdfOcrAttachment(input, signal)),
+          downloadResult(await pdfOcrAttachment(input, signal, claim)),
       }),
     );
   return tools;

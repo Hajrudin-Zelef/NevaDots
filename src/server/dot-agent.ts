@@ -47,7 +47,7 @@ import {
   createReasoningFetch,
   saveReasoningStats,
 } from './reasoning.js';
-import { stepLabelForTool } from './agent-steps.js';
+import { StepTracker, stepLabelForTool } from './agent-steps.js';
 import { buildSystemPrompt } from './agent-prompt.js';
 import { injectAttachedImages } from './attached-images.js';
 import { screenshotMiddleware } from './screenshot-middleware.js';
@@ -106,8 +106,9 @@ export class DotAgent extends AbstractAgent {
       let finished = false;
       let configurationFailure = false;
       // Phase 3 : associe chaque appel d'outil à son libellé d'étape
-      // (TOOL_CALL_END ne porte pas le nom de l'outil).
-      const stepLabels = new Map<string, string>();
+      // (TOOL_CALL_END ne porte pas le nom de l'outil). Le compteur
+      // garantit un protocole équilibré même en cas d'appels parallèles.
+      const stepTracker = new StepTracker();
       const observe = answerObserver((event) =>
         this.setupTelemetry?.capture(event),
       );
@@ -626,13 +627,20 @@ export class DotAgent extends AbstractAgent {
           api: 'chat-completions',
           maxRetries: 1,
         });
+        // Un fichier produit (generate_file, pdf_edit/ocr) doit être
+        // immédiatement rattaché au compte : sans claim, le lien de
+        // téléchargement répond 404 (C2 : une pièce sans propriétaire).
+        const claimAttachment = (attachmentId: string) => {
+          const userId = this.store.userId;
+          if (userId) this.store.claimAttachment(attachmentId, userId);
+        };
         const serverTools = [
           ...tools,
           ...pageTools(pages),
           ...brainTools(),
-          ...generateFileTool(),
+          ...generateFileTool(claimAttachment),
           ...pdfTools(dot.id, controller.signal),
-          ...pdfWriteTools(controller.signal),
+          ...pdfWriteTools(controller.signal, claimAttachment),
           ...(computer.configured
             ? computerTools(
                 computer,
@@ -640,6 +648,7 @@ export class DotAgent extends AbstractAgent {
                 check,
                 controller.signal,
                 computer.policy(dot.id),
+                claimAttachment,
               )
             : []),
           ...(this.config.externalAccounts
@@ -743,7 +752,10 @@ export class DotAgent extends AbstractAgent {
               threadId: ctx.input.threadId,
               runId: ctx.input.runId,
               modelOptions: {
-                max_completion_tokens: 2200,
+                // 2200 tronquait les gros arguments d'outils en plein JSON
+                // (fichiers > ~7 Ko) : le tour échouait. 8192 par défaut,
+                // surchargeable via MAX_COMPLETION_TOKENS.
+                max_completion_tokens: this.config.maxCompletionTokens ?? 8192,
                 // Thinking off by default for speed; the composer toggle can
                 // raise it to 'low'/'high' per Dot. LiteLLM drops the field for
                 // models that do not support it.
@@ -784,29 +796,34 @@ export class DotAgent extends AbstractAgent {
               if (
                 event.type === EventType.RUN_ERROR ||
                 event.type === EventType.RUN_FINISHED
-              )
+              ) {
                 finished = true;
+                // Solde les étapes restées actives (fins d'outils manquées) :
+                // le protocole reste équilibré pour le run suivant.
+                for (const step of stepTracker.drain())
+                  subscriber.next({
+                    type: EventType.STEP_FINISHED,
+                    stepName: step.stepName,
+                  });
+              }
               // Phase 3 : dérive des événements d'étape des appels d'outils
               // pour la carte de progression du transcript.
               // (BaseEvent est un schéma passthrough : cast vers les types précis.)
               if (event.type === EventType.TOOL_CALL_START) {
                 const start = event as ToolCallStartEvent;
                 const label = stepLabelForTool(start.toolCallName);
-                stepLabels.set(start.toolCallId, label);
-                subscriber.next({
-                  type: EventType.STEP_STARTED,
-                  stepName: label,
-                });
-              } else if (event.type === EventType.TOOL_CALL_END) {
-                const end = event as ToolCallEndEvent;
-                const label = stepLabels.get(end.toolCallId);
-                if (label) {
-                  stepLabels.delete(end.toolCallId);
+                if (stepTracker.start(start.toolCallId, label).length)
                   subscriber.next({
-                    type: EventType.STEP_FINISHED,
+                    type: EventType.STEP_STARTED,
                     stepName: label,
                   });
-                }
+              } else if (event.type === EventType.TOOL_CALL_END) {
+                const end = event as ToolCallEndEvent;
+                for (const step of stepTracker.end(end.toolCallId))
+                  subscriber.next({
+                    type: EventType.STEP_FINISHED,
+                    stepName: step.stepName,
+                  });
               }
               subscriber.next(
                 this.channel && event.type === EventType.RUN_ERROR

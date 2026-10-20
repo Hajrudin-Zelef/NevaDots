@@ -1018,12 +1018,28 @@ export function ComputerPanel({
               <strong style={{ fontFamily: 'monospace' }}>
                 {fileModal.path}
               </strong>
-              <button
-                onClick={() => setFileModal(null)}
-                style={{ cursor: 'pointer' }}
-              >
-                ✕
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  disabled={busy || !running || !status.permissions.files}
+                  onClick={() => {
+                    void fileAction('preview_file', {
+                      path: fileModal.path,
+                    }).then(() => {
+                      setFileModal(null);
+                      setTab('Browser');
+                    });
+                  }}
+                >
+                  Ouvrir dans le navigateur
+                </button>
+                <button
+                  onClick={() => setFileModal(null)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <textarea
               readOnly

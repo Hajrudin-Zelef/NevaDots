@@ -13,6 +13,7 @@ import {
 } from '../shared/computer-types.js';
 import type { WorkspaceStore } from './workspace.js';
 import type { PlatformConfig } from './platform-config.js';
+import { mimeForFilename, saveBinaryAttachment } from './generate-file.js';
 /** An HTTP error from a computer, carrying the status and parsed error payload. */
 export class ComputerHttpError extends Error {
   constructor(
@@ -55,6 +56,18 @@ const REFLESS_BROWSER_MUTATIONS = new Set(['navigate', 'key', 'scroll']);
  * sortie bornée, jamais un dump de 64 Ko. */
 const ACTIVITY_COMMAND_MAX = 1024;
 const ACTIVITY_OUTPUT_MAX = 8000;
+/** Événements de journal conservés par Dot (rejoués aux nouveaux abonnés). */
+const ACTIVITY_HISTORY_MAX = 300;
+/** Port loopback du serveur statique qui expose le workspace au navigateur
+ * du conteneur (`file://` est refusé par OpenBot). */
+const PREVIEW_PORT = 8099;
+/** Taille max d'un fichier renvoyé au chat par `files_send` : la réponse
+ * d'un `/exec` est plafonnée à 4 Mo, et le base64 gonfle de ~33 %. */
+const SEND_FILE_MAX_BYTES = 2_500_000;
+/** Quote POSIX sûr pour un chemin validé (aucun `..`, relatif). */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
 function boundText(value: unknown, max: number): string {
   const text = typeof value === 'string' ? value : '';
   return text.length > max ? `${text.slice(0, max)}…[tronqué]` : text;
@@ -91,6 +104,34 @@ const SEARCH_MAX_LINE_CHARS = 500;
 /** Cap disque post-clone (octets). Contrôle postérieur au téléchargement :
  * un remplissage transitoire pendant le clone reste possible (résiduel). */
 const CLONE_MAX_BYTES = 500 * 1024 * 1024;
+/** Sortie live d'un exec (défilement façon terminal local) : la commande
+ * tourne en arrière-plan dans le conteneur, le serveur rapatrie
+ * stdout/stderr ~1×/s (base64, découpe UTF-8 sûre) et émet des `chunk`.
+ * Repli bufférisé classique si l'arrière-plan n'est pas supporté. */
+const LIVE_POLL_MS = 800;
+const LIVE_CHUNK_MAX = 4000;
+const LIVE_STREAM_MAX = 200_000;
+const LIVE_TAIL_BYTES = 9000;
+/** Découpe un tampon brut en texte UTF-8 + octets retenus : une séquence
+ * multi-octets coupée en fin de tampon est relue au prochain tour plutôt
+ * que d'émettre un caractère de remplacement. Exportée pour les tests. */
+export function utf8Split(raw: Buffer): { text: string; held: number } {
+  let held = 0;
+  let i = raw.length - 1;
+  let cont = 0;
+  while (i >= 0 && raw[i] >= 0x80 && raw[i] < 0xc0) {
+    cont++;
+    i--;
+  }
+  if (i >= 0 && raw[i] >= 0x80) {
+    const lead = raw[i];
+    const need = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : 2;
+    if (cont + 1 < need) held = cont + 1;
+  } else if (i < 0 && cont > 0) {
+    held = cont;
+  }
+  return { text: raw.subarray(0, raw.length - held).toString('utf8'), held };
+}
 function snapshotRequired(payload: unknown): boolean {
   return (
     !!payload &&
@@ -128,6 +169,9 @@ export class ComputerService {
     private deadlineMs = 70000,
     private shared?: {
       activityListeners: Map<string, Set<ComputerActivityListener>>;
+      /** Derniers événements par Dot : un panneau ouvert après coup voit
+       * quand même les commandes récentes (le journal n'est pas persisté). */
+      activityHistory: Map<string, ComputerActivityEvent[]>;
       streamTickets: Map<
         string,
         { dotId: string; userId: string; expiresAt: number }
@@ -136,6 +180,7 @@ export class ComputerService {
   ) {
     this.shared ??= {
       activityListeners: new Map(),
+      activityHistory: new Map(),
       streamTickets: new Map(),
     };
   }
@@ -152,6 +197,9 @@ export class ComputerService {
   }
   private get activityListeners() {
     return this.shared!.activityListeners;
+  }
+  private get activityHistory() {
+    return this.shared!.activityHistory;
   }
   private get streamTickets() {
     return this.shared!.streamTickets;
@@ -425,7 +473,9 @@ export class ComputerService {
     return { dotId: entry.dotId, userId: entry.userId };
   }
   /** S'abonner aux événements live d'un Dot. En mémoire, mono-processus :
-   * le déploiement n'exécute qu'un seul serveur, donc aucun bus externe. */
+   * le déploiement n'exécute qu'un seul serveur, donc aucun bus externe.
+   * Les derniers événements sont rejoués à l'abonné : un panneau ouvert
+   * après coup (ou une reconnexion) voit les commandes récentes. */
   subscribeActivity(
     dotId: string,
     listener: ComputerActivityListener,
@@ -436,12 +486,27 @@ export class ComputerService {
       this.activityListeners.set(dotId, set);
     }
     set.add(listener);
+    for (const event of this.activityHistory.get(dotId) ?? []) {
+      try {
+        listener(event);
+      } catch {
+        // Un abonné ne casse jamais l'action en cours.
+      }
+    }
     return () => {
       set.delete(listener);
       if (set.size === 0) this.activityListeners.delete(dotId);
     };
   }
   private emitActivity(event: ComputerActivityEvent): void {
+    const history = this.activityHistory.get(event.dotId) ?? [];
+    const next = [...history, event];
+    this.activityHistory.set(
+      event.dotId,
+      next.length > ACTIVITY_HISTORY_MAX
+        ? next.slice(-ACTIVITY_HISTORY_MAX)
+        : next,
+    );
     const set = this.activityListeners.get(event.dotId);
     if (!set || set.size === 0) return;
     for (const listener of [...set]) {
@@ -453,12 +518,17 @@ export class ComputerService {
     }
   }
   /** Journal live du terminal : `start` dès le lancement, `end` au retour.
-   * Périmètre `exec` uniquement (ni screenshots ni snapshots). */
+   * Périmètre `exec` uniquement (ni screenshots ni snapshots). En mode live,
+   * des `chunk` incrementaux s'intercalent (voir `execLive`). */
   private beginActivity(
     id: string,
     actor: 'owner' | 'agent',
     parsed: unknown,
-  ): { end(result: unknown): void; fail(error: unknown): void } {
+  ): {
+    end(result: unknown): void;
+    fail(error: unknown): void;
+    progress(stdoutDelta: string, stderrDelta: string): void;
+  } {
     const command = boundText(
       (parsed as { command?: unknown } | null)?.command,
       ACTIVITY_COMMAND_MAX,
@@ -495,6 +565,16 @@ export class ComputerService {
           phase: 'end',
           at: Date.now(),
           error: error instanceof Error ? error.message : 'Échec.',
+        });
+      },
+      progress: (stdoutDelta: string, stderrDelta: string) => {
+        if (!stdoutDelta && !stderrDelta) return;
+        this.emitActivity({
+          ...base,
+          phase: 'chunk',
+          at: Date.now(),
+          chunk: boundText(stdoutDelta, LIVE_CHUNK_MAX),
+          chunkStderr: boundText(stderrDelta, LIVE_CHUNK_MAX),
         });
       },
     };
@@ -941,6 +1021,387 @@ export class ComputerService {
       signal,
     );
   }
+  /** Exec classique (bufférisé) : un seul appel, sortie complète au retour.
+   * Chemin de repli quand personne n'écoute le journal ou que l'arrière-plan
+   * n'est pas supporté par le conteneur. */
+  private async execBuffered(
+    id: string,
+    url: string,
+    parsed: { command: string; timeoutMs?: number },
+    activeSignal: AbortSignal,
+  ): Promise<Record<string, unknown>> {
+    const result = await this.json(
+      `${url}/exec`,
+      this.token(id),
+      parsed,
+      activeSignal,
+      id,
+      EXEC_DEADLINE_MS,
+    );
+    if (result && typeof result === 'object') {
+      const copy = { ...(result as Record<string, unknown>) };
+      delete copy.command;
+      // Borne UNIQUE des sorties exec (même constante que le journal
+      // d'activité) : UI, modèle et API reçoivent pareil.
+      for (const key of ['stdout', 'stderr'] as const) {
+        if (
+          typeof copy[key] === 'string' &&
+          (copy[key] as string).length > ACTIVITY_OUTPUT_MAX
+        ) {
+          copy[key] =
+            `${(copy[key] as string).slice(0, ACTIVITY_OUTPUT_MAX)}…[tronqué]`;
+          copy.truncated = true;
+        }
+      }
+      return copy;
+    }
+    return {};
+  }
+  /** Lecture finale d'un run live : totaux + queue des journaux (base64).
+   * Utilisée à la fin normale comme au dépassement de délai. */
+  private async readLiveEnd(
+    id: string,
+    url: string,
+    token: string,
+    files: { out: string; err: string; code: string },
+    activeSignal: AbortSignal,
+  ): Promise<{ stdout: string; stderr: string; truncated: boolean }> {
+    const res = (await this.json(
+      `${url}/exec`,
+      token,
+      {
+        command: [
+          `wc -c < ${files.out} 2>/dev/null || echo 0`,
+          `wc -c < ${files.err} 2>/dev/null || echo 0`,
+          `tail -c ${LIVE_TAIL_BYTES} ${files.out} 2>/dev/null | base64 | tr -d '\\n'; echo`,
+          `tail -c ${LIVE_TAIL_BYTES} ${files.err} 2>/dev/null | base64 | tr -d '\\n'; echo`,
+        ].join('\n'),
+        timeoutMs: 15000,
+      },
+      activeSignal,
+      id,
+      Math.min(ACTION_DEADLINE_MS, this.deadlineMs),
+    )) as { stdout?: unknown };
+    const lines = String(res?.stdout ?? '').split('\n');
+    const totalOut = Number(lines[0]);
+    const totalErr = Number(lines[1]);
+    const tailOut = Buffer.from(lines[2] ?? '', 'base64')
+      .toString('utf8')
+      .replace(/^\uFFFD/, '');
+    const tailErr = Buffer.from(lines[3] ?? '', 'base64')
+      .toString('utf8')
+      .replace(/^\uFFFD/, '');
+    const truncated =
+      (Number.isFinite(totalOut) && totalOut > ACTIVITY_OUTPUT_MAX) ||
+      (Number.isFinite(totalErr) && totalErr > ACTIVITY_OUTPUT_MAX);
+    return {
+      stdout: truncated ? boundText(tailOut, ACTIVITY_OUTPUT_MAX) : tailOut,
+      stderr: truncated ? boundText(tailErr, ACTIVITY_OUTPUT_MAX) : tailErr,
+      truncated,
+    };
+  }
+  /**
+   * Exec live (défilement façon terminal local) : la commande tourne en
+   * arrière-plan dans le conteneur (`{ cmd } > out 2> err; echo $? > code
+   * &`), le serveur rapatrie stdout/stderr ~1×/s et émet des `chunk` vers
+   * le journal. Le résultat final porte la QUEUE des sorties (plus utile
+   * qu'un début tronqué pour les builds longs). Repli bufférisé classique
+   * sur toute anomalie (conteneur sans arrière-plan, lancement illisible).
+   * L'annulation (révocation, stop UI) tue le processus distant.
+   */
+  private async execLive(
+    id: string,
+    url: string,
+    parsed: { command: string; timeoutMs?: number },
+    activeSignal: AbortSignal,
+    watch: { progress(out: string, err: string): void },
+  ): Promise<Record<string, unknown>> {
+    const startedAt = Date.now();
+    const timeoutMs = Math.min(
+      Math.max(parsed.timeoutMs ?? 30000, 1000),
+      EXEC_DEADLINE_MS,
+    );
+    const token = this.token(id);
+    const rpc = (command: string) =>
+      this.json(
+        `${url}/exec`,
+        token,
+        { command, timeoutMs: 15000 },
+        activeSignal,
+        id,
+        Math.min(ACTION_DEADLINE_MS, this.deadlineMs),
+      ) as Promise<{ stdout?: unknown }>;
+    const fallback = () => this.execBuffered(id, url, parsed, activeSignal);
+    // Le `&`/`;` final fausserait la détection de fin (groupe terminé
+    // aussitôt) : on l'exécute au premier plan dans le groupe.
+    const raw = (parsed.command ?? '').replace(/[;\s&]+$/, '');
+    if (!raw) return fallback();
+    const tag = randomBytes(6).toString('hex');
+    const files = {
+      out: `.live-${tag}.out`,
+      err: `.live-${tag}.err`,
+      code: `.live-${tag}.code`,
+    };
+    const killRemote = (pid: number) =>
+      rpc(
+        `kill -9 ${pid} 2>/dev/null; rm -f ${files.out} ${files.err} ${files.code}`,
+      ).catch(() => {});
+    let pid = NaN;
+    try {
+      const launched = await rpc(
+        `find . -maxdepth 1 -name '.live-*' -mmin +60 -delete 2>/dev/null; { ${raw}\n} > ${files.out} 2> ${files.err}; echo $? > ${files.code} & echo LIVE_PID_${tag}:$!`,
+      );
+      const m = new RegExp(`LIVE_PID_${tag}:(\\d+)`).exec(
+        String(launched?.stdout ?? ''),
+      );
+      if (m) pid = Number(m[1]);
+    } catch (error) {
+      if (activeSignal.aborted) throw error;
+      return fallback();
+    }
+    if (!Number.isSafeInteger(pid) || pid <= 0) return fallback();
+    let offOut = 1;
+    let offErr = 1;
+    let streamed = 0;
+    let cappedNote = false;
+    // Un processus tué sans écrire son code (OOM, kill externe) ne doit pas
+    // faire tourner la boucle jusqu'au timeout : on lui laisse une grâce.
+    let goneWithoutCode = 0;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, ms));
+    for (;;) {
+      try {
+        activeSignal.throwIfAborted();
+      } catch (error) {
+        // Annulation (révocation, stop UI) : le processus distant ne doit
+        // pas survivre au run.
+        await killRemote(pid);
+        throw error;
+      }
+      if (Date.now() - startedAt > timeoutMs) {
+        await killRemote(pid);
+        const end = await this.readLiveEnd(
+          id,
+          url,
+          token,
+          files,
+          activeSignal,
+        ).catch(() => ({ stdout: '', stderr: '', truncated: true }));
+        return {
+          ...end,
+          timedOut: true,
+          elapsedMs: Date.now() - startedAt,
+        };
+      }
+      let poll: { stdout?: unknown };
+      try {
+        poll = await rpc(
+          [
+            `tail -c +${offOut} ${files.out} 2>/dev/null | base64 | tr -d '\\n'; echo`,
+            `tail -c +${offErr} ${files.err} 2>/dev/null | base64 | tr -d '\\n'; echo`,
+            `if kill -0 ${pid} 2>/dev/null; then echo LIVE_${tag}_S:ALIVE; else echo LIVE_${tag}_S:GONE; fi`,
+            `if test -f ${files.code}; then echo LIVE_${tag}_C:$(cat ${files.code}); else echo LIVE_${tag}_C:NO; fi`,
+            `if test -f ${files.code}; then`,
+            `wc -c < ${files.out} 2>/dev/null || echo 0`,
+            `wc -c < ${files.err} 2>/dev/null || echo 0`,
+            `tail -c ${LIVE_TAIL_BYTES} ${files.out} 2>/dev/null | base64 | tr -d '\\n'; echo`,
+            `tail -c ${LIVE_TAIL_BYTES} ${files.err} 2>/dev/null | base64 | tr -d '\\n'; echo`,
+            `rm -f ${files.out} ${files.err} ${files.code}`,
+            `fi`,
+          ].join('\n'),
+        );
+      } catch (error) {
+        // Poll perdu (réseau) : on réessaie au tour suivant, sauf
+        // annulation (le processus distant est alors tué).
+        if (activeSignal.aborted) {
+          await killRemote(pid);
+          throw error;
+        }
+        await sleep(LIVE_POLL_MS);
+        continue;
+      }
+      // Disposition fixe du script : 2 lignes base64 (sans ':' possible),
+      // puis marqueurs, puis bloc final (totaux + queues + nettoyage).
+      const lines = String(poll?.stdout ?? '').split('\n');
+      const sLine = lines.find((l) => l.startsWith(`LIVE_${tag}_S:`));
+      const cLine = lines.find((l) => l.startsWith(`LIVE_${tag}_C:`));
+      if (sLine === undefined || cLine === undefined) {
+        await sleep(LIVE_POLL_MS);
+        continue;
+      }
+      const alive = sLine.endsWith(':ALIVE');
+      const codeV = cLine.slice(`LIVE_${tag}_C:`.length);
+      const codeStr = codeV === 'NO' ? undefined : codeV;
+      const outB64 = lines[0] ?? '';
+      const errB64 = lines[1] ?? '';
+      // Bloc final : présent seulement quand le run est terminé — disposé
+      // juste après le marqueur C (2 totaux puis 2 queues).
+      const cIdx = lines.indexOf(cLine);
+      const after = lines.slice(cIdx + 1);
+      const doneBlock =
+        after.length >= 4 && /^\d+$/.test(after[0]) && /^\d+$/.test(after[1]);
+      const totalOut = doneBlock ? Number(after[0]) : NaN;
+      const totalErr = doneBlock ? Number(after[1]) : NaN;
+      const endOutB64 = doneBlock ? after[2] : undefined;
+      const endErrB64 = doneBlock ? after[3] : undefined;
+      const outRaw = Buffer.from(outB64, 'base64');
+      const errRaw = Buffer.from(errB64, 'base64');
+      const { text: outText, held: outHeld } = utf8Split(outRaw);
+      const { text: errText, held: errHeld } = utf8Split(errRaw);
+      offOut += outRaw.length - outHeld;
+      offErr += errRaw.length - errHeld;
+      if ((outText || errText) && streamed < LIVE_STREAM_MAX) {
+        watch.progress(outText, errText);
+        streamed += outText.length + errText.length;
+        if (streamed >= LIVE_STREAM_MAX && !cappedNote) {
+          cappedNote = true;
+          watch.progress(
+            '…[sortie trop volumineuse : fin du défilement, résultat en fin d’exécution]\n',
+            '',
+          );
+        }
+      }
+      const exitCode = codeStr !== undefined ? Number(codeStr) : NaN;
+      // La fin se lit dans le fichier de code, PAS via `kill -0` : le
+      // processus réparenté devient un zombie (PID 1 ne le reap pas) et
+      // `kill -0` réussit indéfiniment — le run ne finissait jamais.
+      if (codeStr !== undefined && Number.isSafeInteger(exitCode)) {
+        // Fin normale : queue déjà rapatriée par ce même poll (nettoyage
+        // fait côté conteneur).
+        const tailOut = (
+          endOutB64 !== undefined
+            ? Buffer.from(endOutB64, 'base64').toString('utf8')
+            : outText
+        ).replace(/^\uFFFD/, '');
+        const tailErr = (
+          endErrB64 !== undefined
+            ? Buffer.from(endErrB64, 'base64').toString('utf8')
+            : errText
+        ).replace(/^\uFFFD/, '');
+        const truncated =
+          (Number.isFinite(totalOut) && totalOut > ACTIVITY_OUTPUT_MAX) ||
+          (Number.isFinite(totalErr) && totalErr > ACTIVITY_OUTPUT_MAX) ||
+          endOutB64 === undefined;
+        return {
+          stdout: truncated ? boundText(tailOut, ACTIVITY_OUTPUT_MAX) : tailOut,
+          stderr: truncated ? boundText(tailErr, ACTIVITY_OUTPUT_MAX) : tailErr,
+          exitCode,
+          truncated,
+          elapsedMs: Date.now() - startedAt,
+        };
+      }
+      // Processus disparu (OOM, kill externe) sans écrire son code : on
+      // rend la sortie partielle après une grâce de ~8 s plutôt que
+      // d'attendre le timeout complet.
+      if (!alive) {
+        goneWithoutCode++;
+        if (goneWithoutCode >= 10)
+          return {
+            stdout: boundText(outText, ACTIVITY_OUTPUT_MAX),
+            stderr: `${errText}\n[processus terminé sans code de sortie]`.slice(
+              -ACTIVITY_OUTPUT_MAX,
+            ),
+            truncated: true,
+            elapsedMs: Date.now() - startedAt,
+          };
+      } else goneWithoutCode = 0;
+      await sleep(LIVE_POLL_MS);
+    }
+  }
+  /** Ouvre un fichier du workspace dans le navigateur du Dot. OpenBot
+   * refuse `file://` ; on sert donc `/workspace` sur 127.0.0.1 (interne au
+   * conteneur) et on navigue dessus. Le serveur statique est relancé au
+   * besoin (idempotent, port loopback uniquement). */
+  private async previewFile(
+    id: string,
+    url: string,
+    input: { path: string },
+    activeSignal: AbortSignal,
+  ): Promise<{ path: string; url: string }> {
+    const token = this.token(id);
+    const probe = `python3 -c 'import socket,sys; s=socket.socket(); s.settimeout(0.3); sys.exit(0 if s.connect_ex(("127.0.0.1",${PREVIEW_PORT}))==0 else 1)'`;
+    // `setsid` détache le serveur du groupe de processus de l'exec : sinon
+    // /exec attend la fin du serveur (pipe/process group) et expire.
+    await this.json(
+      `${url}/exec`,
+      token,
+      {
+        command: [
+          `${probe} || { setsid sh -c 'cd /workspace && exec python3 -m http.server ${PREVIEW_PORT} --bind 127.0.0.1' </dev/null >/dev/null 2>&1 & }`,
+          `for i in 1 2 3 4 5 6 7 8 9 10; do ${probe} && break; sleep 0.2; done`,
+          'echo ok',
+        ].join('\n'),
+        timeoutMs: 15000,
+      },
+      activeSignal,
+      id,
+      Math.min(ACTION_DEADLINE_MS, this.deadlineMs),
+    );
+    const encoded = input.path.split('/').map(encodeURIComponent).join('/');
+    const target = `http://127.0.0.1:${PREVIEW_PORT}/${encoded}`;
+    await this.json(
+      `${url}/navigate`,
+      token,
+      { url: target },
+      activeSignal,
+      id,
+      Math.min(ACTION_DEADLINE_MS, this.deadlineMs),
+    );
+    return { path: input.path, url: target };
+  }
+  /** Envoie un fichier existant du workspace au chat : lecture brute
+   * (base64 via exec) puis pièce jointe, sans passer par le modèle. Le
+   * contenu n'est jamais réémis en tokens ; les octets sont préservés. */
+  private async sendFile(
+    id: string,
+    url: string,
+    input: { path: string },
+    activeSignal: AbortSignal,
+  ): Promise<{
+    id: string;
+    name: string;
+    size: number;
+    downloadUrl: string;
+  }> {
+    const result = (await this.json(
+      `${url}/exec`,
+      this.token(id),
+      {
+        command: `base64 -w0 -- ${shellQuote(input.path)}`,
+        timeoutMs: 30000,
+      },
+      activeSignal,
+      id,
+      Math.min(ACTION_DEADLINE_MS, this.deadlineMs),
+    )) as { stdout?: unknown; stderr?: unknown; exitCode?: unknown };
+    if (typeof result.exitCode === 'number' && result.exitCode !== 0)
+      throw new Error(
+        `Fichier introuvable ou illisible : ${input.path}${typeof result.stderr === 'string' && result.stderr.trim() ? ` (${result.stderr.trim().slice(0, 200)})` : ''}.`,
+      );
+    const encoded =
+      typeof result.stdout === 'string'
+        ? result.stdout.replace(/\s+/g, '')
+        : '';
+    if (!encoded) throw new Error(`Fichier vide : ${input.path}.`);
+    const buffer = Buffer.from(encoded, 'base64');
+    if (!buffer.length) throw new Error(`Fichier vide : ${input.path}.`);
+    if (buffer.length > SEND_FILE_MAX_BYTES)
+      throw new Error(
+        `Fichier trop volumineux pour l'envoi direct (${(buffer.length / 1024 / 1024).toFixed(1)} Mo, max ${SEND_FILE_MAX_BYTES / 1_000_000} Mo) : compressez-le (zip) puis renvoyez l'archive.`,
+      );
+    const name = input.path.split('/').pop() || 'fichier';
+    const saved = await saveBinaryAttachment(
+      name,
+      buffer,
+      mimeForFilename(name),
+    );
+    return {
+      id: saved.id,
+      name: saved.name,
+      size: saved.size,
+      downloadUrl: `/api/attachments/${saved.id}/content?download=1`,
+    };
+  }
   async action(
     id: string,
     action: ComputerAction,
@@ -977,7 +1438,7 @@ export class ComputerService {
       const kind =
         action === 'exec' || action === 'git'
           ? 'shell'
-          : action.startsWith('files_')
+          : action.startsWith('files_') || action === 'preview_file'
             ? 'files'
             : 'browser';
       this.allowed(id, kind, actor);
@@ -999,6 +1460,20 @@ export class ComputerService {
         // files_search, lectures à plage et files_edit sont composés côté
         // serveur (le conteneur ne connaît que /files/list + /files/read
         // entiers + /files/write) — jamais transmis tels quels.
+        if (action === 'files_send')
+          return this.sendFile(
+            id,
+            url,
+            parsed as { path: string },
+            activeSignal,
+          );
+        if (action === 'preview_file')
+          return this.previewFile(
+            id,
+            url,
+            parsed as { path: string },
+            activeSignal,
+          );
         if (action === 'files_search')
           return this.searchFiles(
             url,
@@ -1056,14 +1531,25 @@ export class ComputerService {
           action === 'exec'
             ? EXEC_DEADLINE_MS
             : Math.min(ACTION_DEADLINE_MS, this.deadlineMs);
-        const result = await this.json(
-          `${url}/${path}`,
-          this.token(id),
-          ['read', 'screenshot'].includes(action) ? undefined : parsed,
-          activeSignal,
-          id,
-          deadline,
-        );
+        const result =
+          action === 'exec' &&
+          watch &&
+          (this.activityListeners.get(id)?.size ?? 0) > 0
+            ? await this.execLive(
+                id,
+                url,
+                parsed as { command: string; timeoutMs?: number },
+                activeSignal,
+                watch,
+              )
+            : await this.json(
+                `${url}/${path}`,
+                this.token(id),
+                ['read', 'screenshot'].includes(action) ? undefined : parsed,
+                activeSignal,
+                id,
+                deadline,
+              );
         this.allowed(id, kind, actor);
         if (
           action === 'files_read' &&

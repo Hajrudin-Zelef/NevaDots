@@ -17,6 +17,8 @@ const STEP_LABELS: Record<string, string> = {
   recall_search: 'Recherche dans la mémoire',
   external_service_call: 'Appel à un service externe',
   request_connection_action: 'Action de connexion',
+  computer_preview_file: 'Ordinateur : aperçu fichier',
+  computer_files_send: 'Ordinateur : envoi de fichier',
 };
 
 /**
@@ -34,4 +36,52 @@ export function stepLabelForTool(toolName: string): string {
   return humanized
     ? humanized.charAt(0).toUpperCase() + humanized.slice(1)
     : 'Étape';
+}
+
+export interface StepProtocolEvent {
+  type: 'started' | 'finished';
+  stepName: string;
+}
+
+/**
+ * Suivi des étapes dérivées des appels d'outils (phase 3). Le protocole
+ * AG-UI refuse deux `STEP_STARTED` du même nom sans `STEP_FINISHED`
+ * (appels parallèles du même outil, ou fin manquée après erreur) — sinon
+ * le run entier échoue avec `AGUIError`. Le compteur n'émet qu'une fois
+ * par libellé actif : `started` à 0→1, `finished` à 1→0.
+ */
+export class StepTracker {
+  private counts = new Map<string, number>();
+  private byCall = new Map<string, string>();
+
+  start(toolCallId: string, label: string): StepProtocolEvent[] {
+    this.byCall.set(toolCallId, label);
+    const active = (this.counts.get(label) ?? 0) + 1;
+    this.counts.set(label, active);
+    return active === 1 ? [{ type: 'started', stepName: label }] : [];
+  }
+
+  end(toolCallId: string): StepProtocolEvent[] {
+    const label = this.byCall.get(toolCallId);
+    if (!label) return [];
+    this.byCall.delete(toolCallId);
+    const remaining = (this.counts.get(label) ?? 1) - 1;
+    if (remaining <= 0) {
+      this.counts.delete(label);
+      return [{ type: 'finished', stepName: label }];
+    }
+    this.counts.set(label, remaining);
+    return [];
+  }
+
+  /** Solde les étapes restées actives (run en erreur sans fins d'outils). */
+  drain(): StepProtocolEvent[] {
+    const done = [...this.counts.keys()].map((stepName) => ({
+      type: 'finished' as const,
+      stepName,
+    }));
+    this.counts.clear();
+    this.byCall.clear();
+    return done;
+  }
 }

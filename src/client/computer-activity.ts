@@ -37,7 +37,9 @@ export function parseActivityChunk(
       const parsed = JSON.parse(trimmed) as Partial<ComputerActivityEvent>;
       if (
         parsed &&
-        (parsed.phase === 'start' || parsed.phase === 'end') &&
+        (parsed.phase === 'start' ||
+          parsed.phase === 'chunk' ||
+          parsed.phase === 'end') &&
         typeof parsed.command === 'string' &&
         (parsed.actor === 'owner' || parsed.actor === 'agent')
       )
@@ -49,7 +51,7 @@ export function parseActivityChunk(
   return { events, carry: nextCarry };
 }
 
-/** Intègre un événement live au journal (fusionne `end` sur son `start`). */
+/** Intègre un événement live au journal (fusionne `chunk`/`end` sur son `start`). */
 export function appendActivityRun(
   runs: TerminalRun[],
   event: ComputerActivityEvent,
@@ -65,6 +67,34 @@ export function appendActivityRun(
       stderr: '',
     };
     return [...runs, run].slice(-TERMINAL_RUN_CAP);
+  }
+  if (event.phase === 'chunk') {
+    // Défilement live : ajoute le fragment au run en cours le plus récent
+    // (même acteur + commande). Sans `start` préalable, on ignore.
+    for (let i = runs.length - 1; i >= 0; i--) {
+      const run = runs[i];
+      if (
+        run.running &&
+        run.actor === event.actor &&
+        run.command === event.command
+      ) {
+        const stdout = run.stdout + (event.chunk ?? '');
+        const stderr = run.stderr + (event.chunkStderr ?? '');
+        const next = [...runs];
+        next[i] = {
+          ...run,
+          // Le journal garde la fin (ce qui défile) plutôt que le début.
+          stdout: stdout.slice(-TERMINAL_OUTPUT_CAP),
+          stderr: stderr.slice(-TERMINAL_OUTPUT_CAP),
+          truncated:
+            run.truncated ||
+            stdout.length > TERMINAL_OUTPUT_CAP ||
+            stderr.length > TERMINAL_OUTPUT_CAP,
+        };
+        return next;
+      }
+    }
+    return runs;
   }
   const closed: TerminalRun = {
     key: `${event.at}-${event.actor}-${runs.length}`,

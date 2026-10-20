@@ -88,6 +88,9 @@ const config: PlatformConfig = {
   contextWindow: process.env.OPENAI_CONTEXT_WINDOW
     ? Number(process.env.OPENAI_CONTEXT_WINDOW)
     : undefined,
+  maxCompletionTokens: process.env.MAX_COMPLETION_TOKENS
+    ? Number(process.env.MAX_COMPLETION_TOKENS)
+    : undefined,
   webSearchProvider: webSearchProvider(process.env.WEB_SEARCH_PROVIDER),
   parallelApiKey: process.env.PARALLEL_API_KEY,
   browserUrl: process.env.BROWSER_URL,

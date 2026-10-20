@@ -178,6 +178,39 @@ it('le helper fusionne start/end et borne le journal', () => {
   expect(parsed.carry).toBe('{incomplet');
 });
 
+it('le helper fait défiler les chunk live sur le run en cours', () => {
+  const start: ComputerActivityEvent = {
+    dotId: 'd',
+    action: 'exec',
+    actor: 'owner',
+    phase: 'start',
+    at: 1,
+    command: 'npm run build',
+  };
+  let runs = appendActivityRun([], start);
+  const chunk = (at: number, text: string): ComputerActivityEvent => ({
+    ...start,
+    phase: 'chunk',
+    at,
+    chunk: text,
+  });
+  runs = appendActivityRun(runs, chunk(2, 'ligne 1\n'));
+  runs = appendActivityRun(runs, chunk(3, 'ligne 2\n'));
+  expect(runs).toHaveLength(1);
+  expect(runs[0]).toMatchObject({
+    running: true,
+    stdout: 'ligne 1\nligne 2\n',
+  });
+  // Fragment sans run en cours (autre commande) : ignoré, pas de run fantôme.
+  runs = appendActivityRun(runs, { ...chunk(4, 'x'), command: 'autre' });
+  expect(runs).toHaveLength(1);
+  expect(runs[0].stdout).toBe('ligne 1\nligne 2\n');
+  // Le parse accepte la phase chunk.
+  const parsed = parseActivityChunk('', `${JSON.stringify(chunk(5, 'z'))}\n`);
+  expect(parsed.events).toHaveLength(1);
+  expect(parsed.events[0].phase).toBe('chunk');
+});
+
 it('la route /activity diffuse les événements en NDJSON', async () => {
   const f = fixture();
   const routes = mountScoped(computerRoutes(), {

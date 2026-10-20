@@ -95,17 +95,23 @@ export function computerRoutes() {
       .object({ action: z.string(), input: z.unknown() })
       .strict()
       .parse(await c.req.json());
-    return c.json(
-      await c
-        .get('computers')
-        .action(
-          c.req.param('id'),
-          body.action as ComputerAction,
-          body.input,
-          'owner',
-          c.req.raw.signal,
-        ),
-    );
+    const result = await c
+      .get('computers')
+      .action(
+        c.req.param('id'),
+        body.action as ComputerAction,
+        body.input,
+        'owner',
+        c.req.raw.signal,
+      );
+    // files_send produit une pièce jointe : rattache-la au compte courant,
+    // sinon le lien de téléchargement répond 404 (pièce sans propriétaire).
+    if (body.action === 'files_send' && result && typeof result === 'object') {
+      const id = (result as { id?: unknown }).id;
+      if (typeof id === 'string')
+        c.get('store').claimAttachment(id, c.get('userId'));
+    }
+    return c.json(result);
   });
   return app;
 }

@@ -13,6 +13,8 @@ const GATED_BY_PERMISSION: Partial<
 > = {
   files_search: 'files',
   files_edit: 'files',
+  files_send: 'files',
+  preview_file: 'files',
   git: 'shell',
 };
 
@@ -25,6 +27,10 @@ const TOOL_DESCRIPTIONS: Partial<Record<keyof typeof computerInputs, string>> =
       'Read a workspace file. Without offset/limit: whole file. With offset (1-based) and limit: a line range — prefer ranges for large files.',
     files_edit:
       'Surgical file edit: replaces oldText with newText (unique match required unless replaceAll). Refused if oldText is missing, ambiguous, or the file was truncated on read. Pass the sha from your last read as expectedSha to refuse on concurrent change. Never rewrite whole files with this.',
+    preview_file:
+      'Open a workspace file in this Dot’s own browser (e.g. an HTML page or app you just wrote) and show it in the live screen. Requires the files permission. Use it whenever the user should SEE the result, instead of pasting the file as text.',
+    files_send:
+      'Send an EXISTING workspace file to the user as a downloadable attachment (exact bytes, no content re-emission). Returns {name, size, downloadUrl}. Use this whenever the user asks for a file that already lives in the computer workspace; never read it and copy it into generate_file.',
     git: 'Version control in the workspace: status, diff, log, commit, add, branches, checkout, init, clone (public https repos only, shallow: history truncated to one commit). No push/pull/fetch. Paths are relative to the workspace.',
   };
 export function computerTools(
@@ -33,6 +39,8 @@ export function computerTools(
   check: () => void,
   signal: AbortSignal,
   permissions?: ComputerPermissions,
+  /** Rattache les pièces jointes produites (files_send) au compte courant. */
+  claim?: (attachmentId: string) => void,
 ) {
   return Object.entries(computerInputs)
     .filter(([name]) => !name.startsWith('human_'))
@@ -62,6 +70,10 @@ export function computerTools(
           );
           // Phase 5a : le screenshot est transmis au modèle comme image
           // multimodale via le middleware (pas en base64 texte).
+          if (name === 'files_send' && result && typeof result === 'object') {
+            const sent = result as { id?: unknown };
+            if (typeof sent.id === 'string') claim?.(sent.id);
+          }
           if (
             name === 'screenshot' &&
             result &&

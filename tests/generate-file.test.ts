@@ -1,8 +1,9 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  generateFileTool,
   sanitizeGeneratedFilename,
   saveGeneratedFile,
 } from '../src/server/generate-file';
@@ -47,6 +48,19 @@ describe('generate_file', () => {
     expect(saved.attachedAt).toBeGreaterThan(0);
     // Un seul dossier créé, nommé par l'UUID.
     expect(readdirSync(join('data', 'attachments'))).toEqual([meta.id]);
+  });
+
+  it('generateFileTool rattache le fichier au compte courant (claim)', async () => {
+    const claim = vi.fn();
+    const [tool] = generateFileTool(claim);
+    const result = (await tool.execute?.({
+      filename: 'rapport.md',
+      content: '# Rapport',
+    })) as { id: string; downloadUrl: string };
+    expect(result.downloadUrl).toContain(`/attachments/${result.id}/content`);
+    // Sans ce claim, le lien de téléchargement répond 404 (pièce sans
+    // propriétaire) jusqu'au prochain claim de boot.
+    expect(claim).toHaveBeenCalledWith(result.id);
   });
 
   it('saveGeneratedFile refuse les contenus > 5 Mo', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHmac } from 'node:crypto';
@@ -7,6 +7,7 @@ import { WorkspaceStore } from '../src/server/workspace.js';
 import { ComputerService } from '../src/server/computer-service.js';
 import { computerInputs } from '../src/shared/computer-types.js';
 import { computerTools } from '../src/server/computer-tools.js';
+import { ATTACHMENTS_DIR, readMeta } from '../src/server/attachment-routes.js';
 // No real DNS in tests: public example hosts pass, private IPs fail.
 vi.mock('../src/server/net-security.js', () => ({
   validateUrl: async (input: string) => {
@@ -270,6 +271,63 @@ it('binds tools to the current Dot without exposing human or policy controls', a
   expect(check).toHaveBeenCalled();
   expect(f.calls.at(-1)?.url).toContain(f.id);
 });
+it('envoie un fichier du workspace en pièce jointe sans passer par le modèle', async () => {
+  const f = fixture();
+  const content = 'console.log("hi");\n';
+  f.handle(async (url) => {
+    if (url.endsWith('/exec'))
+      return Response.json({
+        exitCode: 0,
+        stdout: Buffer.from(content, 'utf8').toString('base64'),
+        stderr: '',
+      });
+    throw new Error(`unexpected ${url}`);
+  });
+  const claim = vi.fn();
+  const tools = computerTools(
+    f.service,
+    f.id,
+    () => {},
+    new AbortController().signal,
+    undefined,
+    claim,
+  );
+  const send = tools.find((tool) => tool.name === 'computer_files_send')!;
+  const result = (await send.execute?.({ path: 'src/jeu.js' })) as {
+    id: string;
+    name: string;
+    size: number;
+    downloadUrl: string;
+  };
+  expect(result.name).toBe('jeu.js');
+  expect(result.size).toBe(Buffer.byteLength(content));
+  expect(result.downloadUrl).toContain(`/attachments/${result.id}/content`);
+  // Le contenu n'est jamais passé par le modèle : octets exacts sur disque.
+  expect(readFileSync(join(ATTACHMENTS_DIR, result.id, 'file'), 'utf8')).toBe(
+    content,
+  );
+  const meta = await readMeta(result.id);
+  expect(meta?.mime).toContain('javascript');
+  expect(claim).toHaveBeenCalledWith(result.id);
+  rmSync(join(ATTACHMENTS_DIR, result.id), { recursive: true, force: true });
+});
+
+it('files_send refuse un fichier introuvable', async () => {
+  const f = fixture();
+  f.handle(async (url) => {
+    if (url.endsWith('/exec'))
+      return Response.json({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'base64: x: No such file or directory',
+      });
+    throw new Error(`unexpected ${url}`);
+  });
+  await expect(
+    f.service.action(f.id, 'files_send', { path: 'absent.txt' }, 'agent'),
+  ).rejects.toThrow(/introuvable/);
+});
+
 it('bounds completed audit storage while preserving pending work', () => {
   const f = fixture();
   const pending = f.workspace.computers.begin(f.id, 'exec', 'agent');
@@ -323,6 +381,47 @@ it('blocks navigation to private hosts before proxying (SSRF)', async () => {
   ).rejects.toThrow('blocked');
   // The container was never contacted.
   expect(f.calls).toHaveLength(0);
+});
+
+it('ouvre un fichier du workspace via un serveur statique loopback (preview_file)', async () => {
+  const f = fixture();
+  f.handle(async (url) => {
+    if (url.endsWith('/exec'))
+      return Response.json({ exitCode: 0, stdout: 'ok\n', stderr: '' });
+    if (url.endsWith('/navigate'))
+      return Response.json({ url: 'http://127.0.0.1:8099/jeu.html' });
+    throw new Error(`unexpected ${url}`);
+  });
+  const result = (await f.service.action(
+    f.id,
+    'preview_file',
+    { path: 'dossier/jeu.html' },
+    'agent',
+  )) as { path: string; url: string };
+  expect(result).toEqual({
+    path: 'dossier/jeu.html',
+    url: 'http://127.0.0.1:8099/dossier/jeu.html',
+  });
+  const exec = f.calls.find((call) => call.url.endsWith('/exec'));
+  expect(String(exec?.init?.body)).toContain('http.server 8099');
+  const navigate = f.calls.find((call) => call.url.endsWith('/navigate'));
+  expect(String(navigate?.init?.body)).toContain(
+    '"url":"http://127.0.0.1:8099/dossier/jeu.html"',
+  );
+  // La permission fichiers gate l'action : sans elle, refus avant le conteneur.
+  const denied = fixture();
+  denied.workspace.computers.patch(denied.id, { files: false });
+  await expect(
+    denied.service.action(
+      denied.id,
+      'preview_file',
+      { path: 'jeu.html' },
+      'agent',
+    ),
+  ).rejects.toThrow('permission');
+  expect(denied.calls.some((call) => call.url.endsWith('/navigate'))).toBe(
+    false,
+  );
 });
 
 it('gives agents a safe recovery instruction for stale browser or control conflicts', async () => {

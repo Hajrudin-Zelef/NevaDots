@@ -12,7 +12,7 @@ import {
 /** Taille max d'un fichier généré : le modèle produit du texte. */
 const MAX_GENERATED_SIZE = 5 * 1024 * 1024; // 5 Mo
 
-/** MIME par extension pour les fichiers générés (contenu texte UTF-8). */
+/** MIME par extension pour un fichier existant renvoyé au chat. */
 const MIME_BY_EXT: Record<string, string> = {
   txt: 'text/plain; charset=utf-8',
   md: 'text/markdown; charset=utf-8',
@@ -27,7 +27,30 @@ const MIME_BY_EXT: Record<string, string> = {
   yaml: 'text/yaml; charset=utf-8',
   yml: 'text/yaml; charset=utf-8',
   xml: 'text/xml; charset=utf-8',
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
+  zip: 'application/zip',
+  gz: 'application/gzip',
+  tar: 'application/x-tar',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  mp4: 'video/mp4',
 };
+
+/** MIME d'un nom de fichier (extension), repli octet-stream. */
+export function mimeForFilename(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  return MIME_BY_EXT[ext] ?? 'application/octet-stream';
+}
 
 /**
  * Nom de fichier assaini : basename uniquement (pas de chemin, pas de
@@ -111,13 +134,16 @@ export async function saveBinaryAttachment(
   await fs.writeFile(join(dir, 'meta.json'), JSON.stringify(meta));
   return meta;
 }
-/** Outil agent : générer un fichier texte téléchargeable. */
-export function generateFileTool() {
+/** Outil agent : générer un fichier texte téléchargeable.
+ * `claim` rattache le fichier au compte courant : sans lui, le lien de
+ * téléchargement répond 404 (la pièce est sans propriétaire jusqu'au
+ * prochain claim de boot — fuite inter-comptes potentielle). */
+export function generateFileTool(claim?: (id: string) => void) {
   return [
     defineTool({
       name: 'generate_file',
       description:
-        'Generate a text file (document, code, CSV, Markdown, etc.) and make it downloadable. The file is saved server-side; use the returned downloadUrl to present a Markdown download link to the user. Use this whenever the user asks for a file.',
+        'Generate a NEW text file (document, code, CSV, Markdown, etc.) and make it downloadable. The file is saved server-side; use the returned downloadUrl to present a Markdown download link to the user. Use this whenever the user asks for a file whose content you write. If the file ALREADY exists in the computer workspace, use computer_files_send instead of copying its content here.',
       parameters: z.object({
         filename: z
           .string()
@@ -140,6 +166,7 @@ export function generateFileTool() {
         content: string;
       }) => {
         const meta = await saveGeneratedFile(filename, content);
+        claim?.(meta.id);
         return {
           id: meta.id,
           name: meta.name,

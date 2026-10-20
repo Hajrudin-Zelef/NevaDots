@@ -172,6 +172,21 @@ export const computerInputs = {
       append: z.boolean().optional(),
     })
     .strict(),
+  /** Envoie un fichier existant du workspace au chat, octets exacts, sans
+   * repasser son contenu par le modèle. Gate permission `files`. */
+  files_send: z
+    .object({
+      path: path.refine((p) => p.length > 0),
+    })
+    .strict(),
+  /** Ouvre un fichier du workspace dans le navigateur du Dot. Le conteneur
+   * interdit `file://` : le serveur démarre un serveur statique local
+   * (127.0.0.1) et navigue dessus. Gate permission `files`. */
+  preview_file: z
+    .object({
+      path: path.refine((p) => p.length > 0),
+    })
+    .strict(),
   exec: z
     .object({
       // Cap aligné sur le conteneur (MAX_TIMEOUT_MS 600 s) ; l'app applique
@@ -195,23 +210,28 @@ export const computerInputs = {
 export type ComputerAction = keyof typeof computerInputs;
 /** A live lifecycle event for a computer shell run (owner or agent). The
  * container only returns exec output when the command finishes, so the UI
- * shows `start` the moment the command launches and `end` with bounded output
- * when it returns. Emitted in-process only (single server process). */
+ * shows `start` the moment the command launches, then `chunk` deltas as
+ * output arrives (live exec streams the run in the background), and `end`
+ * with bounded output when it returns. Emitted in-process only (single
+ * server process). */
 export interface ComputerActivityEvent {
   dotId: string;
   action: 'exec';
   actor: 'owner' | 'agent';
-  phase: 'start' | 'end';
+  phase: 'start' | 'chunk' | 'end';
   /** Unix epoch ms when the event was emitted. */
   at: number;
   /** The shell command (bounded server-side). */
   command: string;
   exitCode?: number;
-  /** Bounded stdout/stderr chunks attached on `end`. */
+  /** Bounded stdout/stderr attached on `end` (tail of the run for live exec). */
   stdout?: string;
   stderr?: string;
   truncated?: boolean;
   timedOut?: boolean;
   elapsedMs?: number;
   error?: string;
+  /** Incremental stdout/stderr deltas, attached on `chunk` only. */
+  chunk?: string;
+  chunkStderr?: string;
 }

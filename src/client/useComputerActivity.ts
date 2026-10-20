@@ -105,7 +105,9 @@ function connect(dotId: string, stream: DotStream): void {
       stream.reader = reader;
       const decoder = new TextDecoder();
       let carry = '';
-      publish(stream, { connected: true, error: '' });
+      // Le serveur rejoue les derniers événements à la connexion : on repart
+      // du journal serveur (source de vérité) pour éviter les doublons.
+      publish(stream, { connected: true, error: '', runs: [] });
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
