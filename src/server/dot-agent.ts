@@ -56,6 +56,8 @@ import { generateFileTool } from './generate-file.js';
 import { pdfTools } from './pdf-tools.js';
 import { pdfWriteTools } from './pdf-write-tools.js';
 import { consultBrainSync } from './operator-brain.js';
+import { skillTools } from './skill-tools.js';
+import type { SkillLibrary } from './skills-library.js';
 const channelError = () => ({
   type: EventType.RUN_ERROR,
   message:
@@ -79,6 +81,7 @@ export class DotAgent extends AbstractAgent {
     private dotId: string,
     private channel = false,
     private setupTelemetry?: SetupTelemetry,
+    private skills?: SkillLibrary,
   ) {
     super({ agentId: dotId });
   }
@@ -90,6 +93,7 @@ export class DotAgent extends AbstractAgent {
       this.dotId,
       this.channel,
       this.setupTelemetry,
+      this.skills,
     );
   }
   abortRun() {
@@ -638,6 +642,7 @@ export class DotAgent extends AbstractAgent {
           ...tools,
           ...pageTools(pages),
           ...brainTools(),
+          ...(this.skills ? skillTools(this.skills) : []),
           ...generateFileTool(claimAttachment),
           ...pdfTools(dot.id, controller.signal),
           ...pdfWriteTools(controller.signal, claimAttachment),
@@ -672,6 +677,7 @@ export class DotAgent extends AbstractAgent {
           connectionActionToolName: connectionActionTool.name,
           externalServices: externalServices.map((s) => s.name),
           spaceId: dot.spaceId,
+          skillsAvailable: (this.skills?.size ?? 0) > 0,
           replyStyle: initialSettings.replyStyle,
           replyLanguage: initialSettings.replyLanguage,
         });

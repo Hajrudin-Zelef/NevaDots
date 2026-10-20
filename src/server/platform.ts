@@ -16,6 +16,7 @@ import { setupStatus, type PlatformConfig } from './platform-config.js';
 import { validateRuntimeScope } from './runtime-scope.js';
 import { SetupTelemetry } from './setup-telemetry.js';
 import { SqliteAgentRunner } from './sqlite-runner.js';
+import { SkillLibrary } from './skills-library.js';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt.js';
 import { scheduledTaskMessagePrefix } from '../shared/scheduled-message.js';
 import { deriveActivity } from '../shared/activity.js';
@@ -27,12 +28,17 @@ export class Platform {
   readonly connections: ConnectionService;
   readonly runner: SqliteAgentRunner;
   readonly handler: ReturnType<typeof createCopilotHonoHandler>;
+  readonly skills: SkillLibrary;
   constructor(
     readonly store: Store,
     readonly workspace: WorkspaceStore,
     readonly config: PlatformConfig,
   ) {
     this.setupTelemetry = new SetupTelemetry(store);
+    this.skills = new SkillLibrary(config.skillsDir ?? 'data/skills');
+    console.log(
+      `Skills: ${this.skills.size} skill(s) indexé(s) dans ${this.skills.path}`,
+    );
     this.computers = new ComputerService(
       workspace,
       config,
@@ -67,6 +73,7 @@ export class Platform {
                 dot.id,
                 false,
                 this.setupTelemetry,
+                this.skills,
               ),
             ]),
         ),

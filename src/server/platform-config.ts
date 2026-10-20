@@ -15,6 +15,8 @@ export interface PlatformConfig extends WebConfig {
   /** Max output tokens per completion. Too low truncates tool arguments
    * mid-JSON (large files); default 8192, env MAX_COMPLETION_TOKENS. */
   maxCompletionTokens?: number;
+  /** Bibliothèque de skills locale (host). Défaut `data/skills`. */
+  skillsDir?: string;
   apiKey?: string;
   baseUrl: string;
   /** Model providers the agent can use (OpenCode, OpenRouter, DeepSeek…). */

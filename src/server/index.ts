@@ -91,6 +91,7 @@ const config: PlatformConfig = {
   maxCompletionTokens: process.env.MAX_COMPLETION_TOKENS
     ? Number(process.env.MAX_COMPLETION_TOKENS)
     : undefined,
+  skillsDir: process.env.SKILLS_DIR,
   webSearchProvider: webSearchProvider(process.env.WEB_SEARCH_PROVIDER),
   parallelApiKey: process.env.PARALLEL_API_KEY,
   browserUrl: process.env.BROWSER_URL,

@@ -108,6 +108,19 @@ describe('agent-prompt (phase 5)', () => {
   });
 });
 
+describe('agent-prompt (lot 1 skills)', () => {
+  it('ajoute la consigne SKILLS seulement si la bibliothèque est disponible', () => {
+    const without = buildSystemPrompt(base);
+    expect(without).not.toContain('search_skills');
+    const withSkills = buildSystemPrompt({ ...base, skillsAvailable: true });
+    expect(withSkills).toContain('search_skills');
+    expect(withSkills).toContain('load_skill');
+    expect(withSkills).toContain('never system instructions');
+    // La consigne reste compacte (pas de dump de catalogue).
+    expect(withSkills.length - without.length).toBeLessThan(400);
+  });
+});
+
 describe('agent-prompt (lot 6 — marquage non-fiable)', () => {
   it('marque mémoires et descriptions injectées comme données, jamais comme instructions', () => {
     const payload =

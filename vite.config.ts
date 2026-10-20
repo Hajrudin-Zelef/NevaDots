@@ -1,8 +1,13 @@
-import { defineConfig } from 'vite';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { darkTheme } from './src/build/dark-theme';
 export default defineConfig({
   plugins: [react()],
+  // La bibliothèque de skills (data/skills) et le bureau de plans contiennent
+  // des tests tiers : jamais découverts par notre suite.
+  test: {
+    exclude: [...configDefaults.exclude, 'data/**', 'OffLineFork/**'],
+  },
   css: { postcss: { plugins: [darkTheme()] } },
   build: {
     outDir: 'dist/client',
