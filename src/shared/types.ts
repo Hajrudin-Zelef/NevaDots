@@ -123,6 +123,12 @@ export interface Dot {
   learningContainerId?: string | null;
   skillDeliveryEnabled?: boolean;
   /**
+   * Skills locaux (host `data/skills`) : autorise search_skills/load_skill
+   * pour ce Dot. OFF par défaut (fail-closed) ; le kill switch global et
+   * l'allowlist du compte s'appliquent en plus.
+   */
+  skillsEnabled?: boolean;
+  /**
    * Per-Dot provider id (see the server provider registry); null/undefined
    * uses the server default provider.
    */

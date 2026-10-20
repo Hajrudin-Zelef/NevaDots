@@ -17,13 +17,23 @@ export interface SkillToolOptions {
   signal?: AbortSignal;
   /** URL de l'app vue depuis le conteneur (bridge Docker). */
   bundleBaseUrl?: string;
+  /** Contrôle fail-closed réévalué à chaque appel (flag Dot + politique). */
+  isEnabled?: () => boolean;
+  /** Comptage d'usage (table `skill_usage`). */
+  onLoad?: (skillId: string) => void;
 }
 
 export function skillTools(
   library: SkillLibrary,
   options: SkillToolOptions = {},
 ) {
-  const { computer, dotId, signal, bundleBaseUrl } = options;
+  const { computer, dotId, signal, bundleBaseUrl, isEnabled, onLoad } = options;
+  const assertEnabled = () => {
+    if (isEnabled && !isEnabled())
+      throw new Error(
+        'Skills are disabled for this Dot (local skills toggle or admin policy).',
+      );
+  };
   return [
     defineTool({
       name: 'search_skills',
@@ -47,6 +57,7 @@ export function skillTools(
           .describe('Maximum results (default 5).'),
       }),
       execute: async ({ query, limit }) => {
+        assertEnabled();
         const skills = library.search(query, limit ?? 5);
         return {
           query,
@@ -72,10 +83,12 @@ export function skillTools(
           ),
       }),
       execute: async ({ id }) => {
+        assertEnabled();
         const skill = library.get(id);
         if (!skill) throw new Error('Skill not found.');
         const content = library.content(id);
         if (!content) throw new Error('Skill content is unreadable.');
+        onLoad?.(skill.id);
         const files = library.listFiles(id);
         let materialized:
           { installed: boolean; current: boolean; path: string } | undefined;
@@ -143,6 +156,7 @@ export function skillTools(
         maxChars: z.number().int().min(1).max(50000).optional(),
       }),
       execute: async ({ id, path, maxChars }) => {
+        assertEnabled();
         const file = library.readFile(id, path, maxChars ?? 20_000);
         if (!file) throw new Error('Skill file not found.');
         return {

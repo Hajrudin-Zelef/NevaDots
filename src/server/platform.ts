@@ -227,6 +227,7 @@ export class Platform {
       thread.dotId,
       false,
       this.setupTelemetry,
+      this.skills,
     );
     // The AG-UI agent rebuilds each run input from its own threadId/messages
     // (see AbstractAgent.prepareRunAgentInput), so seed both before running.

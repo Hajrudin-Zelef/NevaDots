@@ -204,6 +204,7 @@ export class DotAgent extends AbstractAgent {
         const initialConnections = this.workspace.connections.fingerprint(
           dot.id,
         );
+        const initialSkillsAllowed = this.workspace.skillsAllowed();
         const check = () => {
           const settings = this.store.settings();
           const current = this.workspace.dot(dot.id);
@@ -215,6 +216,8 @@ export class DotAgent extends AbstractAgent {
             current.memoryAllowed !== dot.memoryAllowed ||
             current.learningContainerId !== dot.learningContainerId ||
             current.skillDeliveryEnabled !== dot.skillDeliveryEnabled ||
+            current.skillsEnabled !== dot.skillsEnabled ||
+            this.workspace.skillsAllowed() !== initialSkillsAllowed ||
             current.researchAllowed !== dot.researchAllowed ||
             current.spaceId !== dot.spaceId ||
             this.workspace.connections.fingerprint(dot.id) !==
@@ -638,6 +641,11 @@ export class DotAgent extends AbstractAgent {
           const userId = this.store.userId;
           if (userId) this.store.claimAttachment(attachmentId, userId);
         };
+        // Fail-closed : flag du Dot ET politique admin (kill switch +
+        // allowlist). Réévalué à chaque appel d'outil et par le watcher.
+        const skillsAllowed = () =>
+          !!this.workspace.dot(dot.id)?.skillsEnabled &&
+          this.workspace.skillsAllowed();
         const serverTools = [
           ...tools,
           ...pageTools(pages),
@@ -648,6 +656,9 @@ export class DotAgent extends AbstractAgent {
                 dotId: dot.id,
                 signal: controller.signal,
                 bundleBaseUrl: this.config.computerHostUrl,
+                isEnabled: skillsAllowed,
+                onLoad: (skillId) =>
+                  this.workspace.recordSkillLoad(dot.id, skillId),
               })
             : []),
           ...generateFileTool(claimAttachment),
@@ -684,7 +695,7 @@ export class DotAgent extends AbstractAgent {
           connectionActionToolName: connectionActionTool.name,
           externalServices: externalServices.map((s) => s.name),
           spaceId: dot.spaceId,
-          skillsAvailable: (this.skills?.size ?? 0) > 0,
+          skillsAvailable: (this.skills?.size ?? 0) > 0 && skillsAllowed(),
           replyStyle: initialSettings.replyStyle,
           replyLanguage: initialSettings.replyLanguage,
         });

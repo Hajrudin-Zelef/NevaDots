@@ -805,7 +805,8 @@ export function createApp({
   const voice = platform ? new VoiceService(platform) : undefined;
   if (platform && voice) app.route('/api', workspaceRoutes(platform, voice));
   if (platform) app.route('/api', providerRoutes(platform));
-  if (platform) app.route('/api', skillRoutes(platform.skills));
+  if (platform)
+    app.route('/api', skillRoutes(platform.skills, platform.workspace));
   if (platform?.config.externalAccounts)
     app.route('/api', externalAccountRoutes(platform.config.externalAccounts));
   app.get('/api/state', (c) =>

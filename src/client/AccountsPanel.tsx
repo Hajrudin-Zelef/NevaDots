@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
 import type { ProviderModels } from '../shared/models';
+import { SkillsAdminPanel } from './SkillsAdminPanel';
 
 /** Compte (Phase E) : tel que GET /api/auth/users le renvoie (sans hash). */
 interface AccountUser {
@@ -441,6 +442,7 @@ export function AccountsPanel() {
             ))}
             {audit.length === 0 && <p className="muted">Aucun événement.</p>}
           </div>
+          <SkillsAdminPanel users={users} />
         </>
       )}
       {view === 'form' && (

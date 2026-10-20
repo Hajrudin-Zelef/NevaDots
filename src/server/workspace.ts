@@ -69,12 +69,14 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS calls(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, status TEXT NOT NULL, transcript TEXT NOT NULL, error TEXT, user_id TEXT);
       CREATE TABLE IF NOT EXISTS captures(threadId TEXT PRIMARY KEY, value TEXT NOT NULL, user_id TEXT);
       CREATE TABLE IF NOT EXISTS thread_activity(threadId TEXT PRIMARY KEY, value TEXT NOT NULL, user_id TEXT);
+      CREATE TABLE IF NOT EXISTS skill_usage(user_id TEXT NOT NULL, dotId TEXT NOT NULL, skillId TEXT NOT NULL, loads INTEGER NOT NULL DEFAULT 0, lastUsedAt INTEGER NOT NULL, PRIMARY KEY(user_id, dotId, skillId));
       CREATE TABLE IF NOT EXISTS app_config(user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(user_id, key));`);
     for (const [table, column, definition] of [
       ['spaces', 'user_id', 'TEXT'],
       ['dots', 'user_id', 'TEXT'],
       ['dots', 'learningContainerId', 'TEXT'],
       ['dots', 'skillDeliveryEnabled', 'INTEGER NOT NULL DEFAULT 0'],
+      ['dots', 'skillsEnabled', 'INTEGER NOT NULL DEFAULT 0'],
       ['dots', 'provider', 'TEXT'],
       ['dots', 'model', 'TEXT'],
       ['dots', 'reasoningEffort', 'TEXT'],
@@ -258,6 +260,7 @@ export class WorkspaceStore {
       'calls',
       'captures',
       'thread_activity',
+      'skill_usage',
       'app_config',
     ])
       this.db.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(userId);
@@ -361,6 +364,96 @@ export class WorkspaceStore {
       value: string;
     }[];
   }
+  /**
+   * Skills locaux : politique globale (kill switch + allowlist), stockée
+   * dans `app_config` sous le pseudo-compte `''` — jamais un vrai userId.
+   * Lecture non bornée par utilisateur : appelée par l'Admin et par le
+   * contrôle d'accès de chaque Dot.
+   */
+  skillsPolicy(): { enabled: boolean; allowedUsers: string[] | null } {
+    const row = this.db
+      .prepare(
+        "SELECT value FROM app_config WHERE user_id='' AND key='skills_policy'",
+      )
+      .get() as { value: string } | undefined;
+    if (!row) return { enabled: true, allowedUsers: null };
+    try {
+      const raw = JSON.parse(row.value) as {
+        enabled?: unknown;
+        allowedUsers?: unknown;
+      };
+      return {
+        enabled: raw.enabled !== false,
+        allowedUsers: Array.isArray(raw.allowedUsers)
+          ? raw.allowedUsers.filter(
+              (value): value is string => typeof value === 'string',
+            )
+          : null,
+      };
+    } catch {
+      // Une politique illisible ne doit pas ouvrir les skills par erreur.
+      return { enabled: false, allowedUsers: [] };
+    }
+  }
+  setSkillsPolicy(patch: {
+    enabled?: boolean;
+    allowedUsers?: string[] | null;
+  }) {
+    const current = this.skillsPolicy();
+    const next = {
+      enabled: patch.enabled ?? current.enabled,
+      allowedUsers:
+        patch.allowedUsers === undefined
+          ? current.allowedUsers
+          : patch.allowedUsers,
+    };
+    this.db
+      .prepare(
+        "INSERT INTO app_config(user_id, key, value) VALUES ('', 'skills_policy', ?) ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value",
+      )
+      .run(JSON.stringify(next));
+    return next;
+  }
+  /** Kill switch global + allowlist pour le compte courant (fail-closed). */
+  skillsAllowed(): boolean {
+    if (this.userId === null) return false;
+    const policy = this.skillsPolicy();
+    if (!policy.enabled) return false;
+    return (
+      policy.allowedUsers === null || policy.allowedUsers.includes(this.userId)
+    );
+  }
+  recordSkillLoad(dotId: string, skillId: string) {
+    const userId = this.requireUser();
+    const now = Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO skill_usage(user_id, dotId, skillId, loads, lastUsedAt) VALUES (?, ?, ?, 1, ?)
+         ON CONFLICT(user_id, dotId, skillId) DO UPDATE SET loads=loads+1, lastUsedAt=excluded.lastUsedAt`,
+      )
+      .run(userId, dotId, skillId, now);
+  }
+  /** Vue Admin : tous les comptes (aucune donnée de contenu). */
+  skillUsageAll(): {
+    userId: string;
+    dotId: string;
+    skillId: string;
+    loads: number;
+    lastUsedAt: number;
+  }[] {
+    return this.db
+      .prepare(
+        'SELECT user_id, dotId, skillId, loads, lastUsedAt FROM skill_usage ORDER BY lastUsedAt DESC',
+      )
+      .all()
+      .map((row) => ({
+        userId: String(row.user_id),
+        dotId: String(row.dotId),
+        skillId: String(row.skillId),
+        loads: Number(row.loads),
+        lastUsedAt: Number(row.lastUsedAt),
+      }));
+  }
   spaces(): Space[] {
     return this.db
       .prepare('SELECT * FROM spaces WHERE user_id=? ORDER BY createdAt')
@@ -406,6 +499,7 @@ export class WorkspaceStore {
       researchAllowed: !!row.researchAllowed,
       memoryAllowed: !!row.memoryAllowed,
       skillDeliveryEnabled: !!row.skillDeliveryEnabled,
+      skillsEnabled: !!row.skillsEnabled,
       provider: row.provider == null ? null : String(row.provider),
       model: row.model == null ? null : String(row.model),
       reasoningEffort:
@@ -496,6 +590,7 @@ export class WorkspaceStore {
     skillDeliveryEnabled = false,
     model: string | null = null,
     avatar: string | null = null,
+    skillsEnabled = false,
   ): Dot {
     const userId = this.requireUser();
     // Phase E : nombre max de Dots + modèle autorisé pour ce compte.
@@ -528,6 +623,7 @@ export class WorkspaceStore {
       memoryAllowed,
       learningContainerId,
       skillDeliveryEnabled,
+      skillsEnabled,
       model,
       avatar,
       createdAt: Date.now(),
@@ -536,7 +632,7 @@ export class WorkspaceStore {
     try {
       this.db
         .prepare(
-          'INSERT INTO dots (id, user_id, spaceId, name, instructions, researchAllowed, memoryAllowed, createdAt, learningContainerId, skillDeliveryEnabled, model, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO dots (id, user_id, spaceId, name, instructions, researchAllowed, memoryAllowed, createdAt, learningContainerId, skillDeliveryEnabled, skillsEnabled, model, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
         .run(
           dot.id,
@@ -549,6 +645,7 @@ export class WorkspaceStore {
           dot.createdAt,
           learningContainerId,
           +skillDeliveryEnabled,
+          +skillsEnabled,
           model,
           avatar,
         );
@@ -578,6 +675,7 @@ export class WorkspaceStore {
       current.skillDeliveryEnabled ?? false,
       current.model ?? null,
       current.avatar ?? null,
+      current.skillsEnabled ?? false,
     );
     if (current.contextBudget != null)
       this.setDotContextBudget(copy.id, current.contextBudget);
@@ -609,6 +707,7 @@ export class WorkspaceStore {
       spaceIds?: string[];
       learningContainerId?: string | null;
       skillDeliveryEnabled?: boolean;
+      skillsEnabled?: boolean;
       avatar?: string | null;
     },
   ): Dot {
@@ -624,12 +723,13 @@ export class WorkspaceStore {
         : patch.learningContainerId;
     const skillDeliveryEnabled =
       patch.skillDeliveryEnabled ?? current.skillDeliveryEnabled ?? false;
+    const skillsEnabled = patch.skillsEnabled ?? current.skillsEnabled ?? false;
     validateLearningSettings(learningContainerId, skillDeliveryEnabled);
     this.db.exec('BEGIN');
     try {
       this.db
         .prepare(
-          'UPDATE dots SET name=?, instructions=?, researchAllowed=?, memoryAllowed=?, learningContainerId=?, skillDeliveryEnabled=? WHERE id=? AND user_id=?',
+          'UPDATE dots SET name=?, instructions=?, researchAllowed=?, memoryAllowed=?, learningContainerId=?, skillDeliveryEnabled=?, skillsEnabled=? WHERE id=? AND user_id=?',
         )
         .run(
           patch.name,
@@ -638,6 +738,7 @@ export class WorkspaceStore {
           +patch.memoryAllowed,
           learningContainerId,
           +skillDeliveryEnabled,
+          +skillsEnabled,
           id,
           this.userId,
         );

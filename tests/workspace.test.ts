@@ -172,3 +172,59 @@ it('migre un app_config legacy AVEC lignes (prod) sans violer NOT NULL', () => {
   store.close();
   rmSync(dir, { recursive: true, force: true });
 });
+
+it('skills locaux : flag par Dot, politique admin et usage', () => {
+  const store = new WorkspaceStore(':memory:', 'owner');
+  const space = store.createSpace('Design', 'Design decisions');
+  const dot = store.createDot(
+    space.id,
+    'Scout',
+    'Be concise',
+    false,
+    true,
+    [space.id],
+    null,
+    false,
+    null,
+    null,
+    true,
+  );
+  expect(store.dot(dot.id)?.skillsEnabled).toBe(true);
+  expect(store.duplicateDot(dot.id)?.skillsEnabled).toBe(true);
+  const updated = store.updateDot(dot.id, {
+    name: 'Scout',
+    instructions: 'Be concise',
+    researchAllowed: false,
+    memoryAllowed: true,
+    skillsEnabled: false,
+  });
+  expect(updated.skillsEnabled).toBe(false);
+
+  // Défaut : kill switch ouvert, allowlist nulle (tous les comptes).
+  expect(store.skillsPolicy()).toEqual({ enabled: true, allowedUsers: null });
+  expect(store.skillsAllowed()).toBe(true);
+  store.setSkillsPolicy({ enabled: false });
+  expect(store.skillsAllowed()).toBe(false);
+  store.setSkillsPolicy({ enabled: true, allowedUsers: ['other'] });
+  expect(store.skillsAllowed()).toBe(false);
+  expect(store.forUser('other').skillsAllowed()).toBe(true);
+
+  store.forUser('other').recordSkillLoad(dot.id, 'repo/docx');
+  store.forUser('other').recordSkillLoad(dot.id, 'repo/docx');
+  expect(store.skillUsageAll()).toEqual([
+    {
+      userId: 'other',
+      dotId: dot.id,
+      skillId: 'repo/docx',
+      loads: 2,
+      lastUsedAt: expect.any(Number),
+    },
+  ]);
+  // Une politique illisible retombe fermée (fail-closed).
+  const db = (store as unknown as { db: DatabaseSync }).db;
+  db.prepare(
+    "UPDATE app_config SET value='not json' WHERE user_id='' AND key='skills_policy'",
+  ).run();
+  expect(store.skillsAllowed()).toBe(false);
+  store.close();
+});

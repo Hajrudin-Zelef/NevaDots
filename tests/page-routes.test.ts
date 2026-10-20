@@ -478,3 +478,40 @@ it('POST /dots puts the avatar in the avatar slot, not the model slot', async ()
   expect(dot.avatar).toBe('leo');
   expect(dot.model).toBeNull();
 });
+
+it('expose le flag skillsEnabled à la création et à la mise à jour d’un Dot', async () => {
+  const { ws, api } = await fixture();
+  const space = ws.spaces()[0].id;
+  const created = await api(
+    '/api/dots',
+    request({
+      spaceId: space,
+      spaceIds: [space],
+      name: 'Skilled',
+      instructions: 'Be concise',
+      researchAllowed: true,
+      memoryAllowed: true,
+      skillsEnabled: true,
+    }),
+  );
+  expect(created.status).toBe(201);
+  const dot = (await created.json()) as { id: string; skillsEnabled?: boolean };
+  expect(dot.skillsEnabled).toBe(true);
+  const updated = await api(
+    `/api/dots/${dot.id}`,
+    request(
+      {
+        name: 'Skilled',
+        instructions: 'Be concise',
+        researchAllowed: true,
+        memoryAllowed: true,
+        skillsEnabled: false,
+      },
+      'PUT',
+    ),
+  );
+  expect(updated.status).toBe(200);
+  expect(
+    ((await updated.json()) as { skillsEnabled?: boolean }).skillsEnabled,
+  ).toBe(false);
+});

@@ -9,6 +9,7 @@ import { skillTools } from '../src/server/skill-tools';
 import { skillRoutes } from '../src/server/skill-routes';
 import type { AppVariables } from '../src/server/request-context';
 import type { ComputerService } from '../src/server/computer-service';
+import { WorkspaceStore } from '../src/server/workspace';
 
 const cleanup: (() => void)[] = [];
 afterEach(() =>
@@ -195,19 +196,30 @@ describe('skill tools', () => {
 });
 
 describe('skill routes', () => {
-  function appWith(lib: SkillLibrary, role: 'admin' | 'user') {
+  function workspaceFixture() {
+    const dir = mkdtempSync(join(tmpdir(), 'skillws-'));
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    const ws = new WorkspaceStore(join(dir, 'w.sqlite'), 'user-1');
+    cleanup.push(() => ws.close());
+    return ws;
+  }
+  function appWith(
+    lib: SkillLibrary,
+    role: 'admin' | 'user',
+    ws = workspaceFixture(),
+  ) {
     const app = new Hono<{ Variables: AppVariables }>();
     app.use('*', async (c, next) => {
       c.set('role', role);
       await next();
     });
-    app.route('/', skillRoutes(lib));
-    return app;
+    app.route('/', skillRoutes(lib, ws));
+    return { app, ws };
   }
 
   it('GET /skills cherche et liste', async () => {
     const { lib } = fixture();
-    const app = appWith(lib, 'user');
+    const { app } = appWith(lib, 'user');
     const response = await app.request('/skills?query=word');
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -221,7 +233,7 @@ describe('skill routes', () => {
   it('le bundle sert un tar.gz à usage unique', async () => {
     const { lib } = fixture();
     const ticket = lib.mintBundle('repo/docx', 'dot-1');
-    const app = appWith(lib, 'user');
+    const { app } = appWith(lib, 'user');
     const response = await app.request(`/skills/bundle?ticket=${ticket}`);
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('gzip');
@@ -234,14 +246,14 @@ describe('skill routes', () => {
 
   it('POST /skills/:id/ticket est réservé à l’Admin et mint un ticket', async () => {
     const { lib } = fixture();
-    const user = await appWith(lib, 'user').request(
+    const user = await appWith(lib, 'user').app.request(
       '/skills/repo%2Fdocx/ticket',
       {
         method: 'POST',
       },
     );
     expect(user.status).toBe(403);
-    const admin = await appWith(lib, 'admin').request(
+    const admin = await appWith(lib, 'admin').app.request(
       '/skills/repo%2Fdocx/ticket',
       { method: 'POST' },
     );
@@ -255,13 +267,64 @@ describe('skill routes', () => {
     });
   });
 
+  it('politique Admin : kill switch, allowlist et usage', async () => {
+    const { lib } = fixture();
+    const ws = workspaceFixture();
+    // Défaut : autorisé pour tous les comptes.
+    expect(ws.skillsPolicy()).toEqual({ enabled: true, allowedUsers: null });
+    expect(ws.skillsAllowed()).toBe(true);
+    const { app } = appWith(lib, 'admin', ws);
+    const denied = await appWith(lib, 'user', ws).app.request('/skills/policy');
+    expect(denied.status).toBe(403);
+
+    const off = await app.request('/skills/policy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(off.status).toBe(200);
+    expect(ws.skillsAllowed()).toBe(false);
+    const search = skillTools(lib, {
+      isEnabled: () => ws.skillsAllowed(),
+    }).find((t) => t.name === 'search_skills') as unknown as {
+      execute?: (input: { query: string }) => Promise<unknown>;
+    };
+    await expect(search.execute?.({ query: 'word' })).rejects.toThrow(
+      /disabled/,
+    );
+
+    await app.request('/skills/policy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true, allowedUsers: ['user-2'] }),
+    });
+    expect(ws.skillsAllowed()).toBe(false);
+    ws.forUser('user-2').skillsAllowed();
+    expect(ws.forUser('user-2').skillsAllowed()).toBe(true);
+
+    ws.forUser('user-2').recordSkillLoad('dot-1', 'repo/docx');
+    ws.forUser('user-2').recordSkillLoad('dot-1', 'repo/docx');
+    const usage = await app.request('/skills/usage');
+    expect(await usage.json()).toMatchObject({
+      usage: [
+        { userId: 'user-2', dotId: 'dot-1', skillId: 'repo/docx', loads: 2 },
+      ],
+    });
+    const invalid = await app.request('/skills/policy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nope: true }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   it('POST /skills/reindex est réservé à l’Admin', async () => {
     const { lib } = fixture();
-    const user = await appWith(lib, 'user').request('/skills/reindex', {
+    const user = await appWith(lib, 'user').app.request('/skills/reindex', {
       method: 'POST',
     });
     expect(user.status).toBe(403);
-    const admin = await appWith(lib, 'admin').request('/skills/reindex', {
+    const admin = await appWith(lib, 'admin').app.request('/skills/reindex', {
       method: 'POST',
     });
     expect(admin.status).toBe(200);
