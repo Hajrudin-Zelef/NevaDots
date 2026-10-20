@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -12,6 +12,13 @@ const MAX_DESCRIPTION_CHARS = 2000;
 const SEARCH_DESCRIPTION_CHARS = 400;
 /** Contenu renvoyé par défaut au chargement (le fichier reste sur disque). */
 export const DEFAULT_SKILL_CONTENT_CHARS = 20_000;
+/** Lecture d'une ressource texte via read_skill_file. */
+export const DEFAULT_SKILL_FILE_CHARS = 20_000;
+const MAX_LISTED_FILES = 500;
+const MAX_TOOL_FILES = 40;
+/** Ticket de bundle : usage unique, 30 s, lié au Dot et au skill. */
+const BUNDLE_TTL_MS = 30_000;
+const BUNDLE_CAP = 1000;
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.cache']);
 
 export interface IndexedSkill extends SkillSummary {
@@ -25,6 +32,8 @@ export interface IndexedSkill extends SkillSummary {
   content: string;
   /** Hash contenu + arborescence (détecte les changements de ressources). */
   version: string;
+  /** Fichiers du skill (chemins relatifs + tailles), bornés. */
+  files: { path: string; size: number }[];
   nameTokens: Set<string>;
   descriptionTokens: Set<string>;
   normalizedName: string;
@@ -136,20 +145,26 @@ function walkSkillFiles(root: string): string[] {
   return found;
 }
 
-function versionOf(content: string, dir: string): string {
-  const files: string[] = [];
-  walkFiles(dir, dir, files);
-  files.sort();
+function treeOf(
+  content: string,
+  dir: string,
+): { version: string; files: { path: string; size: number }[] } {
+  const paths: string[] = [];
+  walkFiles(dir, dir, paths);
+  paths.sort();
   const hash = createHash('sha256').update(content);
-  for (const file of files) {
+  const files: { path: string; size: number }[] = [];
+  for (const file of paths) {
     try {
       const info = lstatSync(join(dir, file));
       hash.update(`\n${file}:${info.size}`);
+      if (files.length < MAX_LISTED_FILES)
+        files.push({ path: file.split(sep).join('/'), size: info.size });
     } catch {
       // Fichier disparu pendant le scan : le hash reste stable pour les autres.
     }
   }
-  return hash.digest('hex');
+  return { version: hash.digest('hex'), files };
 }
 
 function readSkill(
@@ -179,6 +194,7 @@ function readSkill(
   const relativeDir = relative(libraryRoot, dir).split(sep);
   const repo = relativeDir[0] || 'local';
   const id = `${slug(repo)}/${slug(name)}`;
+  const tree = treeOf(content, dir);
   return {
     id,
     name,
@@ -188,7 +204,8 @@ function readSkill(
     dir,
     file,
     content,
-    version: versionOf(content, dir),
+    version: tree.version,
+    files: tree.files,
     nameTokens: tokens(name),
     descriptionTokens: tokens(descriptionFull),
     normalizedName: stripAccents(name).toLowerCase(),
@@ -200,6 +217,10 @@ export class SkillLibrary {
   private skipped = 0;
   private loadedAt = 0;
   private root: string;
+  private bundles = new Map<
+    string,
+    { skillId: string; dotId: string; expiresAt: number }
+  >();
 
   constructor(root = 'data/skills') {
     this.root = resolve(root);
@@ -287,6 +308,104 @@ export class SkillLibrary {
         repo: skill.repo,
         description: skill.description,
       }));
+  }
+
+  /** Fichiers du skill, bornés, pour guider l'agent vers scripts/assets. */
+  listFiles(
+    id: string,
+    limit = MAX_TOOL_FILES,
+  ): { path: string; size: number }[] {
+    return (this.skills.get(id)?.files ?? []).slice(
+      0,
+      Math.min(Math.max(limit, 1), MAX_TOOL_FILES),
+    );
+  }
+
+  /**
+   * Lit une ressource texte du skill (côté host). Refuse les chemins absolus,
+   * `..`, les symlinks et les binaires (NUL dans les 4 premiers Ko).
+   */
+  readFile(
+    id: string,
+    relPath: string,
+    maxChars = DEFAULT_SKILL_FILE_CHARS,
+  ):
+    | {
+        path: string;
+        text: string;
+        truncated: boolean;
+        totalChars: number;
+        binary: boolean;
+      }
+    | undefined {
+    const skill = this.skills.get(id);
+    if (!skill) return undefined;
+    if (!relPath || relPath.includes('\0')) return undefined;
+    const normalized = relPath.replace(/\\/g, '/');
+    if (normalized.startsWith('/') || normalized.split('/').includes('..'))
+      return undefined;
+    const full = resolve(skill.dir, normalized);
+    const inside = relative(skill.dir, full);
+    if (!inside || inside.startsWith('..') || inside.startsWith(sep))
+      return undefined;
+    let info;
+    try {
+      info = lstatSync(full);
+    } catch {
+      return undefined;
+    }
+    if (!info.isFile() || info.isSymbolicLink()) return undefined;
+    let raw: Buffer;
+    try {
+      raw = readFileSync(full);
+    } catch {
+      return undefined;
+    }
+    const binary = raw.subarray(0, 4096).includes(0);
+    if (binary)
+      return {
+        path: inside.split(sep).join('/'),
+        text: '',
+        truncated: false,
+        totalChars: raw.length,
+        binary: true,
+      };
+    const text = raw.toString('utf8');
+    const bounded = text.slice(0, Math.min(Math.max(maxChars, 1), 50_000));
+    return {
+      path: inside.split(sep).join('/'),
+      text: bounded,
+      truncated: text.length > bounded.length,
+      totalChars: text.length,
+      binary: false,
+    };
+  }
+
+  /** Ticket à usage unique pour télécharger le bundle d'un skill. */
+  mintBundle(skillId: string, dotId: string): string {
+    const now = Date.now();
+    for (const [ticket, entry] of this.bundles)
+      if (entry.expiresAt <= now) this.bundles.delete(ticket);
+    while (this.bundles.size >= BUNDLE_CAP) {
+      const oldest = this.bundles.keys().next();
+      if (oldest.done) break;
+      this.bundles.delete(oldest.value);
+    }
+    const ticket = randomBytes(32).toString('hex');
+    this.bundles.set(ticket, {
+      skillId,
+      dotId,
+      expiresAt: now + BUNDLE_TTL_MS,
+    });
+    return ticket;
+  }
+
+  consumeBundle(ticket: string): { skillId: string; dotId: string } | null {
+    const entry = this.bundles.get(ticket);
+    if (!entry) return null;
+    this.bundles.delete(ticket);
+    if (entry.expiresAt <= Date.now()) return null;
+    return { skillId: entry.skillId, dotId: entry.dotId };
   }
 
   /** Contenu du SKILL.md, borné. `truncated` signale un reste sur disque. */

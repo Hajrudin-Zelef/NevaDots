@@ -642,7 +642,14 @@ export class DotAgent extends AbstractAgent {
           ...tools,
           ...pageTools(pages),
           ...brainTools(),
-          ...(this.skills ? skillTools(this.skills) : []),
+          ...(this.skills
+            ? skillTools(this.skills, {
+                computer,
+                dotId: dot.id,
+                signal: controller.signal,
+                bundleBaseUrl: this.config.computerHostUrl,
+              })
+            : []),
           ...generateFileTool(claimAttachment),
           ...pdfTools(dot.id, controller.signal),
           ...pdfWriteTools(controller.signal, claimAttachment),

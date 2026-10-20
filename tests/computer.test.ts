@@ -328,6 +328,78 @@ it('files_send refuse un fichier introuvable', async () => {
   ).rejects.toThrow(/introuvable/);
 });
 
+it('installe un bundle de skill (ticket, tar, marqueur de version)', async () => {
+  const f = fixture();
+  const bodies: string[] = [];
+  f.handle(async (url, init) => {
+    if (url.endsWith('/exec')) {
+      bodies.push(String(init?.body));
+      return Response.json({
+        exitCode: 0,
+        stdout: 'SKILL_INSTALLED\n',
+        stderr: '',
+      });
+    }
+    throw new Error(`unexpected ${url}`);
+  });
+  const result = await f.service.installSkillBundle(f.id, {
+    ticket: 'deadbeef',
+    path: '.skills/repo/docx',
+    version: 'v123',
+    baseUrl: 'http://172.17.0.1:4310',
+  });
+  expect(result).toEqual({
+    installed: true,
+    current: false,
+    path: '.skills/repo/docx',
+  });
+  const body = JSON.parse(bodies[0]) as { command: string; timeoutMs: number };
+  expect(body.command).toContain('curl -fsS --max-time 30');
+  expect(body.command).toContain('/api/skills/bundle?ticket=deadbeef');
+  expect(body.command).toContain('tar --no-same-owner -xz -C');
+  expect(body.command).toContain('.skills/repo/docx/.opendots-version');
+  expect(body.command).toContain('v123');
+  expect(body.timeoutMs).toBe(60000);
+});
+
+it('installSkillBundle est idempotent, gated par fichiers, et refuse un chemin hostile', async () => {
+  const f = fixture();
+  f.handle(async (url) => {
+    if (url.endsWith('/exec'))
+      return Response.json({
+        exitCode: 0,
+        stdout: 'SKILL_CURRENT\n',
+        stderr: '',
+      });
+    throw new Error(`unexpected ${url}`);
+  });
+  const current = await f.service.installSkillBundle(f.id, {
+    ticket: 't',
+    path: '.skills/repo/docx',
+    version: 'v',
+    baseUrl: 'http://172.17.0.1:4310',
+  });
+  expect(current).toMatchObject({ installed: false, current: true });
+  const denied = fixture();
+  denied.workspace.computers.patch(denied.id, { files: false });
+  await expect(
+    denied.service.installSkillBundle(denied.id, {
+      ticket: 't',
+      path: '.skills/repo/docx',
+      version: 'v',
+      baseUrl: 'http://172.17.0.1:4310',
+    }),
+  ).rejects.toThrow(/permission/);
+  await expect(
+    f.service.installSkillBundle(f.id, {
+      ticket: 't',
+      path: '../../etc',
+      version: 'v',
+      baseUrl: 'http://172.17.0.1:4310',
+    }),
+  ).rejects.toThrow('Invalid skill target path.');
+});
+
 it('bounds completed audit storage while preserving pending work', () => {
   const f = fixture();
   const pending = f.workspace.computers.begin(f.id, 'exec', 'agent');

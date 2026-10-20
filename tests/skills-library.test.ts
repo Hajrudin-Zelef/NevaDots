@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   mkdirSync,
   mkdtempSync,
@@ -41,6 +41,12 @@ description: >
 Body.`,
   );
   write(root, 'repo-a/skills/alpha/scripts/run.sh', '#!/bin/sh\necho hi\n');
+  mkdirSync(join(root, 'repo-a/skills/alpha/assets'), { recursive: true });
+  writeFileSync(
+    join(root, 'repo-a/skills/alpha/assets/font.bin'),
+    Buffer.from([0, 1, 2, 3]),
+  );
+  writeFileSync(join(root, 'secret.txt'), 'secret');
   write(
     root,
     'repo-b/skills/alpha/SKILL.md',
@@ -118,6 +124,46 @@ describe('SkillLibrary', () => {
     );
     lib.reindex();
     expect(lib.size).toBe(4);
+  });
+
+  it('listFiles expose les ressources et readFile lit le texte, refuse binaire/traversée/symlink', () => {
+    const { root, lib } = fixture();
+    const files = lib.listFiles('repo-a/alpha').map((file) => file.path);
+    expect(files).toContain('SKILL.md');
+    expect(files).toContain('scripts/run.sh');
+    expect(lib.readFile('repo-a/alpha', 'scripts/run.sh')?.text).toContain(
+      'echo hi',
+    );
+    expect(lib.readFile('repo-a/alpha', 'assets/font.bin')).toMatchObject({
+      binary: true,
+      text: '',
+    });
+    expect(lib.readFile('repo-a/alpha', '../SKILL.md')).toBeUndefined();
+    expect(lib.readFile('repo-a/alpha', '/etc/passwd')).toBeUndefined();
+    symlinkSync(
+      join(root, 'secret.txt'),
+      join(root, 'repo-a/skills/alpha/link.txt'),
+    );
+    expect(lib.readFile('repo-a/alpha', 'link.txt')).toBeUndefined();
+  });
+
+  it('mint un ticket de bundle à usage unique, expirant', () => {
+    const { lib } = fixture();
+    const ticket = lib.mintBundle('repo-a/alpha', 'dot-1');
+    expect(ticket).toMatch(/^[0-9a-f]{64}$/);
+    expect(lib.consumeBundle(ticket)).toEqual({
+      skillId: 'repo-a/alpha',
+      dotId: 'dot-1',
+    });
+    expect(lib.consumeBundle(ticket)).toBeNull();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const stale = lib.mintBundle('repo-a/alpha', 'dot-1');
+      vi.setSystemTime(Date.now() + 31_000);
+      expect(lib.consumeBundle(stale)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('borne le contenu et change de version quand une ressource change', () => {

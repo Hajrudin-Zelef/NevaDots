@@ -92,6 +92,7 @@ const config: PlatformConfig = {
     ? Number(process.env.MAX_COMPLETION_TOKENS)
     : undefined,
   skillsDir: process.env.SKILLS_DIR,
+  computerHostUrl: process.env.COMPUTER_HOST_URL ?? `http://172.17.0.1:${port}`,
   webSearchProvider: webSearchProvider(process.env.WEB_SEARCH_PROVIDER),
   parallelApiKey: process.env.PARALLEL_API_KEY,
   browserUrl: process.env.BROWSER_URL,

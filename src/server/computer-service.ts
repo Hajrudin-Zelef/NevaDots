@@ -1402,6 +1402,58 @@ export class ComputerService {
       downloadUrl: `/api/attachments/${saved.id}/content?download=1`,
     };
   }
+  /**
+   * Installe (ou rafraîchit) le bundle d'un skill dans le workspace du Dot.
+   * Le serveur sert un tar gzip à usage unique ; le conteneur le télécharge
+   * en local et l'extrait dans `.skills/<repo>/<name>`. Idempotent : le
+   * marqueur `.opendots-version` évite une recopie inutile.
+   */
+  async installSkillBundle(
+    id: string,
+    input: {
+      ticket: string;
+      path: string;
+      version: string;
+      baseUrl: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ installed: boolean; current: boolean; path: string }> {
+    this.allowed(id, 'files', 'agent');
+    const base = await this.running(id, signal);
+    const target = input.path.replace(/\/+$/, '');
+    if (!/^\.skills\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(target))
+      throw new Error('Invalid skill target path.');
+    const parent = target.split('/').slice(0, -1).join('/');
+    const url = `${input.baseUrl.replace(/\/+$/, '')}/api/skills/bundle?ticket=${encodeURIComponent(input.ticket)}`;
+    const targetQ = shellQuote(target);
+    const markerQ = shellQuote(`${target}/.opendots-version`);
+    const versionQ = shellQuote(input.version);
+    const command = [
+      `if [ -f ${markerQ} ] && [ "$(cat ${markerQ})" = ${versionQ} ]; then echo SKILL_CURRENT; else`,
+      `mkdir -p ${shellQuote(parent)} ${targetQ} && curl -fsS --max-time 30 ${shellQuote(url)} | tar --no-same-owner -xz -C ${targetQ} && printf '%s' ${versionQ} > ${markerQ} && echo SKILL_INSTALLED; fi`,
+    ].join(' ');
+    const result = (await this.json(
+      `${base}/exec`,
+      this.token(id),
+      { command, timeoutMs: 60000 },
+      signal,
+      id,
+      90_000,
+    )) as { stdout?: unknown; stderr?: unknown; exitCode?: unknown };
+    if (typeof result.exitCode === 'number' && result.exitCode !== 0) {
+      const detail =
+        typeof result.stderr === 'string'
+          ? result.stderr.replace(/\s+/g, ' ').trim().slice(0, 200)
+          : '';
+      throw new Error(`Skill install failed${detail ? `: ${detail}` : '.'}`);
+    }
+    const stdout = typeof result.stdout === 'string' ? result.stdout : '';
+    return {
+      installed: stdout.includes('SKILL_INSTALLED'),
+      current: stdout.includes('SKILL_CURRENT'),
+      path: target,
+    };
+  }
   async action(
     id: string,
     action: ComputerAction,

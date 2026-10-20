@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
@@ -7,6 +8,7 @@ import { SkillLibrary } from '../src/server/skills-library';
 import { skillTools } from '../src/server/skill-tools';
 import { skillRoutes } from '../src/server/skill-routes';
 import type { AppVariables } from '../src/server/request-context';
+import type { ComputerService } from '../src/server/computer-service';
 
 const cleanup: (() => void)[] = [];
 afterEach(() =>
@@ -31,6 +33,10 @@ description: Create and edit Word documents.
 # DOCX procedure
 Step one.`,
   );
+  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  writeFileSync(join(dir, 'scripts/run.sh'), '#!/bin/sh\necho docx\n');
+  mkdirSync(join(dir, 'assets'), { recursive: true });
+  writeFileSync(join(dir, 'assets/logo.bin'), Buffer.from([0, 1, 2]));
   return { root, lib: new SkillLibrary(root) };
 }
 
@@ -70,6 +76,116 @@ describe('skill tools', () => {
     expect(result.version).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('load_skill matérialise le bundle via le computer quand il est disponible', async () => {
+    const { lib } = fixture();
+    const calls: {
+      id: string;
+      input: { ticket: string; path: string; version: string };
+    }[] = [];
+    const computer = {
+      configured: true,
+      policy: () => ({
+        enabled: true,
+        browser: false,
+        files: true,
+        shell: false,
+      }),
+      installSkillBundle: async (
+        id: string,
+        input: { ticket: string; path: string; version: string },
+      ) => {
+        calls.push({ id, input });
+        return { installed: true, current: false, path: input.path };
+      },
+    } as unknown as ComputerService;
+    const tools = skillTools(lib, {
+      computer,
+      dotId: 'dot-1',
+      bundleBaseUrl: 'http://172.17.0.1:4310',
+    });
+    const load = tools.find(
+      (item) => item.name === 'load_skill',
+    ) as unknown as {
+      execute?: (input: Record<string, unknown>) => Promise<{
+        path: string | null;
+        installed: boolean;
+        files: { path: string }[];
+        content: string;
+      }>;
+    };
+    const result = await load.execute?.({ id: 'repo/docx' });
+    expect(result?.path).toBe('.skills/repo/docx');
+    expect(result?.installed).toBe(true);
+    expect(result?.files.map((file) => file.path)).toContain('scripts/run.sh');
+    expect(calls[0].id).toBe('dot-1');
+    expect(calls[0].input.ticket).toMatch(/^[0-9a-f]{64}$/);
+    expect(calls[0].input.path).toBe('.skills/repo/docx');
+    expect(calls[0].input.version).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('load_skill garde le contenu si la matérialisation échoue', async () => {
+    const { lib } = fixture();
+    const computer = {
+      configured: true,
+      policy: () => ({
+        enabled: true,
+        browser: false,
+        files: true,
+        shell: false,
+      }),
+      installSkillBundle: async () => {
+        throw new Error('computer stopped');
+      },
+    } as unknown as ComputerService;
+    const tools = skillTools(lib, {
+      computer,
+      dotId: 'dot-1',
+      bundleBaseUrl: 'http://172.17.0.1:4310',
+    });
+    const load = tools.find(
+      (item) => item.name === 'load_skill',
+    ) as unknown as {
+      execute?: (input: Record<string, unknown>) => Promise<{
+        path: string | null;
+        note?: string;
+        content: string;
+      }>;
+    };
+    const result = await load.execute?.({ id: 'repo/docx' });
+    expect(result?.content).toContain('# DOCX procedure');
+    expect(result?.path).toBeNull();
+    expect(result?.note).toContain('not materialized');
+  });
+
+  it('load_skill sans computer renvoie le contenu seul', async () => {
+    const { lib } = fixture();
+    const result = (await tool(lib, 'load_skill').execute?.({
+      id: 'repo/docx',
+    })) as { path: string | null; note?: string };
+    expect(result.path).toBeNull();
+    expect(result.note).toContain('Computer not configured');
+  });
+
+  it('read_skill_file lit le texte et refuse traversée/binaire', async () => {
+    const { lib } = fixture();
+    const read = tool(lib, 'read_skill_file');
+    const file = (await read.execute?.({
+      id: 'repo/docx',
+      path: 'scripts/run.sh',
+    })) as { text: string; binary: boolean };
+    expect(file.text).toContain('echo docx');
+    expect(file.binary).toBe(false);
+    const binary = (await read.execute?.({
+      id: 'repo/docx',
+      path: 'assets/logo.bin',
+    })) as { binary: boolean; text: string };
+    expect(binary.binary).toBe(true);
+    expect(binary.text).toBe('');
+    await expect(
+      read.execute?.({ id: 'repo/docx', path: '../SKILL.md' }),
+    ).rejects.toThrow('Skill file not found.');
+  });
+
   it('load_skill refuse un id inconnu', async () => {
     const { lib } = fixture();
     await expect(
@@ -100,6 +216,43 @@ describe('skill routes', () => {
     };
     expect(body.size).toBe(1);
     expect(body.skills[0].id).toBe('repo/docx');
+  });
+
+  it('le bundle sert un tar.gz à usage unique', async () => {
+    const { lib } = fixture();
+    const ticket = lib.mintBundle('repo/docx', 'dot-1');
+    const app = appWith(lib, 'user');
+    const response = await app.request(`/skills/bundle?ticket=${ticket}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('gzip');
+    const tar = gunzipSync(Buffer.from(await response.arrayBuffer()));
+    expect(tar.toString('utf8')).toContain('SKILL.md');
+    expect(tar.toString('utf8')).toContain('scripts/run.sh');
+    const replay = await app.request(`/skills/bundle?ticket=${ticket}`);
+    expect(replay.status).toBe(401);
+  });
+
+  it('POST /skills/:id/ticket est réservé à l’Admin et mint un ticket', async () => {
+    const { lib } = fixture();
+    const user = await appWith(lib, 'user').request(
+      '/skills/repo%2Fdocx/ticket',
+      {
+        method: 'POST',
+      },
+    );
+    expect(user.status).toBe(403);
+    const admin = await appWith(lib, 'admin').request(
+      '/skills/repo%2Fdocx/ticket',
+      { method: 'POST' },
+    );
+    expect(admin.status).toBe(200);
+    const body = (await admin.json()) as { ticket: string; id: string };
+    expect(body.id).toBe('repo/docx');
+    expect(body.ticket).toMatch(/^[0-9a-f]{64}$/);
+    expect(lib.consumeBundle(body.ticket)).toEqual({
+      skillId: 'repo/docx',
+      dotId: 'admin:undefined',
+    });
   });
 
   it('POST /skills/reindex est réservé à l’Admin', async () => {

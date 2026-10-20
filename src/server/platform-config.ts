@@ -17,6 +17,9 @@ export interface PlatformConfig extends WebConfig {
   maxCompletionTokens?: number;
   /** Bibliothèque de skills locale (host). Défaut `data/skills`. */
   skillsDir?: string;
+  /** URL de l'app vue depuis le conteneur (bridge Docker) pour les bundles
+   * de skills. Défaut `http://172.17.0.1:<PORT>`. */
+  computerHostUrl?: string;
   apiKey?: string;
   baseUrl: string;
   /** Model providers the agent can use (OpenCode, OpenRouter, DeepSeek…). */

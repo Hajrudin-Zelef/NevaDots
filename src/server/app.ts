@@ -264,6 +264,13 @@ export function createApp({
   app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     c.header('X-Content-Type-Options', 'nosniff');
+    // Bundle de skill : le conteneur du Dot appelle l'app via le bridge
+    // Docker (Host 172.17.0.1) sans session. L'authentification est le
+    // ticket à usage unique vérifié par la route elle-même.
+    if (c.req.path === '/api/skills/bundle') {
+      await next();
+      return;
+    }
     const requestUrl = new URL(c.req.url);
     const origins = origin
       ? Array.isArray(origin)
