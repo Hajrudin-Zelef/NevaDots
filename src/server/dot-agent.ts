@@ -14,8 +14,13 @@ import {
   recallArchived,
   searchArchived,
 } from './tool-archive.js';
-import { compactMessages, type ChatMessage } from './context-compaction.js';
+import {
+  compactMessages,
+  estimateReserveTokens,
+  type ChatMessage,
+} from './context-compaction.js';
 import { magicCompactMessages } from './magic-compaction.js';
+import { modelSupportsTools } from './model-capabilities.js';
 import { classifyModelError } from './model-errors.js';
 import { AbstractAgent } from '@ag-ui/client';
 import {
@@ -574,6 +579,16 @@ export class DotAgent extends AbstractAgent {
           },
         };
         const previousFetch = globalThis.fetch;
+        // Sonde facultative (LiteLLM) démarrée tôt, attendue dans la factory.
+        // Fail-open : seuls les modèles explicitement sans outils sont restreints.
+        const capabilityPromise = modelSupportsTools({
+          providerId: provider?.id,
+          baseUrl,
+          model,
+          apiKey,
+          fetchImpl: previousFetch,
+          signal: controller.signal,
+        });
         const chatCompletionsUrl = baseUrl
           .replace(/\/$/, '')
           .concat('/chat/completions');
@@ -646,11 +661,14 @@ export class DotAgent extends AbstractAgent {
         const skillsAllowed = () =>
           !!this.workspace.dot(dot.id)?.skillsEnabled &&
           this.workspace.skillsAllowed();
+        // Le watcher aborte le run si le flag ou la politique change : figer
+        // ici permet de retirer réellement les outils du schéma quand OFF.
+        const skillsActive = skillsAllowed();
         const serverTools = [
           ...tools,
           ...pageTools(pages),
           ...brainTools(),
-          ...(this.skills
+          ...(this.skills && skillsActive
             ? skillTools(this.skills, {
                 computer,
                 dotId: dot.id,
@@ -684,30 +702,41 @@ export class DotAgent extends AbstractAgent {
         ];
         const externalServices =
           this.config.externalAccounts?.callableServices() ?? [];
-        const prompt = buildSystemPrompt({
-          dotName: dot.name,
-          instructions: dot.instructions,
-          memories,
-          brainSummary,
-          page: pageContext,
-          computerConfigured: computer.configured,
-          connectedCount: connected.length,
-          connectionActionToolName: connectionActionTool.name,
-          externalServices: externalServices.map((s) => s.name),
-          spaceId: dot.spaceId,
-          skillsAvailable: (this.skills?.size ?? 0) > 0 && skillsAllowed(),
-          replyStyle: initialSettings.replyStyle,
-          replyLanguage: initialSettings.replyLanguage,
-        });
         this.inner = new BuiltInAgent({
           type: 'tanstack',
           factory: async (ctx) => {
             check();
+            const toolsAllowed = (await capabilityPromise) !== false;
+            const prompt = buildSystemPrompt({
+              dotName: dot.name,
+              instructions: dot.instructions,
+              memories,
+              brainSummary,
+              page: pageContext,
+              computerConfigured: computer.configured,
+              connectedCount: connected.length,
+              connectionActionToolName: connectionActionTool.name,
+              externalServices: externalServices.map((s) => s.name),
+              spaceId: dot.spaceId,
+              skillsAvailable:
+                toolsAllowed && (this.skills?.size ?? 0) > 0 && skillsActive,
+              toolsAvailable: toolsAllowed,
+              replyStyle: initialSettings.replyStyle,
+              replyLanguage: initialSettings.replyLanguage,
+            });
             // Phase 9 : stratégie de compaction par Dot (défaut : native).
             const compact =
               dot.compactionStrategy === 'magic-compact'
                 ? magicCompactMessages
                 : compactMessages;
+            // Réserve calculée une seule fois ; compactionBudgets la soustrait
+            // une seule fois (jamais de fenêtre pré-réduite).
+            const reserveTokens = estimateReserveTokens(
+              prompt,
+              toolsAllowed
+                ? [...serverTools, ...connected, ...ctx.input.tools]
+                : [],
+            );
             const compacted = await compact(
               ctx.input.messages as ChatMessage[],
               {
@@ -720,6 +749,7 @@ export class DotAgent extends AbstractAgent {
                 contextWindow:
                   dot.contextBudget ??
                   Math.max(this.config.contextWindow ?? 0, 256000),
+                reserveTokens,
                 fetchImpl: previousFetch,
                 signal: ctx.abortSignal,
               },
@@ -788,11 +818,13 @@ export class DotAgent extends AbstractAgent {
               agentLoopStrategy: maxIterations(5),
               // Phase 5a : injecte les screenshots computer comme images.
               middleware: [screenshotMiddleware(dot.id)],
-              tools: [
-                ...tanstackTools(serverTools),
-                ...connected,
-                ...converted.tools,
-              ],
+              tools: toolsAllowed
+                ? [
+                    ...tanstackTools(serverTools),
+                    ...connected,
+                    ...converted.tools,
+                  ]
+                : [],
             });
           },
         });

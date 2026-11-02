@@ -20,6 +20,11 @@ export interface CompactionDeps {
   apiKey: string;
   baseUrl: string;
   contextWindow: number;
+  /**
+   * Estimation du prompt système + des schémas d'outils. Soustraction unique
+   * dans compactionBudgets ; ne jamais la retirer aussi de contextWindow.
+   */
+  reserveTokens?: number;
   fetchImpl: typeof fetch;
   signal: AbortSignal;
 }
@@ -37,6 +42,65 @@ const SUMMARY_MAX_TOKENS = 1200;
 const MIN_REDUCTION = 0.2;
 const SUMMARY_INPUT_CHARS = 24_000;
 const COMPACTED_MARKER = '[CONTEXT COMPACTED]';
+/** Évite de compacter les très petits transcripts à chaque tour. */
+export const MIN_COMPACT_TRIGGER_TOKENS = 2_000;
+/** Marge forfaitaire par outil (nom + schéma JSON), en plus de sa description. */
+export const TOOL_SCHEMA_OVERHEAD_TOKENS = 120;
+
+export interface CompactionBudgets {
+  usable: number;
+  trigger: number;
+  tail: number;
+}
+
+/**
+ * Estimation volontairement prudente, pas une garantie : le tokenizer réel,
+ * le framing du fournisseur et les schémas sérialisés peuvent différer. Elle
+ * sert à déclencher la compaction plus tôt, pas à garantir que l'appel tient
+ * exactement dans la fenêtre du modèle.
+ */
+export function estimateReserveTokens(
+  systemPrompt: string,
+  tools: Array<{ description?: string }> = [],
+): number {
+  const system = Math.ceil(systemPrompt.length / 4) + 200;
+  const schemas = tools.reduce(
+    (sum, tool) =>
+      sum +
+      TOOL_SCHEMA_OVERHEAD_TOKENS +
+      Math.ceil((tool.description?.length ?? 0) / 4),
+    0,
+  );
+  return system + schemas;
+}
+
+/**
+ * Source unique des seuils de compaction. La réserve n'est soustraite qu'ici :
+ * les appelants passent la fenêtre et la réserve d'origine, jamais une fenêtre
+ * déjà réduite.
+ */
+export function compactionBudgets(
+  contextWindow: number,
+  reserveTokens = 0,
+): CompactionBudgets | null {
+  const window = Number.isFinite(contextWindow)
+    ? Math.max(0, contextWindow)
+    : 0;
+  const reserve = Math.max(
+    0,
+    Number.isFinite(reserveTokens) ? reserveTokens : 0,
+  );
+  const usable = Math.max(0, window - reserve);
+  if (usable <= 0) return null;
+  return {
+    usable,
+    trigger: Math.max(
+      MIN_COMPACT_TRIGGER_TOKENS,
+      Math.floor(usable * TRIGGER_FRAC),
+    ),
+    tail: Math.floor(usable * KEEP_TAIL_FRAC),
+  };
+}
 
 // Reuse a summary for an identical head+torso prefix across turns.
 const summaryCache = new Map<
@@ -97,13 +161,22 @@ export async function compactMessages(
   messages: ChatMessage[],
   deps: CompactionDeps,
 ): Promise<CompactionResult> {
+  const budgets = compactionBudgets(deps.contextWindow, deps.reserveTokens);
+  if (!budgets)
+    return {
+      messages,
+      compacted: false,
+      archivedIds: [],
+      reason: 'reserve exceeds window',
+    };
+
   const total = estimateTokens(messages);
-  if (messages.length < 6 || total < deps.contextWindow * TRIGGER_FRAC)
+  if (messages.length < 6 || total < budgets.trigger)
     return { messages, compacted: false, archivedIds: [] };
 
   let head = 0;
   while (head < messages.length && isLeadingContext(messages[head])) head += 1;
-  const start = tailStart(messages, deps.contextWindow * KEEP_TAIL_FRAC);
+  const start = tailStart(messages, budgets.tail);
   if (start <= head)
     return {
       messages,

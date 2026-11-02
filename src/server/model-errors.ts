@@ -38,7 +38,7 @@ export function classifyModelError(error: unknown): string {
       text,
     )
   )
-    return 'La conversation dépasse la fenêtre de contexte du modèle. Elle sera compressée automatiquement ; réessaie.';
+    return 'La conversation dépasse la fenêtre de contexte du modèle. Réduis ou compacte la conversation, puis réessaie.';
   if (/timeout|timed out|etimedout|aborted/.test(text))
     return 'Le modèle n’a pas répondu à temps. Réessaie, ou choisis un modèle plus rapide.';
   if (

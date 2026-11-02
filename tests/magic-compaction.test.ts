@@ -94,4 +94,46 @@ describe('magic-compaction (phase 9)', () => {
     ).toBe(true);
     expect(outcome.archivedIds.length).toBeGreaterThan(0);
   });
+
+  it('applique la même réserve que la compaction native', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: '[Tour 1] Résumé du premier tour.',
+            },
+          },
+        ],
+      }),
+    );
+    const messages = bigMessages();
+    const withReserve = await magicCompactMessages(messages, {
+      ...deps(fetchImpl),
+      contextWindow: 30_000,
+      reserveTokens: 22_000,
+      threadId: 'thread-magic-reserve',
+    });
+    expect(withReserve.compacted).toBe(true);
+    const withoutReserve = await magicCompactMessages(messages, {
+      ...deps(fetchImpl),
+      contextWindow: 30_000,
+      reserveTokens: 0,
+      threadId: 'thread-magic-no-reserve',
+    });
+    expect(withoutReserve.compacted).toBe(false);
+  });
+
+  it('ne compacte pas quand la réserve consomme toute la fenêtre', async () => {
+    const fetchImpl = vi.fn();
+    const outcome = await magicCompactMessages(bigMessages(), {
+      ...deps(fetchImpl),
+      contextWindow: 8_000,
+      reserveTokens: 8_000,
+      threadId: 'thread-magic-no-room',
+    });
+    expect(outcome.compacted).toBe(false);
+    expect(outcome.reason).toBe('reserve exceeds window');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

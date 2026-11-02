@@ -1,10 +1,14 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { EventType, type RunAgentInput } from '@ag-ui/core';
 import { lastValueFrom, toArray } from 'rxjs';
 import { DotAgent } from '../src/server/dot-agent.js';
 import { completion } from './fixtures/model-stream.js';
 import { Store } from '../src/server/store.js';
 import { WorkspaceStore } from '../src/server/workspace.js';
+import { SkillLibrary } from '../src/server/skills-library.js';
 import { pageReviewTool } from '../src/shared/page-review.js';
 import { connectionActionTool } from '../src/shared/connection-types.js';
 
@@ -14,12 +18,22 @@ afterEach(() => {
   databases.splice(0).forEach((db) => db.close());
 });
 
-function fixture() {
+function fixture(skills?: SkillLibrary, skillsEnabled?: boolean) {
   const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'owner');
   workspace.ensureSeed();
   databases.push(store, workspace);
-  const dot = workspace.dots()[0];
+  let dot = workspace.dots()[0];
+  if (skillsEnabled !== undefined) {
+    workspace.updateDot(dot.id, {
+      name: dot.name,
+      instructions: dot.instructions,
+      researchAllowed: dot.researchAllowed,
+      memoryAllowed: dot.memoryAllowed,
+      skillsEnabled,
+    });
+    dot = workspace.dot(dot.id)!;
+  }
   workspace.bindThread('thread', dot.id, 'TanStack');
   const agent = new DotAgent(
     store,
@@ -33,6 +47,9 @@ function fixture() {
       slackUsers: [],
     },
     dot.id,
+    false,
+    undefined,
+    skills,
   );
   const input: RunAgentInput = {
     threadId: 'thread',
@@ -366,5 +383,40 @@ it('reports a turn that hits the time limit as a RUN_ERROR instead of ending sil
     );
   } finally {
     vi.useRealTimers();
+  }
+});
+
+it('retire les outils skills du schéma quand le flag du Dot est OFF', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'skills-agent-'));
+  try {
+    const dir = join(root, 'repo/skills/docx');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: docx\ndescription: Create and edit Word documents.\n---\n\n# DOCX procedure\n',
+    );
+    const skills = new SkillLibrary(root);
+    const network = vi.spyOn(globalThis, 'fetch');
+    network
+      .mockResolvedValueOnce(completion({ role: 'assistant', content: 'ok' }))
+      .mockResolvedValueOnce(completion({ role: 'assistant', content: 'ok' }));
+
+    const off = fixture(skills, false);
+    await lastValueFrom(off.agent.run(off.input).pipe(toArray()));
+    const offRequest = JSON.parse(String(network.mock.calls[0][1]?.body)) as {
+      tools?: unknown[];
+    };
+    expect(JSON.stringify(offRequest.tools ?? [])).not.toContain(
+      'search_skills',
+    );
+
+    const on = fixture(skills, true);
+    await lastValueFrom(on.agent.run(on.input).pipe(toArray()));
+    const onRequest = JSON.parse(String(network.mock.calls[1][1]?.body)) as {
+      tools?: unknown[];
+    };
+    expect(JSON.stringify(onRequest.tools ?? [])).toContain('search_skills');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   compactMessages,
+  compactionBudgets,
+  estimateReserveTokens,
   estimateTokens,
   type ChatMessage,
 } from '../src/server/context-compaction.js';
@@ -27,7 +29,7 @@ function deps(fetchImpl: typeof fetch) {
     model: 'test-model',
     apiKey: 'key',
     baseUrl: 'https://model.example/v1',
-    contextWindow: 1000,
+    contextWindow: 5000,
     fetchImpl,
     signal: new AbortController().signal,
   };
@@ -90,5 +92,69 @@ describe('context compaction', () => {
     });
     expect(outcome.compacted).toBe(false);
     expect(outcome.messages).toBe(messages);
+  });
+
+  it('calcule les budgets une seule fois à partir de la fenêtre brute', () => {
+    expect(compactionBudgets(10_000, 4_000)).toEqual({
+      usable: 6_000,
+      trigger: 3_000,
+      tail: 1_200,
+    });
+    // Équivalence : la réserve ne doit pas être soustraite deux fois.
+    expect(compactionBudgets(6_000, 0)).toEqual(
+      compactionBudgets(10_000, 4_000),
+    );
+    expect(compactionBudgets(5_000, 5_000)).toBeNull();
+  });
+
+  it('estime une réserve prudente pour le prompt et les schémas', () => {
+    const prompt = 'x'.repeat(400);
+    const tools = [{ description: 'y'.repeat(400) }, { description: '' }];
+    // 400/4 + 200 = 300 ; (120 + 100) + (120 + 0) = 340.
+    expect(estimateReserveTokens(prompt, tools)).toBe(640);
+  });
+
+  it('compacte plus tôt quand la réserve réduit la fenêtre utile', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      Response.json({
+        choices: [
+          {
+            message: {
+              content:
+                'Decision: the earlier discussion covered six large detail exchanges.',
+            },
+          },
+        ],
+      }),
+    );
+    const messages = sample();
+    const withReserve = await compactMessages(messages, {
+      ...deps(fetchImpl as never),
+      contextWindow: 10_000,
+      reserveTokens: 6_000,
+      threadId: 'thread-reserve',
+    });
+    expect(withReserve.compacted).toBe(true);
+    const withoutReserve = await compactMessages(messages, {
+      ...deps(fetchImpl as never),
+      contextWindow: 10_000,
+      reserveTokens: 0,
+      threadId: 'thread-no-reserve',
+    });
+    expect(withoutReserve.compacted).toBe(false);
+  });
+
+  it('ne compacte pas quand la réserve consomme toute la fenêtre', async () => {
+    const fetchImpl = vi.fn();
+    const messages = sample();
+    const outcome = await compactMessages(messages, {
+      ...deps(fetchImpl as never),
+      contextWindow: 5_000,
+      reserveTokens: 5_000,
+      threadId: 'thread-no-room',
+    });
+    expect(outcome.compacted).toBe(false);
+    expect(outcome.reason).toBe('reserve exceeds window');
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

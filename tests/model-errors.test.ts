@@ -25,6 +25,13 @@ describe('classifyModelError', () => {
     );
   });
 
+  it('ne promet pas une compression automatique pour un contexte dépassé', () => {
+    const message = classifyModelError(new Error('context_length_exceeded'));
+    expect(message).toMatch(/fenêtre de contexte/i);
+    expect(message).toMatch(/Réduis ou compacte/i);
+    expect(message).not.toMatch(/automatiquement/i);
+  });
+
   it('falls back to a trimmed snippet for unknown errors', () => {
     expect(classifyModelError(new Error('weird   internal  failure'))).toMatch(
       /weird internal failure/,

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { archiveResult } from './tool-archive.js';
 import {
+  compactionBudgets,
   estimateTokens,
   type ChatMessage,
   type CompactionDeps,
@@ -16,8 +17,6 @@ import {
  *   gros I/O (archivés, récupérables via read_omitted_content/recall).
  */
 
-const TRIGGER_FRAC = 0.5;
-const KEEP_TAIL_FRAC = 0.2;
 const MIN_REDUCTION = 0.2;
 const SUMMARY_MAX_TOKENS = 2000;
 const SUMMARY_INPUT_CHARS = 24_000;
@@ -123,13 +122,22 @@ export async function magicCompactMessages(
   messages: ChatMessage[],
   deps: CompactionDeps,
 ): Promise<CompactionResult> {
+  const budgets = compactionBudgets(deps.contextWindow, deps.reserveTokens);
+  if (!budgets)
+    return {
+      messages,
+      compacted: false,
+      archivedIds: [],
+      reason: 'reserve exceeds window',
+    };
+
   const total = estimateTokens(messages);
-  if (messages.length < 6 || total < deps.contextWindow * TRIGGER_FRAC)
+  if (messages.length < 6 || total < budgets.trigger)
     return { messages, compacted: false, archivedIds: [] };
 
   let head = 0;
   while (head < messages.length && isLeadingContext(messages[head])) head += 1;
-  const start = tailStart(messages, deps.contextWindow * KEEP_TAIL_FRAC);
+  const start = tailStart(messages, budgets.tail);
   if (start <= head)
     return {
       messages,

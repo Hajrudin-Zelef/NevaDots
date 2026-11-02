@@ -108,6 +108,27 @@ describe('agent-prompt (phase 5)', () => {
   });
 });
 
+describe('agent-prompt (capacités modèle)', () => {
+  it('retire les instructions d’outils quand le modèle n’en accepte pas', () => {
+    const prompt = buildSystemPrompt({ ...base, toolsAvailable: false });
+    expect(prompt).toContain('No tools are available for this model');
+    expect(prompt).not.toContain('search_web');
+    expect(prompt).not.toContain('generate_file');
+    expect(prompt).not.toContain('pdf_edit');
+    expect(prompt).not.toContain('search_skills');
+  });
+
+  it('omet aussi les skills si les outils sont indisponibles', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      skillsAvailable: true,
+      toolsAvailable: false,
+    });
+    expect(prompt).not.toContain('search_skills');
+    expect(prompt).not.toContain('load_skill');
+  });
+});
+
 describe('agent-prompt (lot 1 skills)', () => {
   it('ajoute la consigne SKILLS seulement si la bibliothèque est disponible', () => {
     const without = buildSystemPrompt(base);
