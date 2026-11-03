@@ -37,7 +37,12 @@ import {
   defineTool,
   convertInputToTanStackAI,
 } from '@copilotkit/runtime/v2';
-import { chat, maxIterations } from '@tanstack/ai';
+import {
+  chat,
+  maxIterations,
+  type AnyServerTool,
+  type ChatMiddleware,
+} from '@tanstack/ai';
 import { openaiCompatibleText } from '@tanstack/ai-openai/compatible';
 import { tanstackTools } from './tanstack-tools.js';
 import { Observable } from 'rxjs';
@@ -62,6 +67,12 @@ import { pdfTools } from './pdf-tools.js';
 import { pdfWriteTools } from './pdf-write-tools.js';
 import { skillTools } from './skill-tools.js';
 import { sessionBrainTools } from './session-brain-tools.js';
+import {
+  createToolGroupRuntime,
+  filterToolCollisions,
+  type ToolGroup,
+  type ToolGroupState,
+} from './tool-groups.js';
 import type { SessionBrainStore } from './session-brain.js';
 import type { SessionBrainSummarizer } from './session-brain-summarizer.js';
 import type { SkillLibrary } from './skills-library.js';
@@ -91,6 +102,7 @@ export class DotAgent extends AbstractAgent {
     private skills?: SkillLibrary,
     private sessionBrains?: SessionBrainStore,
     private sessionSummarizer?: SessionBrainSummarizer,
+    private toolGroupState?: ToolGroupState,
   ) {
     super({ agentId: dotId });
   }
@@ -105,6 +117,7 @@ export class DotAgent extends AbstractAgent {
       this.skills,
       this.sessionBrains,
       this.sessionSummarizer,
+      this.toolGroupState,
     );
   }
   abortRun() {
@@ -670,8 +683,7 @@ export class DotAgent extends AbstractAgent {
         // Le watcher aborte le run si le flag ou la politique change : figer
         // ici permet de retirer réellement les outils du schéma quand OFF.
         const skillsActive = skillsAllowed();
-        const serverTools = [
-          ...tools,
+        const coreServerTools: ToolDefinition[] = [
           ...pageTools(pages),
           ...(this.sessionBrains
             ? sessionBrainTools(
@@ -684,21 +696,15 @@ export class DotAgent extends AbstractAgent {
                 check,
               )
             : []),
-          ...(this.skills && skillsActive
-            ? skillTools(this.skills, {
-                computer,
-                dotId: dot.id,
-                signal: controller.signal,
-                bundleBaseUrl: this.config.computerHostUrl,
-                isEnabled: skillsAllowed,
-                onLoad: (skillId) =>
-                  this.workspace.recordSkillLoad(dot.id, skillId),
-              })
-            : []),
           ...generateFileTool(claimAttachment),
-          ...pdfTools(dot.id, controller.signal),
-          ...pdfWriteTools(controller.signal, claimAttachment),
-          ...(computer.configured
+        ];
+        const groupServerTools: Partial<Record<ToolGroup, ToolDefinition[]>> = {
+          research: tools,
+          pdf: [
+            ...pdfTools(dot.id, controller.signal),
+            ...pdfWriteTools(controller.signal, claimAttachment),
+          ],
+          computer: computer.configured
             ? computerTools(
                 computer,
                 dot.id,
@@ -707,15 +713,56 @@ export class DotAgent extends AbstractAgent {
                 computer.policy(dot.id),
                 claimAttachment,
               )
-            : []),
-          ...(this.config.externalAccounts
+            : [],
+          external: this.config.externalAccounts
             ? externalAccountTools(
                 this.config.externalAccounts,
                 check,
                 controller.signal,
               )
-            : []),
-        ];
+            : [],
+          skills:
+            this.skills && skillsActive
+              ? skillTools(this.skills, {
+                  computer,
+                  dotId: dot.id,
+                  signal: controller.signal,
+                  bundleBaseUrl: this.config.computerHostUrl,
+                  isEnabled: skillsAllowed,
+                  onLoad: (skillId) =>
+                    this.workspace.recordSkillLoad(dot.id, skillId),
+                })
+              : [],
+        };
+        const coreTanstack = tanstackTools(coreServerTools);
+        const groupTanstack: Partial<Record<ToolGroup, AnyServerTool[]>> = {};
+        for (const group of [
+          'research',
+          'pdf',
+          'computer',
+          'external',
+          'skills',
+        ] as const) {
+          const definitions = groupServerTools[group] ?? [];
+          if (definitions.length)
+            groupTanstack[group] = tanstackTools(definitions);
+        }
+        if (connected.length) groupTanstack.mcp = connected;
+        const groupSet = filterToolCollisions(coreTanstack, groupTanstack);
+        if (
+          this.toolGroupState &&
+          /\[PDF joint/i.test(userTurnText) &&
+          groupSet.available.includes('pdf')
+        )
+          this.toolGroupState.load(input.threadId, ['pdf']);
+        const toolGroupRuntime = this.toolGroupState
+          ? createToolGroupRuntime(
+              this.toolGroupState,
+              input.threadId,
+              groupSet,
+            )
+          : undefined;
+        const allGroupTools = Object.values(groupSet.groups).flat();
         const externalServices =
           this.config.externalAccounts?.callableServices() ?? [];
         this.inner = new BuiltInAgent({
@@ -754,6 +801,8 @@ export class DotAgent extends AbstractAgent {
               skillsAvailable:
                 toolsAllowed && (this.skills?.size ?? 0) > 0 && skillsActive,
               toolsAvailable: toolsAllowed,
+              lazyToolGroups:
+                toolsAllowed && toolGroupRuntime ? groupSet.available : [],
               replyStyle: initialSettings.replyStyle,
               replyLanguage: initialSettings.replyLanguage,
             });
@@ -764,10 +813,20 @@ export class DotAgent extends AbstractAgent {
                 : compactMessages;
             // Réserve calculée une seule fois ; compactionBudgets la soustrait
             // une seule fois (jamais de fenêtre pré-réduite).
+            const middleware = (
+              toolsAllowed && toolGroupRuntime
+                ? [toolGroupRuntime.middleware, screenshotMiddleware(dot.id)]
+                : [screenshotMiddleware(dot.id)]
+            ) as [ChatMiddleware, ...ChatMiddleware[]];
             const reserveTokens = estimateReserveTokens(
               prompt,
               toolsAllowed
-                ? [...serverTools, ...connected, ...ctx.input.tools]
+                ? [
+                    ...coreServerTools,
+                    ...Object.values(groupServerTools).flat(),
+                    ...connected,
+                    ...ctx.input.tools,
+                  ]
                 : [],
             );
             const compacted = await compact(
@@ -850,11 +909,13 @@ export class DotAgent extends AbstractAgent {
               },
               agentLoopStrategy: maxIterations(5),
               // Phase 5a : injecte les screenshots computer comme images.
-              middleware: [screenshotMiddleware(dot.id)],
+              middleware,
               tools: toolsAllowed
                 ? [
-                    ...tanstackTools(serverTools),
-                    ...connected,
+                    ...groupSet.core,
+                    ...(toolGroupRuntime
+                      ? tanstackTools([toolGroupRuntime.loader])
+                      : allGroupTools),
                     ...converted.tools,
                   ]
                 : [],

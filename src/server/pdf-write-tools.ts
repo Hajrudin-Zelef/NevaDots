@@ -167,6 +167,8 @@ const editOp = z.discriminatedUnion('op', [
   }),
 ]);
 
+const editOperationsSchema = z.array(editOp).min(1).max(OPS_CAP);
+
 export type PdfEditOperation = z.input<typeof editOp>;
 
 function parseSelection(
@@ -546,22 +548,39 @@ export function pdfWriteTools(
       defineTool({
         name: 'pdf_edit',
         description:
-          'Edit a PDF attachment referenced in the conversation ("[PDF joint … — id: …]"). One call = a list of operations applied in order (rotate/delete/move/extract pages, insert blanks, set metadata, compress, add a text stamp, export to Word). Produces a NEW downloadable file (original untouched); use the returned downloadUrl to present a Markdown download link. Never chain two output operations (extract/to_docx) in one call.',
+          'Edit a PDF attachment ("[PDF joint … — id: …]"). Operations are applied in order: rotate, delete, move, extract, insert_blank, metadata, compress, to_docx, add_text, replace_text. One output operation per call. Produces a NEW downloadable file; link the returned downloadUrl.',
         parameters: z.object({
           attachmentId: z
             .string()
             .regex(UUID_RE)
-            .describe('The attachment id from the [PDF joint …] marker.'),
+            .describe('Attachment id from the [PDF joint …] marker.'),
           operations: z
-            .array(editOp)
+            .array(z.object({ op: z.string().min(1) }).passthrough())
             .min(1)
             .max(OPS_CAP)
             .describe(
-              'Operations applied in order, e.g. [{"op":"rotate","pages":"1-3","degrees":90}].',
+              'Operations in order. Each object has "op" plus its fields, e.g. {"op":"rotate","pages":"1-3","degrees":90}.',
             ),
         }),
-        execute: async (input: PdfEditInput) =>
-          downloadResult(await pdfEditAttachment(input, signal, claim)),
+        execute: async (input: {
+          attachmentId: string;
+          operations: unknown[];
+        }) => {
+          const parsed = editOperationsSchema.safeParse(input.operations);
+          if (!parsed.success) {
+            const issue = parsed.error.issues[0];
+            throw new Error(
+              `Invalid PDF operations: ${issue?.path.join('.') ?? ''} ${issue?.message ?? 'invalid operation'}`.trim(),
+            );
+          }
+          return downloadResult(
+            await pdfEditAttachment(
+              { attachmentId: input.attachmentId, operations: parsed.data },
+              signal,
+              claim,
+            ),
+          );
+        },
       }),
     );
   if (existsSync(OCRMYPDF_PATH()))
@@ -569,7 +588,7 @@ export function pdfWriteTools(
       defineTool({
         name: 'pdf_ocr',
         description:
-          'Add a searchable French text layer to a scanned PDF attachment ("[PDF joint … — id: …]"). Produces a NEW downloadable file (original untouched); use the returned downloadUrl to present a Markdown download link. Use when the user asks to search, copy or quote text from a scan.',
+          'Add a searchable French text layer to a scanned PDF attachment. Produces a NEW downloadable file; link the returned downloadUrl. Use for searchable/copyable scan text.',
         parameters: z.object({
           attachmentId: z
             .string()

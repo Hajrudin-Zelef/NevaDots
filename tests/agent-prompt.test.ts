@@ -152,6 +152,27 @@ describe('agent-prompt (capacités modèle)', () => {
   });
 });
 
+describe('agent-prompt (tool groups)', () => {
+  it('annonce load_tools et les groupes paresseux', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      skillsAvailable: true,
+      computerConfigured: true,
+      lazyToolGroups: ['research', 'pdf', 'computer', 'skills'],
+    });
+    expect(prompt).toContain('TOOL GROUPS');
+    expect(prompt).toContain('load_tools');
+    expect(prompt).toContain('load the research group');
+    expect(prompt).toContain('load the pdf group');
+    expect(prompt).toContain('Load the computer group');
+    expect(prompt).toContain('Load the skills group');
+  });
+
+  it('ne mentionne pas TOOL GROUPS sans groupes paresseux', () => {
+    expect(buildSystemPrompt(base)).not.toContain('TOOL GROUPS');
+  });
+});
+
 describe('agent-prompt (lot 1 skills)', () => {
   it('ajoute la consigne SKILLS seulement si la bibliothèque est disponible', () => {
     const without = buildSystemPrompt(base);

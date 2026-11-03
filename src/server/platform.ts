@@ -18,6 +18,7 @@ import { SetupTelemetry } from './setup-telemetry.js';
 import { SqliteAgentRunner } from './sqlite-runner.js';
 import { SessionBrainStore } from './session-brain.js';
 import { SessionBrainSummarizer } from './session-brain-summarizer.js';
+import { ToolGroupState } from './tool-groups.js';
 import { SkillLibrary } from './skills-library.js';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt.js';
 import { scheduledTaskMessagePrefix } from '../shared/scheduled-message.js';
@@ -33,6 +34,7 @@ export class Platform {
   readonly skills: SkillLibrary;
   readonly sessionBrains: SessionBrainStore;
   readonly sessionSummarizer: SessionBrainSummarizer;
+  readonly toolGroups: ToolGroupState;
   constructor(
     readonly store: Store,
     readonly workspace: WorkspaceStore,
@@ -45,6 +47,7 @@ export class Platform {
     );
     this.sessionBrains = new SessionBrainStore();
     this.sessionSummarizer = new SessionBrainSummarizer();
+    this.toolGroups = new ToolGroupState();
     this.computers = new ComputerService(
       workspace,
       config,
@@ -82,6 +85,7 @@ export class Platform {
                 this.skills,
                 this.sessionBrains,
                 this.sessionSummarizer,
+                this.toolGroups,
               ),
             ]),
         ),
@@ -130,6 +134,7 @@ export class Platform {
     } catch (error) {
       this.reportSessionBrain('delete', error);
     }
+    this.toolGroups.clear(threadId);
     workspace.deleteThread(threadId);
     this.runner.deleteThread(threadId);
   }
@@ -147,6 +152,7 @@ export class Platform {
       } catch (error) {
         this.reportSessionBrain('delete', error);
       }
+      this.toolGroups.clear(conversation.id);
       workspace.deleteThread(conversation.id);
       this.runner.deleteThread(conversation.id);
     }
@@ -169,6 +175,7 @@ export class Platform {
     } catch (error) {
       this.reportSessionBrain('purge', error);
     }
+    this.toolGroups.clearAll();
     this.workspace.deleteUserData(userId);
     this.store.deleteUserData(userId);
     this.runner.deleteUserThreads(userId);

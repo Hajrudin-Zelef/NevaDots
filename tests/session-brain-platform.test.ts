@@ -47,12 +47,14 @@ it('supprime la session du cerveau : RAM vidée, disque conservé dans trash', a
     };
     await platform.sessionBrains.append(scope, 'note à conserver');
     await platform.sessionBrains.flushNow();
+    platform.toolGroups.load(conversation.id, ['pdf']);
     await platform.deleteConversation('owner', conversation.id);
     expect(await platform.sessionBrains.read(scope)).toBe('');
     expect(
       readdirSync(join(root, 'trash', 'owner', dot.id)).length,
     ).toBeGreaterThan(0);
     expect(workspace.conversations()).toHaveLength(0);
+    expect(platform.toolGroups.get(conversation.id)).toEqual(new Set());
   } finally {
     await platform.stop();
     store.close();

@@ -11,6 +11,7 @@ import { WorkspaceStore } from '../src/server/workspace.js';
 import { SkillLibrary } from '../src/server/skills-library.js';
 import { SessionBrainStore } from '../src/server/session-brain.js';
 import { SessionBrainSummarizer } from '../src/server/session-brain-summarizer.js';
+import { ToolGroupState } from '../src/server/tool-groups.js';
 import { pageReviewTool } from '../src/shared/page-review.js';
 import { connectionActionTool } from '../src/shared/connection-types.js';
 
@@ -26,6 +27,7 @@ function fixture(
   memoryAllowed?: boolean,
   sessionBrains?: SessionBrainStore,
   sessionSummarizer?: SessionBrainSummarizer,
+  toolGroups?: ToolGroupState,
 ) {
   const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'owner');
@@ -60,6 +62,7 @@ function fixture(
     skills,
     sessionBrains,
     sessionSummarizer,
+    toolGroups,
   );
   const input: RunAgentInput = {
     threadId: 'thread',
@@ -539,4 +542,140 @@ it('résume automatiquement une session quand l’agent n’a rien noté', async
     await store.close();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+it('n’envoie que le noyau d’outils tant qu’aucun groupe n’est chargé', async () => {
+  const f = fixture(
+    undefined,
+    undefined,
+    true,
+    undefined,
+    undefined,
+    new ToolGroupState(),
+  );
+  const network = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(completion({ role: 'assistant', content: 'ok' }));
+  await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+  const request = JSON.parse(String(network.mock.calls[0][1]?.body)) as {
+    tools?: { function?: { name?: string } }[];
+  };
+  const names = (request.tools ?? []).map((tool) => tool.function?.name);
+  expect(names).toContain('load_tools');
+  expect(names).toContain('create_space_page');
+  expect(names).not.toContain('pdf_edit');
+  expect(names).not.toContain('search_web');
+  expect(names).not.toContain('computer_exec');
+});
+
+it('ajoute les outils du groupe après load_tools', async () => {
+  const state = new ToolGroupState();
+  const f = fixture(undefined, undefined, true, undefined, undefined, state);
+  const network = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(
+      completion(
+        {
+          role: 'assistant',
+          tool_calls: [
+            {
+              index: 0,
+              id: 'load-pdf',
+              type: 'function',
+              function: {
+                name: 'load_tools',
+                arguments: JSON.stringify({ groups: ['pdf'] }),
+              },
+            },
+          ],
+        },
+        'tool_calls',
+      ),
+    )
+    .mockResolvedValueOnce(completion({ role: 'assistant', content: 'ok' }));
+  await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+  expect(state.get('thread')).toEqual(new Set(['pdf']));
+  const second = JSON.parse(String(network.mock.calls[1][1]?.body)) as {
+    tools?: { function?: { name?: string } }[];
+  };
+  const names = (second.tools ?? []).map((tool) => tool.function?.name);
+  expect(names).toContain('pdf_edit');
+  expect(names).toContain('read_pdf');
+});
+
+it('nomme exactement load_tools quand un outil non chargé est appelé', async () => {
+  const f = fixture(
+    undefined,
+    undefined,
+    true,
+    undefined,
+    undefined,
+    new ToolGroupState(),
+  );
+  const network = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(
+      completion(
+        {
+          role: 'assistant',
+          tool_calls: [
+            {
+              index: 0,
+              id: 'forbidden-pdf',
+              type: 'function',
+              function: {
+                name: 'pdf_edit',
+                arguments: JSON.stringify({
+                  attachmentId: '00000000-0000-4000-8000-000000000000',
+                  operations: [],
+                }),
+              },
+            },
+          ],
+        },
+        'tool_calls',
+      ),
+    )
+    .mockResolvedValueOnce(completion({ role: 'assistant', content: 'ok' }));
+  await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+  const second = JSON.parse(String(network.mock.calls[1][1]?.body)) as {
+    messages?: { role?: string; content?: string }[];
+  };
+  const toolResult = second.messages?.find(
+    (message) => message.role === 'tool',
+  );
+  expect(JSON.parse(toolResult?.content ?? '{}')).toMatchObject({
+    error: expect.stringContaining(
+      'Call load_tools with {"groups":["pdf"]} first.',
+    ),
+  });
+});
+
+it('précharge le groupe pdf sur un marqueur de pièce jointe explicite', async () => {
+  const state = new ToolGroupState();
+  const f = fixture(undefined, undefined, true, undefined, undefined, state);
+  const network = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(completion({ role: 'assistant', content: 'ok' }));
+  await lastValueFrom(
+    f.agent
+      .run({
+        ...f.input,
+        messages: [
+          {
+            id: 'pdf',
+            role: 'user',
+            content:
+              '[PDF joint : doc.pdf (1 Ko) — id: 00000000-0000-4000-8000-000000000000 — lis-le avec read_pdf]',
+          },
+        ],
+      })
+      .pipe(toArray()),
+  );
+  expect(state.get('thread')).toEqual(new Set(['pdf']));
+  const request = JSON.parse(String(network.mock.calls[0][1]?.body)) as {
+    tools?: { function?: { name?: string } }[];
+  };
+  const names = (request.tools ?? []).map((tool) => tool.function?.name);
+  expect(names).toContain('read_pdf');
 });
