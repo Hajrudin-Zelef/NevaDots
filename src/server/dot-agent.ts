@@ -1,5 +1,6 @@
 import { parallelSources } from './parallel.js';
 import { pageReviewTool } from '../shared/page-review.js';
+import { estimateCostUsd } from '../shared/pricing.js';
 import { ComputerService } from './computer-service.js';
 import { computerTools } from './computer-tools.js';
 import { externalAccountTools } from './external-tools.js';
@@ -60,6 +61,9 @@ import { generateFileTool } from './generate-file.js';
 import { pdfTools } from './pdf-tools.js';
 import { pdfWriteTools } from './pdf-write-tools.js';
 import { skillTools } from './skill-tools.js';
+import { sessionBrainTools } from './session-brain-tools.js';
+import type { SessionBrainStore } from './session-brain.js';
+import type { SessionBrainSummarizer } from './session-brain-summarizer.js';
 import type { SkillLibrary } from './skills-library.js';
 const channelError = () => ({
   type: EventType.RUN_ERROR,
@@ -85,6 +89,8 @@ export class DotAgent extends AbstractAgent {
     private channel = false,
     private setupTelemetry?: SetupTelemetry,
     private skills?: SkillLibrary,
+    private sessionBrains?: SessionBrainStore,
+    private sessionSummarizer?: SessionBrainSummarizer,
   ) {
     super({ agentId: dotId });
   }
@@ -97,6 +103,8 @@ export class DotAgent extends AbstractAgent {
       this.channel,
       this.setupTelemetry,
       this.skills,
+      this.sessionBrains,
+      this.sessionSummarizer,
     );
   }
   abortRun() {
@@ -112,6 +120,9 @@ export class DotAgent extends AbstractAgent {
       let timedOut = false;
       let finished = false;
       let configurationFailure = false;
+      let sessionNotesBefore: string | undefined;
+      let assistantText = '';
+      const userTurnText = lastUserText(input.messages);
       // Phase 3 : associe chaque appel d'outil à son libellé d'étape
       // (TOOL_CALL_END ne porte pas le nom de l'outil). Le compteur
       // garantit un protocole équilibré même en cas d'appels parallèles.
@@ -662,6 +673,17 @@ export class DotAgent extends AbstractAgent {
         const serverTools = [
           ...tools,
           ...pageTools(pages),
+          ...(this.sessionBrains
+            ? sessionBrainTools(
+                this.sessionBrains,
+                {
+                  userId: dot.userId,
+                  dotId: dot.id,
+                  threadId: input.threadId,
+                },
+                check,
+              )
+            : []),
           ...(this.skills && skillsActive
             ? skillTools(this.skills, {
                 computer,
@@ -701,10 +723,28 @@ export class DotAgent extends AbstractAgent {
           factory: async (ctx) => {
             check();
             const toolsAllowed = (await capabilityPromise) !== false;
+            let sessionNotes: string | undefined;
+            if (this.sessionBrains) {
+              const scope = {
+                userId: dot.userId,
+                dotId: dot.id,
+                threadId: input.threadId,
+              };
+              try {
+                sessionNotesBefore = await this.sessionBrains.read(scope);
+                sessionNotes = (await this.sessionBrains.promptNotes(scope))
+                  .text;
+              } catch {
+                // Le cerveau de session ne doit jamais casser un tour.
+                sessionNotesBefore = '';
+                sessionNotes = '';
+              }
+            }
             const prompt = buildSystemPrompt({
               dotName: dot.name,
               instructions: dot.instructions,
               memories,
+              sessionNotes,
               page: pageContext,
               computerConfigured: computer.configured,
               connectedCount: connected.length,
@@ -839,6 +879,13 @@ export class DotAgent extends AbstractAgent {
               // adapter's copy left a message open and broke the assistant
               // reply downstream.
               if (String(event.type).startsWith('REASONING')) return;
+              if (
+                event.type === EventType.TEXT_MESSAGE_CONTENT ||
+                event.type === EventType.TEXT_MESSAGE_CHUNK
+              ) {
+                const delta = (event as { delta?: unknown }).delta;
+                if (typeof delta === 'string') assistantText += delta;
+              }
               if (controller.signal.aborted)
                 observe({ type: EventType.RUN_ERROR });
               observe(event);
@@ -846,6 +893,62 @@ export class DotAgent extends AbstractAgent {
                 event.type === EventType.RUN_ERROR ||
                 event.type === EventType.RUN_FINISHED
               ) {
+                if (
+                  event.type === EventType.RUN_FINISHED &&
+                  !finished &&
+                  sessionNotesBefore !== undefined
+                ) {
+                  const brains = this.sessionBrains;
+                  const summarizer = this.sessionSummarizer;
+                  if (brains && summarizer) {
+                    const before = sessionNotesBefore;
+                    const scope = {
+                      userId: dot.userId,
+                      dotId: dot.id,
+                      threadId: input.threadId,
+                    };
+                    const reply = assistantText;
+                    void brains
+                      .read(scope)
+                      .then((current) => {
+                        if (current !== before) return;
+                        summarizer.schedule({
+                          store: brains,
+                          scope,
+                          beforeNotes: before,
+                          userText: userTurnText,
+                          assistantText: reply,
+                          model,
+                          baseUrl,
+                          apiKey: apiKey ?? '',
+                          fetchImpl: previousFetch,
+                          onUsage: (usage) => {
+                            try {
+                              this.store.recordUsage({
+                                ts: Date.now(),
+                                dotId: dot.id,
+                                model,
+                                promptTokens: usage.promptTokens,
+                                completionTokens: usage.completionTokens,
+                                cachedTokens: 0,
+                                costUsd: estimateCostUsd(
+                                  model,
+                                  usage.promptTokens,
+                                  usage.completionTokens,
+                                  0,
+                                ),
+                              });
+                            } catch {
+                              // Usage best-effort.
+                            }
+                          },
+                        });
+                      })
+                      .catch(() => {
+                        // Le résumé automatique est optionnel.
+                      });
+                  }
+                }
                 finished = true;
                 // Solde les étapes restées actives (fins d'outils manquées) :
                 // le protocole reste équilibré pour le run suivant.
@@ -928,4 +1031,23 @@ export class DotAgent extends AbstractAgent {
       };
     });
   }
+}
+
+function lastUserText(messages: RunAgentInput['messages']): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== 'user') continue;
+    if (typeof message.content === 'string') return message.content;
+    if (Array.isArray(message.content))
+      return message.content
+        .map((part) =>
+          typeof part === 'string'
+            ? part
+            : typeof (part as { text?: unknown })?.text === 'string'
+              ? (part as { text: string }).text
+              : '',
+        )
+        .join(' ');
+  }
+  return '';
 }

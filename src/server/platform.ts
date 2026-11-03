@@ -16,6 +16,8 @@ import { setupStatus, type PlatformConfig } from './platform-config.js';
 import { validateRuntimeScope } from './runtime-scope.js';
 import { SetupTelemetry } from './setup-telemetry.js';
 import { SqliteAgentRunner } from './sqlite-runner.js';
+import { SessionBrainStore } from './session-brain.js';
+import { SessionBrainSummarizer } from './session-brain-summarizer.js';
 import { SkillLibrary } from './skills-library.js';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt.js';
 import { scheduledTaskMessagePrefix } from '../shared/scheduled-message.js';
@@ -29,6 +31,8 @@ export class Platform {
   readonly runner: SqliteAgentRunner;
   readonly handler: ReturnType<typeof createCopilotHonoHandler>;
   readonly skills: SkillLibrary;
+  readonly sessionBrains: SessionBrainStore;
+  readonly sessionSummarizer: SessionBrainSummarizer;
   constructor(
     readonly store: Store,
     readonly workspace: WorkspaceStore,
@@ -39,6 +43,8 @@ export class Platform {
     console.log(
       `Skills: ${this.skills.size} skill(s) indexé(s) dans ${this.skills.path}`,
     );
+    this.sessionBrains = new SessionBrainStore();
+    this.sessionSummarizer = new SessionBrainSummarizer();
     this.computers = new ComputerService(
       workspace,
       config,
@@ -74,6 +80,8 @@ export class Platform {
                 false,
                 this.setupTelemetry,
                 this.skills,
+                this.sessionBrains,
+                this.sessionSummarizer,
               ),
             ]),
         ),
@@ -93,9 +101,12 @@ export class Platform {
       throw new Error(`Setup required: ${missing.join(', ')}.`);
   }
   async start() {
+    await this.sessionBrains.start();
     this.setupTelemetry.start();
   }
   async stop() {
+    await this.sessionSummarizer.close();
+    await this.sessionBrains.close();
     await this.setupTelemetry.stop();
   }
   async createConversation(userId: string, dotId: string, title: string) {
@@ -109,7 +120,16 @@ export class Platform {
   async deleteConversation(userId: string, threadId: string): Promise<void> {
     this.requireReady();
     const workspace = this.workspace.forUser(userId);
-    workspace.requireThread(threadId);
+    const thread = workspace.requireThread(threadId);
+    try {
+      await this.sessionBrains.deleteThread({
+        userId,
+        dotId: thread.dotId,
+        threadId,
+      });
+    } catch (error) {
+      this.reportSessionBrain('delete', error);
+    }
     workspace.deleteThread(threadId);
     this.runner.deleteThread(threadId);
   }
@@ -118,6 +138,15 @@ export class Platform {
     const workspace = this.workspace.forUser(userId);
     const conversations = workspace.conversations();
     for (const conversation of conversations) {
+      try {
+        await this.sessionBrains.deleteThread({
+          userId,
+          dotId: conversation.dotId,
+          threadId: conversation.id,
+        });
+      } catch (error) {
+        this.reportSessionBrain('delete', error);
+      }
       workspace.deleteThread(conversation.id);
       this.runner.deleteThread(conversation.id);
     }
@@ -135,9 +164,21 @@ export class Platform {
     // tour — elle ne doit pas être bloquée par l'absence de modèle.
     const attachmentIds = this.store.attachmentIdsForUser(userId);
     await deleteAttachmentFiles(attachmentIds);
+    try {
+      await this.sessionBrains.purgeUser(userId);
+    } catch (error) {
+      this.reportSessionBrain('purge', error);
+    }
     this.workspace.deleteUserData(userId);
     this.store.deleteUserData(userId);
     this.runner.deleteUserThreads(userId);
+  }
+
+  private reportSessionBrain(operation: string, error: unknown): void {
+    console.error(
+      `Session brain ${operation} failed:`,
+      error instanceof Error ? error.message : error,
+    );
   }
   async history(threadId: string): Promise<string> {
     this.requireReady();

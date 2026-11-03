@@ -9,6 +9,8 @@ import { completion } from './fixtures/model-stream.js';
 import { Store } from '../src/server/store.js';
 import { WorkspaceStore } from '../src/server/workspace.js';
 import { SkillLibrary } from '../src/server/skills-library.js';
+import { SessionBrainStore } from '../src/server/session-brain.js';
+import { SessionBrainSummarizer } from '../src/server/session-brain-summarizer.js';
 import { pageReviewTool } from '../src/shared/page-review.js';
 import { connectionActionTool } from '../src/shared/connection-types.js';
 
@@ -22,6 +24,8 @@ function fixture(
   skills?: SkillLibrary,
   skillsEnabled?: boolean,
   memoryAllowed?: boolean,
+  sessionBrains?: SessionBrainStore,
+  sessionSummarizer?: SessionBrainSummarizer,
 ) {
   const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'owner');
@@ -54,6 +58,8 @@ function fixture(
     false,
     undefined,
     skills,
+    sessionBrains,
+    sessionSummarizer,
   );
   const input: RunAgentInput = {
     threadId: 'thread',
@@ -456,6 +462,81 @@ it('ne transmet jamais le cerveau Operator de développement à un Dot', async (
   } finally {
     if (previous === undefined) delete process.env.OPERATOR_PROJECT_ROOT;
     else process.env.OPERATOR_PROJECT_ROOT = previous;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('injecte les notes du cerveau de session et expose ses outils', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'dot-session-brain-'));
+  const store = new SessionBrainStore({ rootDir: root });
+  try {
+    const f = fixture(undefined, undefined, true, store);
+    await store.append(
+      { userId: 'owner', dotId: f.dot.id, threadId: 'thread' },
+      'Décision de session à retenir.',
+    );
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(completion({ role: 'assistant', content: 'ok' }));
+    await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+    const request = JSON.parse(String(network.mock.calls[0][1]?.body)) as {
+      messages: { role: string; content: string }[];
+      tools?: { function?: { name?: string } }[];
+    };
+    const system = request.messages.find(
+      (message) => message.role === 'system',
+    );
+    expect(system?.content).toContain('SESSION MEMORY');
+    expect(system?.content).toContain('Décision de session à retenir.');
+    const names = (request.tools ?? []).map((tool) => tool.function?.name);
+    expect(names).toContain('session_brain_note');
+    expect(names).toContain('session_brain_read');
+    expect(names).toContain('session_brain_write');
+  } finally {
+    await store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('résume automatiquement une session quand l’agent n’a rien noté', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'dot-session-summary-'));
+  const store = new SessionBrainStore({ rootDir: root });
+  const summarizer = new SessionBrainSummarizer({
+    debounceMs: 1,
+    minTurnChars: 100,
+  });
+  try {
+    const f = fixture(undefined, undefined, true, store, summarizer);
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        completion({ role: 'assistant', content: 'R'.repeat(400) }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          choices: [
+            { message: { content: '- Résumé automatique essentiel.\n' } },
+          ],
+          usage: { prompt_tokens: 50, completion_tokens: 5 },
+        }),
+      );
+    await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+    await vi.waitFor(
+      async () => {
+        expect(
+          await store.read({
+            userId: 'owner',
+            dotId: f.dot.id,
+            threadId: 'thread',
+          }),
+        ).toContain('Résumé automatique essentiel.');
+      },
+      { timeout: 2_000 },
+    );
+    expect(network).toHaveBeenCalledTimes(2);
+  } finally {
+    await summarizer.close();
+    await store.close();
     rmSync(root, { recursive: true, force: true });
   }
 });

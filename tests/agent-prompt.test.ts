@@ -83,6 +83,21 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).not.toContain('Brain:');
   });
 
+  it('injecte les notes du cerveau de session et la consigne de mise à jour', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      sessionNotes: '- Décision : garder le format court.',
+    });
+    expect(prompt).toContain('SESSION MEMORY');
+    expect(prompt).toContain('Décision : garder le format court.');
+    expect(prompt).toContain('session_brain_note');
+    expect(prompt).toContain('session_brain_read');
+  });
+
+  it('omet la section session quand aucune note n’est fournie', () => {
+    expect(buildSystemPrompt(base)).not.toContain('SESSION MEMORY');
+  });
+
   it('applique le style et la langue configurés', () => {
     const concise = buildSystemPrompt({
       ...base,
