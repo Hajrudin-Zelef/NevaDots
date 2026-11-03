@@ -11,7 +11,6 @@ const base = {
   dotName: 'Leo',
   instructions: 'Be helpful.',
   memories: [],
-  brainSummary: 'aucun',
   page: undefined,
   computerConfigured: false,
   connectedCount: 0,
@@ -73,6 +72,15 @@ describe('agent-prompt (phase 5)', () => {
     // Style + langue de réponse (défauts) injectés.
     expect(prompt).toContain('STYLE');
     expect(prompt).toContain('LANGUAGE — Always reply in French');
+  });
+
+  it("n'injecte jamais le cerveau Operator de développement dans un Dot", () => {
+    const prompt = buildSystemPrompt(base);
+    expect(prompt).not.toContain('BRAIN');
+    expect(prompt).not.toContain('brain_read');
+    expect(prompt).not.toContain('brain_write');
+    expect(prompt).not.toContain('.operator');
+    expect(prompt).not.toContain('Brain:');
   });
 
   it('applique le style et la langue configurés', () => {
@@ -149,7 +157,6 @@ describe('agent-prompt (lot 6 — marquage non-fiable)', () => {
     const prompt = buildSystemPrompt({
       ...base,
       memories: [payload],
-      brainSummary: 'aucun',
     });
     // Le contenu est présent (contexte utile) mais borné par un marquage.
     expect(prompt).toContain('untrusted');

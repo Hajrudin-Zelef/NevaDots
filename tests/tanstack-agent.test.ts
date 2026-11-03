@@ -18,19 +18,23 @@ afterEach(() => {
   databases.splice(0).forEach((db) => db.close());
 });
 
-function fixture(skills?: SkillLibrary, skillsEnabled?: boolean) {
+function fixture(
+  skills?: SkillLibrary,
+  skillsEnabled?: boolean,
+  memoryAllowed?: boolean,
+) {
   const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'owner');
   workspace.ensureSeed();
   databases.push(store, workspace);
   let dot = workspace.dots()[0];
-  if (skillsEnabled !== undefined) {
+  if (skillsEnabled !== undefined || memoryAllowed !== undefined) {
     workspace.updateDot(dot.id, {
       name: dot.name,
       instructions: dot.instructions,
       researchAllowed: dot.researchAllowed,
-      memoryAllowed: dot.memoryAllowed,
-      skillsEnabled,
+      memoryAllowed: memoryAllowed ?? dot.memoryAllowed,
+      skillsEnabled: skillsEnabled ?? dot.skillsEnabled ?? false,
     });
     dot = workspace.dot(dot.id)!;
   }
@@ -417,6 +421,41 @@ it('retire les outils skills du schéma quand le flag du Dot est OFF', async () 
     };
     expect(JSON.stringify(onRequest.tools ?? [])).toContain('search_skills');
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('ne transmet jamais le cerveau Operator de développement à un Dot', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'dot-brain-isolation-'));
+  const project = join(root, 'project');
+  const plans = join(project, '.operator', 'plans');
+  mkdirSync(plans, { recursive: true });
+  writeFileSync(
+    join(plans, 'audit-secret.md'),
+    '---\ndescription: SECRET-AUDIT-INTERNE à ne jamais exposer.\nread_if: dev.\n---\n\n# Secret\n',
+  );
+  const previous = process.env.OPERATOR_PROJECT_ROOT;
+  process.env.OPERATOR_PROJECT_ROOT = project;
+  try {
+    const f = fixture(undefined, undefined, true);
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(completion({ role: 'assistant', content: 'ok' }));
+    await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+    const request = JSON.parse(String(network.mock.calls[0][1]?.body));
+    const serialized = JSON.stringify(request);
+    expect(serialized).not.toContain('SECRET-AUDIT');
+    expect(serialized).not.toContain('.operator');
+    expect(serialized).not.toContain('brain_read');
+    expect(serialized).not.toContain('brain_list');
+    expect(serialized).not.toContain('brain_write');
+    const system = request.messages.find(
+      (message: { role: string }) => message.role === 'system',
+    );
+    expect(system.content).not.toContain('BRAIN');
+  } finally {
+    if (previous === undefined) delete process.env.OPERATOR_PROJECT_ROOT;
+    else process.env.OPERATOR_PROJECT_ROOT = previous;
     rmSync(root, { recursive: true, force: true });
   }
 });
