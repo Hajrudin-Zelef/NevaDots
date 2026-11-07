@@ -29,8 +29,17 @@ export async function api<T>(
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  if (response.status === 401 && typeof window !== 'undefined')
-    window.location.href = '/login';
+  // MVC-Statut (lot 1.2) : le contrôleur n'a pas d'état — il ordonne au
+  // modèle de passer à `out`, puis redirige. Import dynamique : session-model
+  // importe déjà ce module (cycle statique interdit).
+  if (response.status === 401 && typeof window !== 'undefined') {
+    void import('./session-model.js')
+      .then((model) => model.refreshSessionStatus())
+      .catch(() => {})
+      .finally(() => {
+        window.location.href = '/login';
+      });
+  }
   const data = (await response
     .json()
     .catch(() => ({ error: 'Server returned an unreadable response.' }))) as {
