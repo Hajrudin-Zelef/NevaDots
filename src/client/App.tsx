@@ -34,8 +34,12 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
-import { api, ApiError, logout } from './api';
-import { refreshSessionStatus, useSessionStatus } from './session-model';
+import { api, ApiError } from './api';
+import {
+  logoutSession,
+  refreshSessionStatus,
+  useSessionStatus,
+} from './session-model';
 import { trackSetupStep } from './setup-telemetry';
 import {
   applyCaptureResult,
@@ -776,7 +780,10 @@ export function App() {
                       onClick={async () => {
                         setProfileMenuOpen(false);
                         try {
-                          await logout();
+                          // MVC-Statut (lot 1.4) : le modèle passe à `out`,
+                          // le contrôleur redirige.
+                          await logoutSession();
+                          window.location.href = '/login';
                         } catch (err) {
                           setError(
                             err instanceof Error

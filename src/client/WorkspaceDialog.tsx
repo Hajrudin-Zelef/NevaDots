@@ -26,6 +26,7 @@ import type {
 } from '../shared/types';
 import type { ModelsResponse } from '../shared/models';
 import { api } from './api';
+import { useSessionStatus } from './session-model';
 import { AVATARS } from './Mascot';
 import { avatarPoster, isProtectedAvatar } from '../shared/avatars';
 import { ConnectionsSection } from './ConnectionsSection';
@@ -176,8 +177,9 @@ export function WorkspaceDialog({
     default: null,
     providers: [],
   });
-  /** Phase E : rôle du compte connecté (onglet Comptes = Admin seulement). */
-  const [myRole, setMyRole] = useState<string | null>(null);
+  /** MVC-Statut (lot 1.4) : rôle lu dans le modèle (boot App), plus de
+   *  lecture `/me` locale — l'onglet Comptes reste Admin-only. */
+  const myRole = useSessionStatus().role;
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [connectionDot, setConnectionDot] = useState(
     workspace.dots[0]?.id ?? '',
@@ -198,12 +200,6 @@ export function WorkspaceDialog({
     void api<UsageReport>('/usage')
       .then((value) => {
         if (active) setUsage(value);
-      })
-      .catch(() => {});
-    // Phase E : le rôle (Admin = onglet Comptes visible).
-    void api<{ username: string; role: string }>('/auth/me')
-      .then((value) => {
-        if (active) setMyRole(value.role);
       })
       .catch(() => {});
     return () => {

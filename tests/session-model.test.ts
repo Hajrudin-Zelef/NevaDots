@@ -28,6 +28,7 @@ it('démarre à unknown, sans statut inventé', () => {
     state: 'unknown',
     username: null,
     role: null,
+    profile: null,
   });
 });
 
@@ -38,11 +39,39 @@ it('refresh passe à in et notifie les abonnés', async () => {
     seen.push(getSessionStatus().state),
   );
   const status = await refreshSessionStatus();
-  expect(status).toEqual({ state: 'in', username: 'sam', role: 'admin' });
+  expect(status).toEqual({
+    state: 'in',
+    username: 'sam',
+    role: 'admin',
+    profile: {
+      maxDots: null,
+      monthlyLimitUsd: null,
+      allowedProviders: null,
+      allowedModels: null,
+    },
+  });
   expect(seen).toEqual(['in']);
   expect(mockedApi).toHaveBeenCalledTimes(1);
   expect(mockedApi).toHaveBeenCalledWith('/auth/me');
   stop();
+});
+
+it('refresh remplit le profil, valeurs malformées neutralisées', async () => {
+  mockedApi.mockResolvedValue({
+    username: 'sam',
+    role: 'user',
+    maxDots: 3,
+    monthlyLimitUsd: 'x',
+    allowedProviders: ['litellm', 42],
+    allowedModels: ['a', 'b'],
+  });
+  const status = await refreshSessionStatus();
+  expect(status.profile).toEqual({
+    maxDots: 3,
+    monthlyLimitUsd: null,
+    allowedProviders: null,
+    allowedModels: ['a', 'b'],
+  });
 });
 
 it('refresh 401 passe à out', async () => {

@@ -1,15 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
-import { api } from './api';
-
-interface MeResponse {
-  username: string;
-  role: string;
-  maxDots: number | null;
-  monthlyLimitUsd: number | null;
-  allowedProviders: string[] | null;
-  allowedModels: string[] | null;
-}
+import { refreshSessionStatus, useSessionStatus } from './session-model';
 
 /**
  * Phase F (menu avatar → Profil) : la fiche du compte connecté — nom,
@@ -17,22 +8,16 @@ interface MeResponse {
  * de mot de passe passe par le code de réinitialisation de l'Admin.
  */
 export function ProfileDialog({ onClose }: { onClose: () => void }) {
-  const [me, setMe] = useState<MeResponse | null>(null);
-  const [error, setError] = useState('');
+  // MVC-Statut (lot 1.4) : identité + profil lus dans le modèle, jamais de
+  // fetch local. App boot le modèle ; ici on revalide si le profil manque.
+  const session = useSessionStatus();
   useEffect(() => {
-    let active = true;
-    api<MeResponse>('/auth/me')
-      .then((value) => {
-        if (active) setMe(value);
-      })
-      .catch(() => {
-        if (active) setError('Impossible de charger ton profil.');
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-  const restricted = me !== null && me.role !== 'admin';
+    if (session.state === 'in' && !session.profile) void refreshSessionStatus();
+  }, [session.state, session.profile]);
+  const username = session.username;
+  const role = session.role;
+  const profile = session.profile;
+  const restricted = username !== null && role !== 'admin';
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <section
@@ -47,28 +32,29 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
           aria-label="Fermer"
           onClick={onClose}
         >
-          <X size={18} />
+          <X size={16} />
         </button>
         <span className="eyebrow">NEVADOTS</span>
         <h2 id="dialog-title">Profil</h2>
-        {error && <p className="chat-error">{error}</p>}
-        {!me && !error && <p className="muted">Chargement…</p>}
-        {me && (
+        {!username && <p className="muted">Chargement…</p>}
+        {username && (
           <div className="prefs-section">
             <div className="prefs-field">
               <span className="prefs-field-label">Nom d'utilisateur</span>
-              <span>{me.username}</span>
+              <span>{username}</span>
             </div>
             <div className="prefs-field">
               <span className="prefs-field-label">Rôle</span>
-              <span>{me.role === 'admin' ? 'Admin' : 'Utilisateur'}</span>
+              <span>{role === 'admin' ? 'Admin' : 'Utilisateur'}</span>
             </div>
             {restricted && (
               <>
                 <div className="prefs-field">
                   <span className="prefs-field-label">Nombre max de Dots</span>
                   <span>
-                    {me.maxDots === null ? 'Sans limite' : me.maxDots}
+                    {!profile || profile.maxDots === null
+                      ? 'Sans limite'
+                      : profile.maxDots}
                   </span>
                 </div>
                 <div className="prefs-field">
@@ -76,30 +62,30 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
                     Limite mensuelle (modèles)
                   </span>
                   <span>
-                    {me.monthlyLimitUsd === null
+                    {!profile || profile.monthlyLimitUsd === null
                       ? 'Sans limite'
-                      : `${me.monthlyLimitUsd} $`}
+                      : `${profile.monthlyLimitUsd} $`}
                   </span>
                 </div>
                 <div className="prefs-field">
                   <span className="prefs-field-label">Providers autorisés</span>
                   <span>
-                    {me.allowedProviders === null
+                    {!profile || profile.allowedProviders === null
                       ? 'Sans restriction'
-                      : me.allowedProviders.join(', ')}
+                      : profile.allowedProviders.join(', ')}
                   </span>
                 </div>
                 <div className="prefs-field">
                   <span className="prefs-field-label">Modèles autorisés</span>
                   <span>
-                    {me.allowedModels === null
+                    {!profile || profile.allowedModels === null
                       ? 'Sans restriction'
-                      : me.allowedModels.join(', ')}
+                      : profile.allowedModels.join(', ')}
                   </span>
                 </div>
               </>
             )}
-            {!restricted && (
+            {role === 'admin' && (
               <p className="muted">
                 Compte Admin : sans restriction (tous les providers, tous les
                 modèles, pas de limite).

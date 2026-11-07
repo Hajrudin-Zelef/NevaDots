@@ -12,15 +12,48 @@ export interface SessionStatus {
   state: SessionState;
   username: string | null;
   role: 'admin' | 'user' | null;
+  /** Limites du compte (Profil, onglets) — remplies par le même `/me`. */
+  profile: SessionProfile | null;
+}
+
+export interface SessionProfile {
+  maxDots: number | null;
+  monthlyLimitUsd: number | null;
+  allowedProviders: string[] | null;
+  allowedModels: string[] | null;
 }
 
 interface MeResponse {
   username?: unknown;
   role?: unknown;
+  maxDots?: unknown;
+  monthlyLimitUsd?: unknown;
+  allowedProviders?: unknown;
+  allowedModels?: unknown;
 }
 
-const UNKNOWN: SessionStatus = { state: 'unknown', username: null, role: null };
-const OUT: SessionStatus = { state: 'out', username: null, role: null };
+function toNumberOrNull(value: unknown): number | null {
+  return typeof value === 'number' ? value : null;
+}
+
+function toStringArrayOrNull(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+    ? (value as string[])
+    : null;
+}
+
+const UNKNOWN: SessionStatus = {
+  state: 'unknown',
+  username: null,
+  role: null,
+  profile: null,
+};
+const OUT: SessionStatus = {
+  state: 'out',
+  username: null,
+  role: null,
+  profile: null,
+};
 
 let status: SessionStatus = { ...UNKNOWN };
 const listeners = new Set<() => void>();
@@ -63,7 +96,21 @@ export async function refreshSessionStatus(): Promise<SessionStatus> {
       const me = await api<MeResponse>('/auth/me');
       const username = typeof me.username === 'string' ? me.username : null;
       const role = me.role === 'admin' || me.role === 'user' ? me.role : null;
-      setStatus(username ? { state: 'in', username, role } : { ...OUT });
+      setStatus(
+        username
+          ? {
+              state: 'in',
+              username,
+              role,
+              profile: {
+                maxDots: toNumberOrNull(me.maxDots),
+                monthlyLimitUsd: toNumberOrNull(me.monthlyLimitUsd),
+                allowedProviders: toStringArrayOrNull(me.allowedProviders),
+                allowedModels: toStringArrayOrNull(me.allowedModels),
+              },
+            }
+          : { ...OUT },
+      );
     } catch (error) {
       if (error instanceof ApiError && error.status === 401)
         setStatus({ ...OUT });
