@@ -34,7 +34,7 @@ import type {
   State,
   WorkspaceState,
 } from '../shared/types';
-import { api, ApiError } from './api';
+import { api, ApiError, sessionTransport } from './api';
 import {
   logoutSession,
   refreshSessionStatus,
@@ -181,7 +181,7 @@ export function App() {
    *  restent l'autorité réseau ; ici on ne fait que refléter. */
   const session = useSessionStatus();
   useEffect(() => {
-    void refreshSessionStatus();
+    void refreshSessionStatus(sessionTransport);
   }, []);
   useEffect(() => {
     if (session.state === 'out') window.location.href = '/login';
@@ -782,7 +782,7 @@ export function App() {
                         try {
                           // MVC-Statut (lot 1.4) : le modèle passe à `out`,
                           // le contrôleur redirige.
-                          await logoutSession();
+                          await logoutSession(sessionTransport);
                           window.location.href = '/login';
                         } catch (err) {
                           setError(

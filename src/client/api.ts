@@ -5,6 +5,7 @@
  *  révoquée). La SPA ne se charge que si la session est valide (porte
  *  serveur), donc aucune page de connexion dans le client. */
 import { refreshSessionStatus } from './session-model';
+import type { SessionTransport } from './session-model';
 export { ApiError } from './api-error';
 import { ApiError } from './api-error';
 export async function api<T>(
@@ -25,11 +26,10 @@ export async function api<T>(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   // MVC-Statut (lot 1.2) : le contrôleur n'a pas d'état — il ordonne au
-  // modèle de passer à `out`, puis redirige. Import statique : le cycle
-  // api ↔ session-model est sûr (usage différé des deux côtés, jamais à
-  // l'évaluation). La dédupe `inflight` absorbe la réentrance (`/me` 401).
+  // modèle de passer à `out`, puis redirige. La dédupe `inflight` absorbe
+  // la réentrance (`/me` 401).
   if (response.status === 401 && typeof window !== 'undefined') {
-    void refreshSessionStatus()
+    void refreshSessionStatus(sessionTransport)
       .catch(() => {})
       .finally(() => {
         window.location.href = '/login';
@@ -54,4 +54,20 @@ export async function logout(): Promise<void> {
   } finally {
     if (typeof window !== 'undefined') window.location.href = '/login';
   }
+}
+
+/** Transport SessionModel branché sur `api` (fourni par le contrôleur —
+ *  le modèle reste pur et injectable en tests). */
+export const sessionTransport: SessionTransport = {
+  getMe: () => api<MeResponse>('/auth/me'),
+  postLogout: () => api('/auth/logout', 'POST'),
+};
+
+interface MeResponse {
+  username?: unknown;
+  role?: unknown;
+  maxDots?: unknown;
+  monthlyLimitUsd?: unknown;
+  allowedProviders?: unknown;
+  allowedModels?: unknown;
 }

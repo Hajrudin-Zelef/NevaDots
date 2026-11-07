@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { sessionTransport } from './api';
 import { refreshSessionStatus, useSessionStatus } from './session-model';
 
 /**
@@ -12,7 +13,8 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
   // fetch local. App boot le modèle ; ici on revalide si le profil manque.
   const session = useSessionStatus();
   useEffect(() => {
-    if (session.state === 'in' && !session.profile) void refreshSessionStatus();
+    if (session.state === 'in' && !session.profile)
+      void refreshSessionStatus(sessionTransport);
   }, [session.state, session.profile]);
   const username = session.username;
   const role = session.role;
