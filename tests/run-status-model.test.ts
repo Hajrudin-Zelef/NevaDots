@@ -6,6 +6,7 @@ import {
   getRunMascotState,
   pushRunFrame,
   resetRunStatusModelForTests,
+  subscribeRunStatus,
   type RunFrameInput,
 } from '../src/client/run-status-model';
 
@@ -118,6 +119,19 @@ it('hold 800 ms : thinking reste visible avant writing', () => {
   expect(getRunMascotState()).toBe('thinking');
   vi.advanceTimersByTime(800);
   expect(getRunMascotState()).toBe('writing');
+});
+
+it('pas de notification quand rien ne change (anti-boucle de rendu)', () => {
+  let calls = 0;
+  const stop = subscribeRunStatus(() => {
+    calls += 1;
+  });
+  const input = frame({ running: true });
+  pushRunFrame(input);
+  pushRunFrame(input);
+  pushRunFrame(frame({ running: true }));
+  expect(calls).toBe(1);
+  stop();
 });
 
 it('pushRunFrame dérive aussi le flux d’activité en un seul point', () => {

@@ -8,7 +8,7 @@ import { ConnectionActionCard } from './ConnectionActionCard';
 import { contextualMessage, type PageContext } from './page-context';
 import { api } from './api';
 import type { Page } from '../server/pages';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CopilotChatToolCallsView,
   useRenderTool,
@@ -39,7 +39,11 @@ import { ReasoningPanel } from './ReasoningPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { ActivityTab } from './ActivityTab';
 import { InterventionStage } from './InterventionStage';
-import { deriveActivity } from '../shared/activity';
+import {
+  pushRunFrame,
+  useRunActivity,
+  useRunMascotState,
+} from './run-status-model';
 import type { ReasoningRunStats } from '../server/reasoning.js';
 import type {
   CallReceipt,
@@ -54,7 +58,6 @@ import { Composer } from './Composer';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
 import { useAgentSteps } from './useAgentSteps';
-import { useHeldMascotState } from './useHeldMascotState';
 import { useDotModelControls } from './useDotModelControls';
 import { StepCard } from './StepCard';
 import { ComposerMenu } from './ComposerMenu';
@@ -598,12 +601,6 @@ export function Chat({
   const computerCalls = agent.messages.flatMap((message) =>
     message.role === 'assistant' ? (message.toolCalls ?? []) : [],
   );
-  const lastToolCall = computerCalls.at(-1);
-  const writingNow =
-    !!lastToolCall &&
-    /files_write|computer_exec|computer_type|create_space_page|edit_space_page/.test(
-      lastToolCall.function.name,
-    );
   const latestBrowserCall = computerCalls.findLast((call) =>
     [
       'navigate',
@@ -619,44 +616,22 @@ export function Chat({
   const latestExecCall = computerCalls.findLast(
     (call) => call.function.name === 'computer_exec',
   );
-  const activeToolName = lastToolCall?.function.name ?? '';
-  const searchingNow =
-    /search_web|read_public_page|web_search|web_fetch/.test(activeToolName) ||
-    /computer_(navigate|snapshot|screenshot|read|click|scroll|key)/.test(
-      activeToolName,
-    );
-  // Text is streaming into the *current* assistant message: show the writing
-  // clip. `writingNow` only covers write-tools; this covers plain generation,
-  // which otherwise never leaves the reasoning "analyzing" state. Scoping to
-  // messages after the last user turn avoids picking up the previous reply.
-  const lastUserIndex = agent.messages.findLastIndex(
-    (message) => message.role === 'user',
-  );
-  const runAssistant = agent.messages
-    .slice(lastUserIndex + 1)
-    .filter((message) => message.role === 'assistant')
-    .at(-1);
-  const streamingText =
-    running &&
-    typeof runAssistant?.content === 'string' &&
-    runAssistant.content.trim().length > 0;
-  const rawMascotState =
-    voice.status === 'active'
-      ? 'listening'
-      : flash
-        ? flash
-        : paused
-          ? 'paused'
-          : running
-            ? searchingNow
-              ? 'searching'
-              : writingNow || streamingText
-                ? 'writing'
-                : reasonPanel?.live
-                  ? 'analyzing'
-                  : 'thinking'
-            : 'idle';
-  const mascotState = useHeldMascotState(rawMascotState);
+  // MVC-Statut (lot 2.2) : le statut du run et le flux d'activité sont
+  // dérivés en un seul point, dans le modèle (`deriveRawRunStatus` garde
+  // la priorité voix > flash > pause > recherche > écriture > raisonnement
+  // > attente > repos — voir `specs/mascot-states.md`). Les vues
+  // (Mascot, rail, barre, StepCard) ne font que refléter.
+  useEffect(() => {
+    pushRunFrame({
+      messages: agent.messages,
+      voiceActive: voice.status === 'active',
+      flash,
+      paused,
+      running,
+      reasoningLive: reasonPanel?.live ?? false,
+    });
+  }, [agent.messages, voice.status, flash, paused, running, reasonPanel?.live]);
+  const mascotState = useRunMascotState();
   useRenderTool(
     {
       name: '*',
@@ -698,10 +673,8 @@ export function Chat({
           ))),
   );
   // Live activity feed (commands, websites, files, searches) + collapsed bubbles.
-  const activity = useMemo(
-    () => deriveActivity(agent.messages),
-    [agent.messages],
-  );
+  // Dérivé dans RunStatusModel (miroir via `useRunActivity`).
+  const activity = useRunActivity();
   useEffect(() => {
     if (!reasonPanel) return;
     // Tablette/bureau (≥701px, rail docké) : le rail d'activités reste affiché

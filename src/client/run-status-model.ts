@@ -86,6 +86,27 @@ function notify(): void {
   for (const fn of listeners) fn();
 }
 
+/** Évite les notifications (et re-rendus) quand rien n'a bougé : le flux
+ *  est re-dérivé à chaque cadre — le raisonnement en streaming grandit à
+ *  `id` constant, d'où la comparaison de tous les champs scalaires. */
+function sameActivity(a: ActivityEvent[], b: ActivityEvent[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((event, index) => {
+      const other = b[index];
+      return (
+        event.id === other.id &&
+        event.kind === other.kind &&
+        event.label === other.label &&
+        event.detail === other.detail &&
+        event.status === other.status &&
+        (event.result ?? '') === (other.result ?? '') &&
+        (event.error ?? '') === (other.error ?? '')
+      );
+    })
+  );
+}
+
 function holdMs(): number {
   const reduced =
     typeof window !== 'undefined' &&
@@ -103,9 +124,13 @@ export function pushRunFrame(input: RunFrameInput): void {
     clearTimeout(wakeTimer);
     wakeTimer = undefined;
   }
+  const prevHold = hold;
   hold = drainMascotHold(enqueueMascotState(hold, raw, now), now, minMs);
-  activity = deriveActivity(input.messages);
-  notify();
+  const nextActivity = deriveActivity(input.messages);
+  if (hold !== prevHold || !sameActivity(activity, nextActivity)) {
+    activity = nextActivity;
+    notify();
+  }
   const readyAt =
     hold.queue.length === 0
       ? null
