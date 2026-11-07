@@ -35,6 +35,7 @@ import type {
   WorkspaceState,
 } from '../shared/types';
 import { api, ApiError, logout } from './api';
+import { refreshSessionStatus, useSessionStatus } from './session-model';
 import { trackSetupStep } from './setup-telemetry';
 import {
   applyCaptureResult,
@@ -171,19 +172,16 @@ export function App() {
   const [dialog, setDialog] = useState<Dialog>();
   /** Phase F : menu avatar (Profil / Apparence / Paramètres / FAQ / À propos / Déconnexion). */
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  /** Phase F : nom du compte connecté → initiales de l'avatar rond. */
-  const [myUsername, setMyUsername] = useState('');
+  /** MVC-Statut (lots 1.3-1.4) : le statut de session vient du modèle —
+   *  aucune lecture `/me` locale. `out` → la porte serveur + api.ts 401
+   *  restent l'autorité réseau ; ici on ne fait que refléter. */
+  const session = useSessionStatus();
   useEffect(() => {
-    let active = true;
-    void api<{ username: string }>('/auth/me')
-      .then((value) => {
-        if (active) setMyUsername(value.username);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
+    void refreshSessionStatus();
   }, []);
+  useEffect(() => {
+    if (session.state === 'out') window.location.href = '/login';
+  }, [session.state]);
   useEffect(() => {
     if (!profileMenuOpen) return;
     const key = (event: KeyboardEvent) => {
@@ -455,6 +453,13 @@ export function App() {
       await refresh();
     }
   };
+  if (session.state === 'unknown')
+    return (
+      <main className="unlock">
+        <Mascot state="thinking" />
+        <h1>Vérification de la session…</h1>
+      </main>
+    );
   if (!state || !workspace || !dot)
     return (
       <main className="unlock">
@@ -699,7 +704,9 @@ export function App() {
                 aria-expanded={profileMenuOpen}
                 onClick={() => setProfileMenuOpen((open) => !open)}
               >
-                <span className="sidebar-avatar">{initialsOf(myUsername)}</span>
+                <span className="sidebar-avatar">
+                  {initialsOf(session.username ?? '')}
+                </span>
               </button>
               {profileMenuOpen && (
                 <>
