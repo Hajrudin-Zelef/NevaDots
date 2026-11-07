@@ -1,11 +1,7 @@
-import { expect, it, vi, beforeEach } from 'vitest';
+import { expect, it, beforeEach } from 'vitest';
 import { act, create } from 'react-test-renderer';
-import { ApiError } from '../src/client/api';
-vi.mock('../src/client/api', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('../src/client/api')>();
-  return { ...mod, api: vi.fn() };
-});
-import { api } from '../src/client/api';
+import { createElement } from 'react';
+import { ApiError } from '../src/client/api-error';
 import {
   getSessionStatus,
   logoutSession,
@@ -13,13 +9,30 @@ import {
   resetSessionModelForTests,
   subscribeSessionStatus,
   useSessionStatus,
+  type SessionTransport,
 } from '../src/client/session-model';
-import { createElement } from 'react';
 
-const mockedApi = vi.mocked(api);
+/** Transport faux : le Modèle ne touche jamais le réseau en tests. */
+function fakeTransport(overrides?: Partial<SessionTransport>): {
+  transport: SessionTransport;
+  calls: { getMe: number; postLogout: number };
+} {
+  const calls = { getMe: 0, postLogout: 0 };
+  const transport: SessionTransport = {
+    getMe: () => {
+      calls.getMe += 1;
+      return Promise.resolve({ username: 'sam', role: 'admin' });
+    },
+    postLogout: () => {
+      calls.postLogout += 1;
+      return Promise.resolve(undefined);
+    },
+    ...overrides,
+  };
+  return { transport, calls };
+}
 
 beforeEach(() => {
-  vi.clearAllMocks();
   resetSessionModelForTests();
 });
 
@@ -33,12 +46,12 @@ it('démarre à unknown, sans statut inventé', () => {
 });
 
 it('refresh passe à in et notifie les abonnés', async () => {
-  mockedApi.mockResolvedValue({ username: 'sam', role: 'admin' });
+  const { transport, calls } = fakeTransport();
   const seen: string[] = [];
   const stop = subscribeSessionStatus(() =>
     seen.push(getSessionStatus().state),
   );
-  const status = await refreshSessionStatus();
+  const status = await refreshSessionStatus(transport);
   expect(status).toEqual({
     state: 'in',
     username: 'sam',
@@ -51,21 +64,23 @@ it('refresh passe à in et notifie les abonnés', async () => {
     },
   });
   expect(seen).toEqual(['in']);
-  expect(mockedApi).toHaveBeenCalledTimes(1);
-  expect(mockedApi).toHaveBeenCalledWith('/auth/me');
+  expect(calls.getMe).toBe(1);
   stop();
 });
 
 it('refresh remplit le profil, valeurs malformées neutralisées', async () => {
-  mockedApi.mockResolvedValue({
-    username: 'sam',
-    role: 'user',
-    maxDots: 3,
-    monthlyLimitUsd: 'x',
-    allowedProviders: ['litellm', 42],
-    allowedModels: ['a', 'b'],
+  const { transport } = fakeTransport({
+    getMe: () =>
+      Promise.resolve({
+        username: 'sam',
+        role: 'user',
+        maxDots: 3,
+        monthlyLimitUsd: 'x',
+        allowedProviders: ['litellm', 42],
+        allowedModels: ['a', 'b'],
+      }),
   });
-  const status = await refreshSessionStatus();
+  const status = await refreshSessionStatus(transport);
   expect(status.profile).toEqual({
     maxDots: 3,
     monthlyLimitUsd: null,
@@ -75,49 +90,57 @@ it('refresh remplit le profil, valeurs malformées neutralisées', async () => {
 });
 
 it('refresh 401 passe à out', async () => {
-  mockedApi.mockRejectedValue(new ApiError('Authentication required.', 401));
-  const status = await refreshSessionStatus();
+  const { transport } = fakeTransport({
+    getMe: () => Promise.reject(new ApiError('Authentication required.', 401)),
+  });
+  const status = await refreshSessionStatus(transport);
   expect(status.state).toBe('out');
   expect(status.username).toBeNull();
 });
 
 it('erreur non-401 : statut conservé, pas de verdict mensonger', async () => {
-  mockedApi
-    .mockResolvedValueOnce({ username: 'sam', role: 'user' })
-    .mockRejectedValueOnce(new Error('boom'));
-  await refreshSessionStatus();
+  const ok = fakeTransport();
+  await refreshSessionStatus(ok.transport);
+  const ko = fakeTransport({
+    getMe: () => Promise.reject(new Error('boom')),
+  });
   const seen: string[] = [];
   const stop = subscribeSessionStatus(() =>
     seen.push(getSessionStatus().state),
   );
-  await refreshSessionStatus();
+  await refreshSessionStatus(ko.transport);
   expect(getSessionStatus().state).toBe('in');
   expect(seen).toEqual([]);
   stop();
 });
 
 it('refresh concurrents : un seul GET /me partagé', async () => {
-  mockedApi.mockResolvedValue({ username: 'sam', role: 'user' });
+  const { transport, calls } = fakeTransport();
   const [a, b] = await Promise.all([
-    refreshSessionStatus(),
-    refreshSessionStatus(),
+    refreshSessionStatus(transport),
+    refreshSessionStatus(transport),
   ]);
-  expect(mockedApi).toHaveBeenCalledTimes(1);
+  expect(calls.getMe).toBe(1);
   expect(a).toBe(b);
 });
 
 it('logout appelle le serveur puis passe à out même en échec', async () => {
-  mockedApi
-    .mockResolvedValueOnce({ username: 'sam', role: 'admin' })
-    .mockRejectedValueOnce(new Error('réseau'));
-  await refreshSessionStatus();
-  await expect(logoutSession()).rejects.toThrow('réseau');
-  expect(mockedApi).toHaveBeenCalledWith('/auth/logout', 'POST');
+  const ok = fakeTransport();
+  let posts = 0;
+  const ko = fakeTransport({
+    postLogout: () => {
+      posts += 1;
+      return Promise.reject(new Error('réseau'));
+    },
+  });
+  await refreshSessionStatus(ok.transport);
+  await expect(logoutSession(ko.transport)).rejects.toThrow('réseau');
+  expect(posts).toBe(1);
   expect(getSessionStatus().state).toBe('out');
 });
 
 it('useSessionStatus reflète le modèle dans une vue', async () => {
-  mockedApi.mockResolvedValue({ username: 'sam', role: 'user' });
+  const { transport } = fakeTransport();
   const states: string[] = [];
   function Probe(): null {
     states.push(useSessionStatus().state);
@@ -128,7 +151,7 @@ it('useSessionStatus reflète le modèle dans une vue', async () => {
     renderer = create(createElement(Probe));
   });
   await act(async () => {
-    await refreshSessionStatus();
+    await refreshSessionStatus(transport);
   });
   expect(states).toContain('unknown');
   expect(states.at(-1)).toBe('in');

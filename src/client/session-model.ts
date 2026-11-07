@@ -1,5 +1,21 @@
 import { useSyncExternalStore } from 'react';
-import { ApiError, api } from './api.js';
+import { ApiError } from './api-error.js';
+
+/** Transport vers le serveur, injectable en tests. Le défaut passe par
+ *  `api.ts` (import différé : `api.ts` importe déjà ce modèle pour le 401,
+ *  un import statique bouclerait). */
+export interface SessionTransport {
+  getMe(): Promise<MeResponse>;
+  postLogout(): Promise<unknown>;
+}
+
+async function defaultTransport(): Promise<SessionTransport> {
+  const { api } = await import('./api.js');
+  return {
+    getMe: () => api<MeResponse>('/auth/me'),
+    postLogout: () => api('/auth/logout', 'POST'),
+  };
+}
 
 /** Phase MVC-Statut (lot 1.1) : le statut de session est détenu par ce seul
  *  modèle. Les vues s'abonnent (miroirs passifs), les contrôleurs appellent
@@ -89,11 +105,14 @@ export function useSessionStatus(): SessionStatus {
 
 /** Revalide le statut depuis le serveur. 401 → `out`. Toute autre erreur
  *  (réseau, 503) conserve le statut précédent : pas de verdict mensonger. */
-export async function refreshSessionStatus(): Promise<SessionStatus> {
+export async function refreshSessionStatus(
+  transport?: SessionTransport,
+): Promise<SessionStatus> {
   if (inflight) return inflight;
   inflight = (async () => {
     try {
-      const me = await api<MeResponse>('/auth/me');
+      const t = transport ?? (await defaultTransport());
+      const me = await t.getMe();
       const username = typeof me.username === 'string' ? me.username : null;
       const role = me.role === 'admin' || me.role === 'user' ? me.role : null;
       setStatus(
@@ -124,9 +143,12 @@ export async function refreshSessionStatus(): Promise<SessionStatus> {
 
 /** Ferme la session côté serveur puis passe à `out`. La navigation vers
  *  `/login` reste du ressort de l'appelant (contrôleur/vue). */
-export async function logoutSession(): Promise<void> {
+export async function logoutSession(
+  transport?: SessionTransport,
+): Promise<void> {
   try {
-    await api('/auth/logout', 'POST');
+    const t = transport ?? (await defaultTransport());
+    await t.postLogout();
   } finally {
     setStatus({ ...OUT });
   }
