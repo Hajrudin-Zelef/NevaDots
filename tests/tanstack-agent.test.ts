@@ -12,6 +12,7 @@ import { SkillLibrary } from '../src/server/skills-library.js';
 import { SessionBrainStore } from '../src/server/session-brain.js';
 import { SessionBrainSummarizer } from '../src/server/session-brain-summarizer.js';
 import { ToolGroupState } from '../src/server/tool-groups.js';
+import { getReasoningStats } from '../src/server/reasoning.js';
 import { pageReviewTool } from '../src/shared/page-review.js';
 import { connectionActionTool } from '../src/shared/connection-types.js';
 
@@ -678,4 +679,32 @@ it('précharge le groupe pdf sur un marqueur de pièce jointe explicite', async 
   };
   const names = (request.tools ?? []).map((tool) => tool.function?.name);
   expect(names).toContain('read_pdf');
+});
+
+it('enregistre l’usage et les stats même sans reasoning', async () => {
+  const f = fixture();
+  const body = [
+    'data: {"choices":[{"delta":{"content":"ok"}}]}',
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":250,"completion_tokens":20}}',
+    'data: [DONE]',
+    '',
+  ].join('\n\n');
+  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    new Response(body, {
+      headers: { 'Content-Type': 'text/event-stream' },
+    }),
+  );
+  const events = await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+  const start = events.find(
+    (event) =>
+      event.type === EventType.TEXT_MESSAGE_CHUNK ||
+      event.type === EventType.TEXT_MESSAGE_START,
+  ) as { messageId?: string } | undefined;
+  expect(start?.messageId).toBeTruthy();
+  expect(getReasoningStats(start!.messageId!)).toMatchObject({
+    promptTokens: 250,
+    completionTokens: 20,
+  });
+  expect(f.store.usageSummary().today.promptTokens).toBe(250);
+  expect(f.store.usageSummary().today.completionTokens).toBe(20);
 });

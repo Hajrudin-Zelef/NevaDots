@@ -983,7 +983,8 @@ export function App() {
                       state={busy ? 'thinking' : 'idle'}
                     />
                     <span className="chat-token-info">
-                      ↑ 0 (entrée) · ↓ 0 (sortie) Tokens · Coût estimé : $0,0000
+                      ↑ 0 (entrée) · ↓ 0 (sortie) · ⇅ 0 en cache Tokens · Coût
+                      estimé : $0,0000
                     </span>
                   </div>
                   <Composer

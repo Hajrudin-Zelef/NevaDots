@@ -727,7 +727,7 @@ export function Chat({
     onComputer?.();
   }, [running, latestBrowserCall, onComputer]);
   // Cumulative session tokens for the cetas-style token bar.
-  const [session, setSession] = useState({ in: 0, out: 0, cost: 0 });
+  const [session, setSession] = useState({ in: 0, out: 0, cost: 0, cached: 0 });
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (!running) return;
@@ -757,20 +757,30 @@ export function Chat({
     const lastReasoning = agent.messages
       .filter((message) => message.role === 'reasoning')
       .at(-1);
-    if (!lastReasoning) return;
-    void api<ReasoningRunStats>(
-      `/reasoning-stats?messageId=${encodeURIComponent(lastReasoning.id)}`,
-    )
-      .then((stats) =>
+    // Stats de session : l'usage est enregistré pour le message assistant même
+    // sans reasoning ; on retombe sur le message de raisonnement pour les
+    // anciens tours.
+    const ids = [lastAssistant?.id, lastReasoning?.id].filter(
+      (id): id is string => !!id,
+    );
+    if (!ids.length) return;
+    void (async () => {
+      for (const id of ids) {
+        const stats = await api<ReasoningRunStats>(
+          `/reasoning-stats?messageId=${encodeURIComponent(id)}`,
+        );
+        if (!stats?.model) continue;
         setSession((previous) => ({
           in: previous.in + (stats.promptTokens ?? 0),
           out: previous.out + (stats.completionTokens ?? 0),
           cost: previous.cost + (stats.costUsd ?? 0),
-        })),
-      )
-      .catch(() => {
-        /* token totals are best-effort */
-      });
+          cached: previous.cached + (stats.cachedTokens ?? 0),
+        }));
+        return;
+      }
+    })().catch(() => {
+      /* token totals are best-effort */
+    });
   }, [running, agent.messages]);
   // Persist the turn outcome + activity so the Muse activity timeline can show
   // conversations that were never open in this browser. While the turn runs we
@@ -1055,8 +1065,12 @@ export function Chat({
               ⏱ {elapsed}s · ~{liveOut} tok · {liveRate} tok/s ·{' '}
             </>
           )}
-          ↑ {session.in} (input) ↓ {session.out} (output) Tokens · Coût estimé :
-          ${session.cost.toFixed(4).replace('.', ',')}
+          ↑ {session.in} (input) ↓ {session.out} (output) ⇅ {session.cached} en
+          cache
+          {session.in > 0
+            ? ` (${Math.round((session.cached / session.in) * 100)} %)`
+            : ''}{' '}
+          Tokens · Coût estimé : ${session.cost.toFixed(4).replace('.', ',')}
         </span>
       </div>
       <Composer

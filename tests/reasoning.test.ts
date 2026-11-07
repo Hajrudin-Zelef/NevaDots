@@ -27,6 +27,7 @@ it('captures reasoning_content deltas and usage from an SSE stream', async () =>
   const hooks = {
     onStart: vi.fn(),
     onDelta: vi.fn(),
+    onUsage: vi.fn(),
     onEnd: vi.fn(),
   };
   const wrapped = createReasoningFetch(
@@ -42,6 +43,11 @@ it('captures reasoning_content deltas and usage from an SSE stream', async () =>
   expect(hooks.onDelta.mock.calls.map((c) => c[0]).join('')).toBe(
     'Let me think step by step',
   );
+  expect(hooks.onUsage).toHaveBeenCalledWith({
+    promptTokens: 120,
+    completionTokens: 45,
+    cachedTokens: null,
+  });
   expect(hooks.onEnd).toHaveBeenCalledTimes(1);
   const info = hooks.onEnd.mock.calls[0][0];
   expect(info.promptTokens).toBe(120);
@@ -67,13 +73,19 @@ it('captures OpenRouter-style reasoning deltas', async () => {
   expect(hooks.onEnd).toHaveBeenCalledTimes(1);
 });
 
-it('emits nothing when the provider streams no reasoning', async () => {
+it('capture l’usage même quand le provider ne streame pas de reasoning', async () => {
   const chunks = [
     'data: {"choices":[{"delta":{"content":"Hi"}}]}',
+    'data: {"usage":{"prompt_tokens":250,"completion_tokens":30}}',
     'data: [DONE]',
   ];
   const baseFetch = vi.fn(async () => sseResponse(chunks));
-  const hooks = { onStart: vi.fn(), onDelta: vi.fn(), onEnd: vi.fn() };
+  const hooks = {
+    onStart: vi.fn(),
+    onDelta: vi.fn(),
+    onUsage: vi.fn(),
+    onEnd: vi.fn(),
+  };
   const wrapped = createReasoningFetch(
     baseFetch as unknown as typeof fetch,
     (url) => url.startsWith(CHAT_URL),
@@ -83,6 +95,11 @@ it('emits nothing when the provider streams no reasoning', async () => {
   expect(text).toContain('Hi');
   expect(hooks.onStart).not.toHaveBeenCalled();
   expect(hooks.onDelta).not.toHaveBeenCalled();
+  expect(hooks.onUsage).toHaveBeenCalledWith({
+    promptTokens: 250,
+    completionTokens: 30,
+    cachedTokens: null,
+  });
   expect(hooks.onEnd).not.toHaveBeenCalled();
 });
 

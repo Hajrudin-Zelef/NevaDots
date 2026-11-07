@@ -135,6 +135,14 @@ export class DotAgent extends AbstractAgent {
       let configurationFailure = false;
       let sessionNotesBefore: string | undefined;
       let assistantText = '';
+      const assistantMessageIds = new Set<string>();
+      const turnStartedAt = Date.now();
+      const turnUsage = {
+        promptTokens: 0,
+        completionTokens: 0,
+        cachedTokens: 0,
+        calls: 0,
+      };
       const userTurnText = lastUserText(input.messages);
       // Phase 3 : associe chaque appel d'outil à son libellé d'étape
       // (TOOL_CALL_END ne porte pas le nom de l'outil). Le compteur
@@ -572,15 +580,16 @@ export class DotAgent extends AbstractAgent {
             });
           },
           onAnswerStart: () => closeReasoning(),
-          onEnd: (info: {
+          onUsage: (info: {
             promptTokens: number | null;
             completionTokens: number | null;
             cachedTokens: number | null;
-            durationMs: number;
           }) => {
-            const stats = buildReasoningStats(model, info);
-            saveReasoningStats(reasoningMessageId, stats);
-            // Usage agrégé (réglages : consommation aujourd'hui / 7 jours).
+            turnUsage.promptTokens += info.promptTokens ?? 0;
+            turnUsage.completionTokens += info.completionTokens ?? 0;
+            turnUsage.cachedTokens += info.cachedTokens ?? 0;
+            turnUsage.calls += 1;
+            // Une ligne par appel modèle (y compris sans reasoning).
             try {
               this.store.recordUsage({
                 ts: Date.now(),
@@ -589,11 +598,39 @@ export class DotAgent extends AbstractAgent {
                 promptTokens: info.promptTokens,
                 completionTokens: info.completionTokens,
                 cachedTokens: info.cachedTokens,
-                costUsd: stats.costUsd,
+                costUsd: estimateCostUsd(
+                  model,
+                  info.promptTokens,
+                  info.completionTokens,
+                  info.cachedTokens,
+                ),
               });
             } catch {
               // Usage is best-effort; never break a run on a metrics write.
             }
+          },
+          onEnd: (info: {
+            promptTokens: number | null;
+            completionTokens: number | null;
+            cachedTokens: number | null;
+            durationMs: number;
+          }) => {
+            const stats = buildReasoningStats(model, {
+              promptTokens:
+                turnUsage.calls > 0
+                  ? turnUsage.promptTokens
+                  : info.promptTokens,
+              completionTokens:
+                turnUsage.calls > 0
+                  ? turnUsage.completionTokens
+                  : info.completionTokens,
+              cachedTokens:
+                turnUsage.calls > 0
+                  ? turnUsage.cachedTokens
+                  : info.cachedTokens,
+              durationMs: info.durationMs,
+            });
+            saveReasoningStats(reasoningMessageId, stats);
             closeReasoning();
           },
         };
@@ -941,6 +978,15 @@ export class DotAgent extends AbstractAgent {
               // reply downstream.
               if (String(event.type).startsWith('REASONING')) return;
               if (
+                event.type === EventType.TEXT_MESSAGE_START ||
+                event.type === EventType.TEXT_MESSAGE_CONTENT ||
+                event.type === EventType.TEXT_MESSAGE_CHUNK
+              ) {
+                const messageId = (event as { messageId?: unknown }).messageId;
+                if (typeof messageId === 'string')
+                  assistantMessageIds.add(messageId);
+              }
+              if (
                 event.type === EventType.TEXT_MESSAGE_CONTENT ||
                 event.type === EventType.TEXT_MESSAGE_CHUNK
               ) {
@@ -954,6 +1000,22 @@ export class DotAgent extends AbstractAgent {
                 event.type === EventType.RUN_ERROR ||
                 event.type === EventType.RUN_FINISHED
               ) {
+                if (
+                  event.type === EventType.RUN_FINISHED &&
+                  !finished &&
+                  turnUsage.calls > 0
+                ) {
+                  const stats = buildReasoningStats(model, {
+                    promptTokens: turnUsage.promptTokens,
+                    completionTokens: turnUsage.completionTokens,
+                    cachedTokens: turnUsage.cachedTokens,
+                    durationMs: Date.now() - turnStartedAt,
+                  });
+                  const ids = assistantMessageIds.size
+                    ? assistantMessageIds
+                    : new Set([reasoningMessageId]);
+                  for (const id of ids) saveReasoningStats(id, stats);
+                }
                 if (
                   event.type === EventType.RUN_FINISHED &&
                   !finished &&

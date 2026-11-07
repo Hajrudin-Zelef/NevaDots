@@ -46,6 +46,12 @@ export interface ReasoningStreamHooks {
   onDelta(text: string): void;
   /** The answer/tool call started: close the reasoning message now. */
   onAnswerStart?(): void;
+  /** Usage d'un appel modèle, même sans reasoning (suivi des coûts). */
+  onUsage?(info: {
+    promptTokens: number | null;
+    completionTokens: number | null;
+    cachedTokens: number | null;
+  }): void;
   onEnd(info: {
     promptTokens: number | null;
     completionTokens: number | null;
@@ -159,6 +165,16 @@ export function createReasoningFetch(
     const finish = () => {
       if (ended) return;
       ended = true;
+      if (
+        promptTokens !== null ||
+        completionTokens !== null ||
+        cachedTokens !== null
+      )
+        hooks.onUsage?.({
+          promptTokens,
+          completionTokens,
+          cachedTokens,
+        });
       if (reasoningActive) {
         hooks.onEnd({
           promptTokens,
