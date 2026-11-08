@@ -84,12 +84,17 @@ export function CallView({
       </div>
       {!minimized && (
         <div className="call-caption" aria-live="polite">
-          {voice.userCaption && (
-            <p className="call-user-caption">
-              <small>You</small>
-              {voice.userCaption}
+          {voice.exchanges.map((exchange, index) => (
+            <p
+              key={index}
+              className={
+                exchange.who === 'you' ? 'call-user-caption' : undefined
+              }
+            >
+              <small>{exchange.who === 'you' ? 'You' : dot.name}</small>
+              {exchange.text}
             </p>
-          )}
+          ))}
           <p>
             <small>{dot.name}</small>
             {voice.caption || 'Speak naturally. Your Dot is here with you.'}

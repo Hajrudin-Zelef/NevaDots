@@ -31,6 +31,11 @@ export function useVoice(
   );
   const [caption, setCaption] = useState('');
   const [userCaption, setUserCaption] = useState('');
+  /** Échanges terminés du tour (visibles dans CallView) : la légende live
+   *  seule ne suffit pas — la réponse parlée doit rester affichée. */
+  const [exchanges, setExchanges] = useState<
+    { who: 'you' | 'dot'; text: string }[]
+  >([]);
   // Reconnexion auto : compteur borné + état d'indicateur. Le transcript
   // survit aux rejoins via carryTranscript (reçu final complet).
   const [reconnecting, setReconnecting] = useState(false);
@@ -191,6 +196,19 @@ export function useVoice(
       setPhase('listening');
       setCaption('');
       setUserCaption('');
+      // Reprise : réaffiche les échanges déjà prononcés (sinon l'historique
+      // vocal visible repart de zéro après chaque coupure).
+      const seed: { who: 'you' | 'dot'; text: string }[] = [];
+      for (const line of resume ?? []) {
+        const you = line.match(/^You: ([\s\S]*)$/);
+        if (you) {
+          seed.push({ who: 'you', text: you[1] });
+          continue;
+        }
+        const dot = line.match(/^Dot: ([\s\S]*)$/);
+        if (dot) seed.push({ who: 'dot', text: dot[1] });
+      }
+      setExchanges(seed);
       let stream: MediaStream | undefined;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -295,9 +313,21 @@ export function useVoice(
             ) {
               current.transcript.push(`You: ${data.transcript}`);
               setUserCaption(data.transcript);
+              setExchanges((prev) => [
+                ...prev,
+                { who: 'you', text: data.transcript as string },
+              ]);
             }
-            if (data.type === 'response.output_audio_transcript.done')
+            if (data.type === 'response.output_audio_transcript.done') {
               current.transcript.push(`Dot: ${data.transcript}`);
+              // Le `done` porte le texte complet : l'afficher (les deltas
+              // seuls peuvent ne jamais arriver selon le provider).
+              setCaption(data.transcript);
+              setExchanges((prev) => [
+                ...prev,
+                { who: 'dot', text: data.transcript as string },
+              ]);
+            }
           }
           if (data.type === 'error')
             setError(
@@ -471,6 +501,7 @@ export function useVoice(
     phase,
     caption,
     userCaption,
+    exchanges,
     toggleMute,
     toggleSpeaker,
     reconnecting,

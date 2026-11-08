@@ -11,7 +11,12 @@ const track = { stop: vi.fn(), enabled: true };
 class FakePeer {
   connectionState = 'new';
   onconnectionstatechange?: () => void;
-  channel = { close: vi.fn(), readyState: 'open' };
+  channel = {
+    close: vi.fn(),
+    readyState: 'open',
+    send: vi.fn(),
+    onmessage: null as ((event: { data: string }) => void) | null,
+  };
   constructor() {
     // The test needs the peer created by the hook, like a browser constructor.
     // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -140,4 +145,25 @@ it('clears disconnect timers on unmount', async () => {
     await vi.advanceTimersByTimeAsync(6000);
   });
   expect(ends()).toHaveLength(0);
+});
+
+it('affiche la réponse parlée (légende complète + historique des échanges)', async () => {
+  const say = async (type: string, transcript: string) => {
+    await act(async () => {
+      pc.channel.onmessage?.({
+        data: JSON.stringify({ type, transcript }),
+      });
+    });
+  };
+  expect(voice.caption).toBe('');
+  expect(voice.exchanges).toEqual([]);
+  await say('conversation.item.input_audio_transcription.completed', 'Bonjour');
+  expect(voice.userCaption).toBe('Bonjour');
+  await say('response.output_audio_transcript.done', 'Salut à toi');
+  // Le `done` remplit la légende (les deltas seuls ne suffisent pas).
+  expect(voice.caption).toBe('Salut à toi');
+  expect(voice.exchanges).toEqual([
+    { who: 'you', text: 'Bonjour' },
+    { who: 'dot', text: 'Salut à toi' },
+  ]);
 });
