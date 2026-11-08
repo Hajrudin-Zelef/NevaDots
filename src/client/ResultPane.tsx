@@ -13,6 +13,7 @@ import type { Dot, Result, Status } from '../shared/types';
 import { Mascot } from './Mascot';
 import { ComputerPanel, type ComputerPanelTab } from './ComputerPanel';
 import { safeHostname, safeHref } from './safe-href';
+import { markdownComponents } from './markdown-components';
 export function ResultPane({
   latest,
   status,
@@ -133,20 +134,7 @@ export function ResultPane({
           <article className="brief">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              components={{
-                img: ({ alt }) => (
-                  <span>{alt ? `[Image: ${alt}]` : '[Image omitted]'}</span>
-                ),
-                a: ({ children, href }) => {
-                  const safe = safeHref(href);
-                  if (safe === null) return <span>{children}</span>;
-                  return (
-                    <a href={safe} target="_blank" rel="noreferrer">
-                      {children}
-                    </a>
-                  );
-                },
-              }}
+              components={markdownComponents}
             >
               {latest.text}
             </ReactMarkdown>

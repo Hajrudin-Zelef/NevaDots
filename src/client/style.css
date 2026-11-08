@@ -4195,6 +4195,27 @@ h3 {
 .page-review-body p {
   margin: 8px 0;
 }
+.page-review-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.page-review-body th,
+.page-review-body td {
+  border: 1px solid #d8ddd2;
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.page-review-body th {
+  background: #f0f3ea;
+  font-weight: 600;
+}
+.page-review-body td p,
+.page-review-body th p {
+  margin: 0;
+}
 .page-review-card footer {
   display: flex;
   flex-wrap: wrap;

@@ -11,7 +11,7 @@ import {
   type DeletedReview,
 } from './page-review-decision';
 import { openPageLink } from './page-navigation';
-import { safeHref } from './safe-href';
+import { markdownComponents } from './markdown-components';
 import type { ReviewedPage } from '../server/pages';
 export function PageReviewCard({
   args,
@@ -150,18 +150,7 @@ export function PageReviewCard({
         {draft.success && (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            components={{
-              img: ({ alt }) => <span>{alt}</span>,
-              a: ({ href, children }) => {
-                const safe = safeHref(href);
-                if (safe === null) return <span>{children}</span>;
-                return (
-                  <a href={safe} target="_blank" rel="noreferrer">
-                    {children}
-                  </a>
-                );
-              },
-            }}
+            components={markdownComponents}
           >
             {draft.data.content}
           </ReactMarkdown>
