@@ -24,16 +24,26 @@ const ATTACHMENT_HREF_RE =
 /** Href nettoyé, ou null si le lien doit être neutralisé. */
 export function safeHref(href: string | undefined): string | null {
   if (!href) return null;
-  if (href.startsWith('/#/spaces/')) return href;
-  if (ATTACHMENT_HREF_RE.test(href)) return href;
+  const trimmed = href.trim();
+  if (trimmed.startsWith('/#/spaces/')) return trimmed;
+  // Le modèle omet parfois le slash initial (`api/attachments/...`) : on
+  // normalise vers la forme absolue avant la validation stricte, sans
+  // jamais autoriser de traversée de répertoire. Sans ça le lien de
+  // fichier est neutralisé et rendu en texte brut (F1bis).
+  if (!trimmed.includes('..')) {
+    const candidate = trimmed.startsWith('/')
+      ? trimmed
+      : `/${trimmed.replace(/^\.\//, '')}`;
+    if (ATTACHMENT_HREF_RE.test(candidate)) return candidate;
+  }
   let parsed: URL;
   try {
-    parsed = new URL(href);
+    parsed = new URL(trimmed);
   } catch {
     return null;
   }
   if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) return null;
-  return href;
+  return trimmed;
 }
 
 /** Hostname d'une URL, ou null si malformée (ne jette jamais). */

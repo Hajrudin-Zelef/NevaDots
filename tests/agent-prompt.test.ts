@@ -61,6 +61,9 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).toContain('AUTONOMY');
     expect(prompt).toContain('Never end a turn with a promise');
     expect(prompt).toContain('retry with a different approach');
+    // F1bis : lien de fichier copié exactement, contenu jamais collé.
+    expect(prompt).toContain('leading slash');
+    expect(prompt).toContain('give the link only');
     expect(prompt).toContain('Role instructions: Be helpful.');
     // Pas de JSON brut injecté.
     expect(prompt).not.toContain('JSON.stringify');

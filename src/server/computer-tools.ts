@@ -29,7 +29,7 @@ const TOOL_DESCRIPTIONS: Partial<Record<keyof typeof computerInputs, string>> =
     preview_file:
       'Open a workspace file in the Dot browser preview. Requires files permission.',
     files_send:
-      'Send an existing workspace file to the user as a download (exact bytes). Do not re-emit it via generate_file.',
+      'Send an existing workspace file to the user as a download (exact bytes). Copy the returned downloadUrl exactly as-is (leading slash) in a Markdown link. Do not re-emit it via generate_file.',
     git: 'Git in the workspace: status, diff, log, commit, add, branches, checkout, init, clone (public https only, shallow). No push/pull/fetch.',
   };
 export function computerTools(

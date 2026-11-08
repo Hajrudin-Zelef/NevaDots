@@ -36,6 +36,22 @@ describe('safeHref', () => {
     expect(
       safeHref('/api/attachments/907998d3-bf18-46a9-9bc2-03c0153d6705/content'),
     ).toBe('/api/attachments/907998d3-bf18-46a9-9bc2-03c0153d6705/content');
+    // F1bis : le modèle omet parfois le slash initial — normalisé.
+    expect(
+      safeHref(
+        'api/attachments/907998d3-bf18-46a9-9bc2-03c0153d6705/content?download=1',
+      ),
+    ).toBe(dl);
+    expect(
+      safeHref(
+        './api/attachments/907998d3-bf18-46a9-9bc2-03c0153d6705/content?download=1',
+      ),
+    ).toBe(dl);
+    expect(
+      safeHref(
+        '../api/attachments/907998d3-bf18-46a9-9bc2-03c0153d6705/content?download=1',
+      ),
+    ).toBeNull();
     // Neutralisés : texte affiché sans lien cliquable.
     expect(safeHref('javascript:alert(1)')).toBeNull();
     expect(safeHref('JaVaScRiPt:alert(1)')).toBeNull();
@@ -114,6 +130,26 @@ describe('ChatTranscript', () => {
     expect(html).toContain('dames.html');
     // Même onglet : target _blank ouvrirait le text/plain au lieu de
     // télécharger sur Chrome mobile (« ça vient sous forme de texte »).
+    expect(html).not.toContain('target="_blank"');
+  });
+
+  it('normalise un lien attachment sans slash initial (F1bis)', () => {
+    const id = '907998d3-bf18-46a9-9bc2-03c0153d6705';
+    const html = renderToStaticMarkup(
+      <ChatTranscript
+        messages={[
+          {
+            id: 'm1',
+            role: 'assistant',
+            content: `[index.html](api/attachments/${id}/content?download=1)`,
+          } as unknown as Message,
+        ]}
+        calls={[]}
+      />,
+    );
+    expect(html).toContain(`href="/api/attachments/${id}/content?download=1"`);
+    expect(html).toContain('download');
+    expect(html).toContain('index.html');
     expect(html).not.toContain('target="_blank"');
   });
 

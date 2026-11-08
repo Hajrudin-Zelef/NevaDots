@@ -143,7 +143,7 @@ export function generateFileTool(claim?: (id: string) => void) {
     defineTool({
       name: 'generate_file',
       description:
-        'Generate a NEW text file (document, code, CSV, Markdown, etc.) and make it downloadable. The file is saved server-side; use the returned downloadUrl to present a Markdown download link to the user. Use this whenever the user asks for a file whose content you write. If the file ALREADY exists in the computer workspace, use computer_files_send instead of copying its content here.',
+        'Generate a NEW text file (document, code, CSV, Markdown, etc.) and make it downloadable. The file is saved server-side; use the returned downloadUrl to present a Markdown download link to the user. Copy it exactly as-is (it starts with /api/attachments/); do not shorten or rewrite it. Use this whenever the user asks for a file whose content you write. If the file ALREADY exists in the computer workspace, use computer_files_send instead of copying its content here.',
       parameters: z.object({
         filename: z
           .string()
