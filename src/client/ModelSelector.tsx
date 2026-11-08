@@ -35,6 +35,27 @@ interface Props {
   onModelError: (message: string) => void;
 }
 
+/** Groupes visibles pour une recherche (insensible à la casse, nom seul).
+ *  Sans requête : tout est visible, groupes vides inclus. */
+export function filterModelGroups(
+  providers: ModelsResponse['providers'],
+  filter: string,
+): Array<{ provider: ModelsResponse['providers'][number]; models: string[] }> {
+  const query = filter.trim().toLowerCase();
+  return providers
+    .map((provider) => ({
+      provider,
+      models: provider.models.filter(
+        (model) => !query || model.toLowerCase().includes(query),
+      ),
+    }))
+    .filter(
+      (group) =>
+        group.models.length > 0 ||
+        (!query && group.provider.models.length === 0),
+    );
+}
+
 export function ModelSelector({
   dotId,
   modelValue,
@@ -44,15 +65,17 @@ export function ModelSelector({
   onModelError,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
   const [dropPos, setDropPos] = useState({
     top: 0,
     left: 0,
-    width: 240,
+    width: 280,
     maxHeight: 340,
   });
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
 
   const updateDropPosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -60,7 +83,7 @@ export function ModelSelector({
     const rect = trigger.getBoundingClientRect();
     const gap = 8;
     const width = Math.min(
-      Math.max(rect.width, 240),
+      Math.max(rect.width, 280),
       Math.max(180, window.innerWidth - 16),
     );
     const left = Math.min(
@@ -79,6 +102,8 @@ export function ModelSelector({
 
   useEffect(() => {
     if (!open) return;
+    setFilter('');
+    const timer = window.setTimeout(() => filterRef.current?.focus(), 30);
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       if (
@@ -95,6 +120,7 @@ export function ModelSelector({
     window.addEventListener('resize', updateDropPosition);
     window.addEventListener('scroll', updateDropPosition, true);
     return () => {
+      window.clearTimeout(timer);
       document.removeEventListener('mousedown', handler);
       document.removeEventListener('keydown', key);
       window.removeEventListener('resize', updateDropPosition);
@@ -119,6 +145,12 @@ export function ModelSelector({
   };
 
   const currentParsed = parseModelKey(modelValue);
+  const query = filter.trim().toLowerCase();
+  const visibleProviders = filterModelGroups(modelOptions.providers, filter);
+  const matchCount = visibleProviders.reduce(
+    (total, group) => total + group.models.length,
+    0,
+  );
   const currentMeta = currentParsed
     ? PROVIDER_META[currentParsed.provider]
     : null;
@@ -163,6 +195,21 @@ export function ModelSelector({
               bottom: 'auto',
             }}
           >
+            <div className="model-selector-search">
+              <input
+                ref={filterRef}
+                type="search"
+                aria-label="Filtrer les modèles"
+                placeholder="Filtrer…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              />
+              {query && (
+                <span className="model-selector-count">
+                  {matchCount} résultat{matchCount > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
             <button
               type="button"
               className={`model-selector-option ${!modelValue ? 'active' : ''}`}
@@ -171,9 +218,20 @@ export function ModelSelector({
               <span className="model-selector-option-model">
                 {defaultModelLabel ? `Défaut · ${defaultModelLabel}` : 'Défaut'}
               </span>
+              {!modelValue && (
+                <span className="model-selector-check" aria-hidden="true">
+                  ✓
+                </span>
+              )}
             </button>
 
-            {modelOptions.providers.map((provider) => {
+            {query && matchCount === 0 && (
+              <p className="model-selector-empty">
+                Aucun modèle ne correspond à « {filter.trim()} ».
+              </p>
+            )}
+
+            {visibleProviders.map(({ provider, models }) => {
               const meta = PROVIDER_META[provider.id] ?? {
                 color: '#94a3b8',
                 icon: '',
@@ -195,13 +253,14 @@ export function ModelSelector({
                       </span>
                     )}
                   </div>
-                  {provider.models.map((model) => {
+                  {models.map((model) => {
                     const key = modelKey(provider.id, model);
+                    const active = modelValue === key;
                     return (
                       <button
                         type="button"
                         key={key}
-                        className={`model-selector-option ${modelValue === key ? 'active' : ''}`}
+                        className={`model-selector-option ${active ? 'active' : ''}`}
                         onClick={() => void select(key)}
                       >
                         <span
@@ -211,6 +270,14 @@ export function ModelSelector({
                         <span className="model-selector-option-model">
                           {model}
                         </span>
+                        {active && (
+                          <span
+                            className="model-selector-check"
+                            aria-hidden="true"
+                          >
+                            ✓
+                          </span>
+                        )}
                       </button>
                     );
                   })}

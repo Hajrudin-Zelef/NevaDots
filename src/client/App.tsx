@@ -1033,6 +1033,8 @@ export function App() {
                     submitTitle="Démarrer la conversation (Ctrl+Entrée)"
                     submitAriaLabel="Démarrer la conversation"
                     submitLabel="Démarrer"
+                    hideSource
+                    hideHelp
                     sourceOpen={sourceOpen}
                     onToggleSource={() => setSourceOpen((open) => !open)}
                     source={promptSource}

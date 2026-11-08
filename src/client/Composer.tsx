@@ -67,6 +67,10 @@ export interface ComposerProps {
   voiceButton?: ReactNode;
   /** Stop button (chat, while running). */
   stopButton?: ReactNode;
+  /** Masque le bouton globe (source web) — accueil uniquement. */
+  hideSource?: boolean;
+  /** Masque le bouton aide (suggestions de prompts) — accueil uniquement. */
+  hideHelp?: boolean;
 
   // --- Attachments (Phase 2) ---
   /** File cards row, rendered above the textarea. */
@@ -119,6 +123,8 @@ export function Composer(props: ComposerProps) {
     reasoningDisabled,
     voiceButton,
     stopButton,
+    hideSource,
+    hideHelp,
     attachmentCards,
     note,
     textareaRef,
@@ -200,26 +206,30 @@ export function Composer(props: ComposerProps) {
           >
             <Plus size={17} />
           </button>
-          <button
-            type="button"
-            className={`icon-button ${sourceOpen ? 'active' : ''}`}
-            aria-label="Ajouter une page web"
-            title="Ajouter une page web"
-            aria-expanded={sourceOpen}
-            onClick={onToggleSource}
-          >
-            <Globe size={17} />
-          </button>
-          <button
-            type="button"
-            className={`icon-button ${promptMenuOpen ? 'active' : ''}`}
-            aria-label="Aide pour rédiger un prompt"
-            title="Suggestions de prompts"
-            aria-expanded={promptMenuOpen}
-            onClick={() => onTogglePromptMenu()}
-          >
-            <CircleHelp size={17} />
-          </button>
+          {!hideSource && (
+            <button
+              type="button"
+              className={`icon-button ${sourceOpen ? 'active' : ''}`}
+              aria-label="Ajouter une page web"
+              title="Ajouter une page web"
+              aria-expanded={sourceOpen}
+              onClick={onToggleSource}
+            >
+              <Globe size={17} />
+            </button>
+          )}
+          {!hideHelp && (
+            <button
+              type="button"
+              className={`icon-button ${promptMenuOpen ? 'active' : ''}`}
+              aria-label="Aide pour rédiger un prompt"
+              title="Suggestions de prompts"
+              aria-expanded={promptMenuOpen}
+              onClick={() => onTogglePromptMenu()}
+            >
+              <CircleHelp size={17} />
+            </button>
+          )}
           {voiceButton}
           {modelOptions.providers.length > 0 && (
             <ModelSelector

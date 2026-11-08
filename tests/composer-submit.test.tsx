@@ -5,7 +5,11 @@ import { Composer } from '../src/client/Composer';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 
-function renderComposer(submitLabel?: string) {
+function renderComposer(
+  submitLabel?: string,
+  hideSource?: boolean,
+  hideHelp?: boolean,
+) {
   const nothing: ReactNode = null;
   let renderer: ReactTestRenderer;
   act(() => {
@@ -21,6 +25,8 @@ function renderComposer(submitLabel?: string) {
         submitTitle: 'Envoyer',
         submitAriaLabel: 'Envoyer',
         submitLabel,
+        hideSource,
+        hideHelp,
         sourceOpen: false,
         onToggleSource: () => {},
         source: '',
@@ -71,4 +77,22 @@ it('pastille flèche seule sans submitLabel (conversation en cours)', () => {
   );
   expect(sends).toHaveLength(1);
   expect(sends[0].props.className).not.toContain('send-labeled');
+});
+
+it('masque aide + globe sur le composer d’accueil (hideHelp/hideSource)', () => {
+  const renderer = renderComposer('Démarrer', true, true);
+  const labels = renderer.root
+    .findAllByType('button')
+    .map((b) => b.props['aria-label']);
+  expect(labels).not.toContain('Aide pour rédiger un prompt');
+  expect(labels).not.toContain('Ajouter une page web');
+});
+
+it('affiche aide + globe par défaut (conversation en cours)', () => {
+  const renderer = renderComposer(undefined);
+  const labels = renderer.root
+    .findAllByType('button')
+    .map((b) => b.props['aria-label']);
+  expect(labels).toContain('Aide pour rédiger un prompt');
+  expect(labels).toContain('Ajouter une page web');
 });

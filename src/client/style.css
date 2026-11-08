@@ -5228,3 +5228,41 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.model-selector-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 8px;
+}
+
+.model-selector-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg, #fff);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.model-selector-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.model-selector-empty {
+  margin: 4px 4px 8px;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.model-selector-check {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
