@@ -873,6 +873,9 @@ export function Chat({
           running={running}
           onRetry={retryTurn}
           onQuote={quoteSelection}
+          threadId={thread.id}
+          dotId={dot.id}
+          model={modelControls.selectedModelLabel ?? undefined}
         />
         {queued.map((text, index) => (
           <div className="chat-bubble user pending" key={`queued-${index}`}>

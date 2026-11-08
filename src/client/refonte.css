@@ -317,6 +317,94 @@ textarea::placeholder {
   color: var(--nd-accent);
   background: var(--nd-bg-hover);
 }
+/* Formulaire de retour « je n'aime pas » sous une réponse. */
+.feedback-form {
+  margin-top: 8px;
+  border: 1px solid var(--nd-border);
+  border-radius: 10px;
+  background: var(--nd-bg);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.feedback-form label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.feedback-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--nd-border);
+  border-radius: 8px;
+  background: var(--nd-bg-input);
+  color: inherit;
+  font: inherit;
+  padding: 8px 10px;
+  resize: vertical;
+}
+.feedback-form .feedback-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.feedback-error {
+  color: #b91c1c;
+  margin: 6px 0 0;
+}
+/* Volet Réglages → Feedback (Admin). */
+.feedback-panel .segmented {
+  margin-bottom: 12px;
+}
+.feedback-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.feedback-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--nd-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--nd-bg);
+}
+.feedback-vote {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex: none;
+}
+.feedback-item.positive .feedback-vote {
+  color: #15803d;
+  background: #dcfce7;
+}
+.feedback-item.negative .feedback-vote {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+.feedback-body {
+  flex: 1;
+  min-width: 0;
+}
+.feedback-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--nd-text-secondary);
+}
+.feedback-comment {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* Mini-volet de citation sur sélection (façon Claude) : ancré au-dessus
  * du texte sélectionné, propose « Répondre » comme contexte précis. */
 .quote-toolbar {

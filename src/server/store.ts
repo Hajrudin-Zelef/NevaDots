@@ -7,6 +7,7 @@ import type {
   Action,
   Detail,
   DotUsage,
+  Feedback,
   Memory,
   Result,
   Run,
@@ -55,6 +56,9 @@ export class Store {
       CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, text TEXT NOT NULL, createdAt INTEGER NOT NULL, user_id TEXT);
       CREATE TABLE IF NOT EXISTS attachment_users (attachmentId TEXT PRIMARY KEY, userId TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, model TEXT NOT NULL, promptTokens INTEGER, completionTokens INTEGER, costUsd REAL);
+      CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, ts INTEGER NOT NULL, user_id TEXT, username TEXT, dotId TEXT, threadId TEXT, messageId TEXT NOT NULL, vote INTEGER NOT NULL, comment TEXT, model TEXT);
+      CREATE UNIQUE INDEX IF NOT EXISTS feedback_user_message ON feedback(user_id, messageId);
+      CREATE INDEX IF NOT EXISTS feedback_ts ON feedback(ts);
       CREATE INDEX IF NOT EXISTS tasks_due ON tasks(status, nextRunAt);
       CREATE INDEX IF NOT EXISTS runs_task ON runs(taskId, startedAt);
       CREATE INDEX IF NOT EXISTS events_task ON events(taskId, id);
@@ -695,6 +699,55 @@ export class Store {
         entry.costUsd,
         this.userId,
       );
+  }
+  /** Retours sur les réponses : un vote par (compte, message), re-vote =
+   *  mise à jour (le commentaire du dislike aide à corriger). */
+  recordFeedback(entry: {
+    dotId?: string | null;
+    threadId?: string | null;
+    messageId: string;
+    vote: 1 | -1;
+    comment?: string | null;
+    model?: string | null;
+    username?: string | null;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO feedback (id, ts, user_id, username, dotId, threadId, messageId, vote, comment, model)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, messageId) DO UPDATE SET
+           ts = excluded.ts, username = excluded.username, dotId = excluded.dotId,
+           threadId = excluded.threadId, vote = excluded.vote,
+           comment = excluded.comment, model = excluded.model`,
+      )
+      .run(
+        randomUUID(),
+        Date.now(),
+        this.userId,
+        entry.username ?? null,
+        entry.dotId ?? null,
+        entry.threadId ?? null,
+        entry.messageId,
+        entry.vote,
+        entry.comment ?? null,
+        entry.model ?? null,
+      );
+  }
+  /** Liste admin (tous comptes) : sans filtre user — route réservée Admin. */
+  listAllFeedback(limit = 200, onlyNegative = false): Feedback[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, ts, user_id AS userId, username, dotId, threadId, messageId,
+                vote, comment, model
+           FROM feedback ${onlyNegative ? 'WHERE vote = -1' : ''}
+          ORDER BY ts DESC LIMIT ?`,
+      )
+      .all(limit) as unknown as Feedback[];
+    return rows;
+  }
+  /** Suppression admin (modération du volet Feedback). */
+  deleteFeedback(id: string): void {
+    this.db.prepare('DELETE FROM feedback WHERE id = ?').run(id);
   }
   /** Phase E : coût du mois calendaire en cours (UTC) pour ce compte. */
   monthCostUsd(now = Date.now()): number {

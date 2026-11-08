@@ -974,6 +974,48 @@ export function createApp({
   // Aggregated model usage for the settings cockpit (Phase C3 : par
   // compte — le store porté filtre sur l'utilisateur de la session).
   app.get('/api/usage', (c) => c.json(c.get('store').usageSummary()));
+  // Retours sur les réponses (votes + commentaires dislike) : écriture par
+  // le compte connecté (upsert par message), lecture/modération Admin.
+  const feedbackSchema = z.object({
+    dotId: z.string().max(200).nullish(),
+    threadId: z.string().max(200).nullish(),
+    messageId: z.string().min(1).max(200),
+    vote: z.union([z.literal(1), z.literal(-1)]),
+    comment: z.string().max(2000).nullish(),
+    model: z.string().max(160).nullish(),
+  });
+  app.post('/api/feedback', async (c) => {
+    const parsed = feedbackSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success)
+      return c.json({ error: 'Invalid feedback payload.' }, 400);
+    const userId = c.get('userId');
+    c.get('store').recordFeedback({
+      ...parsed.data,
+      username: auth?.getUserById(userId)?.username ?? null,
+    });
+    return c.json({ ok: true }, 201);
+  });
+  app.get('/api/feedback', (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
+    const limit = Math.min(
+      Math.max(Number.parseInt(c.req.query('limit') ?? '200', 10) || 200, 1),
+      1000,
+    );
+    return c.json({
+      feedback: c
+        .get('store')
+        .listAllFeedback(limit, c.req.query('filter') === 'negatif'),
+    });
+  });
+  app.delete('/api/feedback/:id', (c) => {
+    const denied = requireAdmin(c);
+    if (denied) return denied;
+    c.get('store').deleteFeedback(c.req.param('id'));
+    return c.json({ ok: true });
+  });
   // Unauthenticated liveness probe: cheap, proves the DB is reachable.
   app.get('/health', (c) => {
     try {

@@ -39,6 +39,28 @@ export interface UsageReport {
   week: UsageSummary;
   byDot: DotUsage[];
 }
+/** Vote + commentaire optionnel sur une réponse d'un Dot (retours à corriger). */
+export interface Feedback {
+  id: string;
+  ts: number;
+  userId: string | null;
+  username: string | null;
+  dotId: string | null;
+  threadId: string | null;
+  messageId: string;
+  vote: 1 | -1;
+  comment: string | null;
+  model: string | null;
+}
+/** Corps de POST /api/feedback (upsert par compte + message). */
+export interface FeedbackInput {
+  dotId?: string | null;
+  threadId?: string | null;
+  messageId: string;
+  vote: 1 | -1;
+  comment?: string | null;
+  model?: string | null;
+}
 export interface Task {
   id: string;
   /** Compte propriétaire (Phase C1) : une tâche appartient à un seul compte. */

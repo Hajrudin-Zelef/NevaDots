@@ -6,6 +6,7 @@ import {
   Info,
   KeyRound,
   Languages,
+  MessageSquare,
   Palette,
   Plug,
   SlidersHorizontal,
@@ -33,6 +34,7 @@ import { ConnectionsSection } from './ConnectionsSection';
 import { ExternalAccountsSection } from './ExternalAccountsSection';
 import { ApiProvidersPanel } from './ApiProvidersPanel';
 import { AccountsPanel } from './AccountsPanel';
+import { FeedbackPanel } from './FeedbackPanel';
 import { FaqDialog } from './FaqDialog';
 import { ProfileDialog } from './ProfileDialog';
 import { ModelSelectorPanel } from './ModelSelectorPanel';
@@ -78,6 +80,8 @@ type SettingsTab =
   | 'preferences'
   | 'dots'
   | 'connections'
+  | 'feedback'
+  | 'health'
   | 'health'
   | 'about'
   | 'accounts';
@@ -622,13 +626,19 @@ export function WorkspaceDialog({
                     ['preferences', 'Réglages', SlidersHorizontal],
                     ['dots', 'Dots & Espaces', Bot],
                     ['connections', 'Connexions', Plug],
+                    // Retours utilisateurs (votes + commentaires) = Admin seulement.
+                    ['feedback', 'Feedback', MessageSquare],
                     ['health', 'Santé', Activity],
                     ['about', 'À propos', Info],
                     // Phase E : onglet Comptes = Admin seulement.
                     ['accounts', 'Comptes', Users],
                   ] as const
                 )
-                  .filter(([id]) => id !== 'accounts' || myRole === 'admin')
+                  .filter(
+                    ([id]) =>
+                      (id !== 'accounts' && id !== 'feedback') ||
+                      myRole === 'admin',
+                  )
                   .map(([id, label, Icon]) => (
                     <button
                       key={id}
@@ -1280,6 +1290,9 @@ export function WorkspaceDialog({
                 {dialog.type === 'settings' &&
                   settingsTab === 'accounts' &&
                   myRole === 'admin' && <AccountsPanel />}
+                {dialog.type === 'settings' &&
+                  settingsTab === 'feedback' &&
+                  myRole === 'admin' && <FeedbackPanel />}
               </div>
             </div>
           )}

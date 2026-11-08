@@ -227,6 +227,9 @@ export function ChatTranscript({
   streaming = false,
   running = false,
   onRetry,
+  threadId,
+  dotId,
+  model,
   onQuote,
 }: {
   messages: Message[];
@@ -239,6 +242,10 @@ export function ChatTranscript({
   running?: boolean;
   /** Régénère la dernière réponse (tronque au dernier message user). */
   onRetry?: () => void;
+  /** Contexte joint aux votes (volet Feedback). */
+  threadId?: string;
+  dotId?: string;
+  model?: string;
   /** Cite la sélection (« Répondre ») comme contexte du prochain message. */
   onQuote?: (text: string) => void;
 }) {
@@ -249,7 +256,9 @@ export function ChatTranscript({
   const [quote, setQuote] = useState<{
     x: number;
     y: number;
+    below: boolean;
     text: string;
+    from: 'assistant' | 'user';
   } | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -285,18 +294,25 @@ export function ChatTranscript({
     const anchor = selection.anchorNode;
     const element =
       anchor instanceof Element ? anchor : (anchor?.parentElement ?? undefined);
-    if (!element?.closest?.('.chat-bubble.assistant')) {
+    // Toute bulle (assistant comme user) : citer son propre message pour
+    // préciser sert autant que citer la réponse.
+    const bubble = element?.closest?.('.chat-bubble');
+    if (!bubble) {
       setQuote(null);
       return;
     }
+    const from = bubble.classList.contains('user') ? 'user' : 'assistant';
     const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const below = rect.top < 80;
     setQuote({
       x: Math.min(
         Math.max(rect.left + rect.width / 2, 120),
         window.innerWidth - 120,
       ),
-      y: Math.max(rect.top, 8),
+      y: below ? rect.bottom : Math.max(rect.top, 8),
+      below,
       text,
+      from,
     });
   };
   return (
@@ -310,12 +326,19 @@ export function ChatTranscript({
           style={{
             left: quote.x,
             top: quote.y,
-            transform: 'translate(-50%, -100%)',
+            transform: quote.below
+              ? 'translate(-50%, 8px)'
+              : 'translate(-50%, -100%)',
           }}
         >
           <button
             type="button"
             className="quote-reply"
+            title={
+              quote.from === 'user'
+                ? 'Reprendre ce passage dans ton message'
+                : 'Citer ce passage dans ta réponse'
+            }
             onClick={() => {
               onQuote?.(quote.text);
               window.getSelection()?.removeAllRanges();
@@ -378,6 +401,9 @@ export function ChatTranscript({
                     isLast={message.id === lastAssistantId}
                     running={running}
                     onRetry={() => onRetry?.()}
+                    threadId={threadId}
+                    dotId={dotId}
+                    model={model}
                   />
                 )}
             </div>

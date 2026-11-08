@@ -1,4 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
+vi.mock('../src/client/api', () => ({ api: vi.fn() }));
+import { api } from '../src/client/api';
 import { act, create } from 'react-test-renderer';
 import { createElement } from 'react';
 import { MessageActions } from '../src/client/MessageActions';
@@ -38,7 +40,7 @@ it('affiche copier, régénérer (dernière), avis et lecture', () => {
   expect(labels).toContain('Copier la réponse');
   expect(labels).toContain('Régénérer la réponse');
   expect(labels).toContain('Bonne réponse');
-  expect(labels).toContain('Mauvaise réponse');
+  expect(labels).toContain('Je n’aime pas cette réponse');
   expect(labels).toContain('Lire à voix haute');
 });
 
@@ -69,4 +71,37 @@ it('appelle onRetry au clic régénérer', () => {
       .props.onClick();
   });
   expect(onRetry).toHaveBeenCalledTimes(1);
+});
+
+it('dislike ouvre le formulaire et envoie le commentaire au serveur', async () => {
+  const mockedApi = vi.mocked(api);
+  mockedApi.mockResolvedValue({ ok: true });
+  const { renderer } = renderActions({
+    threadId: 't1',
+    dotId: 'd1',
+    model: 'x',
+  });
+  act(() => {
+    renderer.root
+      .findAllByType('button')
+      .find((b) => b.props['aria-label'] === 'Je n’aime pas cette réponse')!
+      .props.onClick();
+  });
+  const area = renderer.root.findByType('textarea');
+  act(() => {
+    area.props.onChange({ target: { value: 'Trop vague.' } });
+  });
+  await act(async () => {
+    await renderer.root
+      .findByType('form')
+      .props.onSubmit({ preventDefault: () => {} });
+  });
+  expect(mockedApi).toHaveBeenCalledWith('/feedback', 'POST', {
+    messageId: 'm1',
+    vote: -1,
+    comment: 'Trop vague.',
+    threadId: 't1',
+    dotId: 'd1',
+    model: 'x',
+  });
 });

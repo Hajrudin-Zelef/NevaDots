@@ -8,6 +8,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
+import { api } from './api';
 
 /** Avis stockés côté navigateur (pas de backend) : messageId → 1 | -1. */
 const VOTES_KEY = 'nevadots-votes';
@@ -53,9 +54,11 @@ async function copyText(text: string): Promise<void> {
 }
 
 /**
- * Barre d'actions sous une réponse de l'assistant : copier, réessayer
- * (dernière réponse uniquement), avis local, lecture vocale via la synthèse
- * du navigateur (`speechSynthesis`, voix FR si disponible).
+ * Barre d'actions sous une réponse de l'assistant : copier, régénérer
+ * (dernière réponse uniquement), avis (persisté serveur pour correction),
+ * lecture vocale via la synthèse du navigateur (`speechSynthesis`, voix FR
+ * si disponible). Un « je n'aime pas » ouvre un formulaire : le commentaire
+ * explique quoi corriger.
  */
 export function MessageActions({
   messageId,
@@ -63,12 +66,18 @@ export function MessageActions({
   isLast,
   running,
   onRetry,
+  threadId,
+  dotId,
+  model,
 }: {
   messageId: string;
   text: string;
   isLast: boolean;
   running: boolean;
   onRetry: () => void;
+  threadId?: string;
+  dotId?: string;
+  model?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -79,6 +88,10 @@ export function MessageActions({
       return 0;
     }
   });
+  const [formOpen, setFormOpen] = useState(false);
+  const [comment, setComment] = useState('');
+  const [sending, setSending] = useState(false);
+  const [formError, setFormError] = useState('');
 
   useEffect(
     () => () => {
@@ -114,9 +127,7 @@ export function MessageActions({
     setSpeaking(true);
   };
 
-  const castVote = (value: 1 | -1) => {
-    const next = vote === value ? 0 : value;
-    setVote(next);
+  const persistLocal = (next: 1 | -1 | 0) => {
     try {
       const votes = readVotes();
       if (next === 0) delete votes[messageId];
@@ -124,6 +135,67 @@ export function MessageActions({
       localStorage.setItem(VOTES_KEY, JSON.stringify(votes));
     } catch {
       /* avis best-effort */
+    }
+  };
+
+  /** Envoie le vote au serveur (volet Feedback) ; l'avis local reste
+   *  affiché même si l'envoi échoue. */
+  const postFeedback = async (value: 1 | -1, text?: string) => {
+    try {
+      await api('/feedback', 'POST', {
+        messageId,
+        vote: value,
+        comment: text ?? null,
+        threadId: threadId ?? null,
+        dotId: dotId ?? null,
+        model: model ?? null,
+      });
+    } catch {
+      /* best-effort */
+    }
+  };
+
+  const castVote = (value: 1 | -1) => {
+    const next = vote === value ? 0 : value;
+    if (value === -1 && next === -1) {
+      // Dislike : on demande pourquoi avant d'enregistrer.
+      setFormError('');
+      setFormOpen(true);
+      return;
+    }
+    setFormOpen(false);
+    setVote(next);
+    persistLocal(next);
+    if (next === 0) {
+      void api(`/feedback/${encodeURIComponent(messageId)}`, 'DELETE').catch(
+        () => {},
+      );
+    } else void postFeedback(next);
+  };
+
+  const submitFeedback = async () => {
+    if (sending) return;
+    setSending(true);
+    setFormError('');
+    try {
+      await api('/feedback', 'POST', {
+        messageId,
+        vote: -1,
+        comment: comment.trim() || null,
+        threadId: threadId ?? null,
+        dotId: dotId ?? null,
+        model: model ?? null,
+      });
+      setVote(-1);
+      persistLocal(-1);
+      setFormOpen(false);
+      setComment('');
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : 'Envoi impossible.',
+      );
+    } finally {
+      setSending(false);
     }
   };
 
@@ -163,9 +235,9 @@ export function MessageActions({
       <button
         type="button"
         className={`icon-button ${vote === -1 ? 'active' : ''}`}
-        aria-label="Mauvaise réponse"
+        aria-label="Je n’aime pas cette réponse"
         aria-pressed={vote === -1}
-        title="Je n’aime pas"
+        title="Je n’aime pas — dire pourquoi"
         onClick={() => castVote(-1)}
       >
         <ThumbsDown size={14} />
@@ -179,6 +251,48 @@ export function MessageActions({
       >
         {speaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
       </button>
+      {formOpen && (
+        <form
+          className="feedback-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitFeedback();
+          }}
+        >
+          <label htmlFor={`feedback-${messageId}`}>
+            Qu’est-ce qui ne va pas ? (ça nous aide à corriger)
+          </label>
+          <textarea
+            id={`feedback-${messageId}`}
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+            placeholder="Ex. : la commande ne marche pas sur Debian…"
+            rows={2}
+            maxLength={2000}
+            autoFocus
+          />
+          {formError && (
+            <p className="feedback-error" role="alert">
+              {formError}
+            </p>
+          )}
+          <div className="feedback-actions">
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setFormOpen(false);
+                setFormError('');
+              }}
+            >
+              Annuler
+            </button>
+            <button type="submit" className="primary" disabled={sending}>
+              {sending ? 'Envoi…' : 'Envoyer le retour'}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
