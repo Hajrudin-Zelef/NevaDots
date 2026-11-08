@@ -29,7 +29,7 @@ interface Route {
   id: string;
   why: string;
   triggers: string[];
-  patterns: RegExp[];
+  patterns?: RegExp[];
 }
 
 const ROUTES: Route[] = [
@@ -143,7 +143,7 @@ export function isTrivialRequest(text: string): boolean {
 }
 
 for (const route of ROUTES)
-  route.patterns = route.triggers.map((trigger) => new RegExp(trigger));
+  route.patterns ??= route.triggers.map((trigger) => new RegExp(trigger));
 
 /** 0 à 3 suggestions, dans l'ordre de la chaîne (dédupliquées). */
 export function suggestSkills(
@@ -155,7 +155,7 @@ export function suggestSkills(
   const found: SuggestedSkill[] = [];
   for (const route of ROUTES) {
     if (found.length >= max) break;
-    if (route.patterns.some((pattern) => pattern.test(normalized)))
+    if ((route.patterns ?? []).some((pattern) => pattern.test(normalized)))
       found.push({ id: route.id, why: route.why });
   }
   return found;
