@@ -28,6 +28,9 @@ export interface ComposerProps {
   submitDisabled: boolean;
   submitTitle: string;
   submitAriaLabel: string;
+  /** Libellé du bouton d'envoi (ex. « Démarrer » sur l'écran d'accueil).
+   *  Absent = pastille flèche seule (conversation en cours). */
+  submitLabel?: string;
 
   // --- Source page ---
   sourceOpen: boolean;
@@ -93,6 +96,7 @@ export function Composer(props: ComposerProps) {
     submitDisabled,
     submitTitle,
     submitAriaLabel,
+    submitLabel,
     sourceOpen,
     onToggleSource,
     source,
@@ -240,14 +244,26 @@ export function Composer(props: ComposerProps) {
             <Brain size={17} />
           </button>
           {stopButton}
-          <button
-            className="send-button"
-            aria-label={submitAriaLabel}
-            title={submitTitle}
-            disabled={submitDisabled}
-          >
-            <ArrowUp size={19} />
-          </button>
+          {submitLabel ? (
+            <button
+              className="send-button send-labeled"
+              aria-label={submitAriaLabel}
+              title={submitTitle}
+              disabled={submitDisabled}
+            >
+              {submitLabel}
+              <ArrowUp size={16} />
+            </button>
+          ) : (
+            <button
+              className="send-button"
+              aria-label={submitAriaLabel}
+              title={submitTitle}
+              disabled={submitDisabled}
+            >
+              <ArrowUp size={19} />
+            </button>
+          )}
         </div>
       </div>
       <div className="chat-compose-note">{note}</div>

@@ -2000,6 +2000,17 @@ textarea::placeholder {
   background: var(--nd-accent);
   color: white;
 }
+.template-app .chat-compose-row .send-button.send-labeled {
+  width: auto;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .template-app .chat-compose-row .send-button:hover:not(:disabled) {
   background: var(--nd-accent-dark);
 }
