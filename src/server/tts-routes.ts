@@ -43,6 +43,26 @@ async function fetchJson(url: string, key: string, timeoutMs: number) {
 export function ttsRoutes(platform: Platform) {
   const app = new Hono<{ Variables: AppVariables }>();
 
+  /** Providers configurés pouvant porter la synthèse : connus (modèles
+   *  TTS référencés), passerelle (agrège peut-être un amont TTS) ou autres
+   *  (à valider via le bouton d'essai). La compatibilité réelle d'un modèle
+   *  est prouvée par `/api/tts/models` + l'extrait de test. */
+  app.get('/tts/providers', (c) => {
+    const registry = platform.config.providerRegistry;
+    const providers = (registry?.list() ?? [])
+      .filter((provider) => !!provider.apiKey)
+      .map((provider) => ({
+        id: provider.id,
+        label: provider.label,
+        support:
+          provider.id in KNOWN_TTS_MODELS
+            ? 'known'
+            : provider.id === 'litellm'
+              ? 'gateway'
+              : 'unknown',
+      }));
+    return c.json({ providers });
+  });
   /** Modèles TTS compatibles d'un provider : catalogue live filtré,
    *  sinon liste statique connue, sinon vide explicite. */
   app.get('/tts/models', async (c) => {

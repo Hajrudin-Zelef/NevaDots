@@ -78,6 +78,14 @@ export interface FeedbackInput {
   comment?: string | null;
   model?: string | null;
 }
+/** Provider configuré pouvant porter la synthèse vocale neuronale.
+ *  `known` = modèles TTS référencés, `gateway` = passerelle (amont
+ *  incertain, à valider par l'extrait), `unknown` = à tester. */
+export interface TtsProvider {
+  id: string;
+  label: string;
+  support: 'known' | 'gateway' | 'unknown';
+}
 export interface Task {
   id: string;
   /** Compte propriétaire (Phase C1) : une tâche appartient à un seul compte. */

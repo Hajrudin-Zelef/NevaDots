@@ -405,6 +405,21 @@ textarea::placeholder {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Volet Réglages → Voix. */
+.voice-test-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.voice-range {
+  width: 100%;
+  accent-color: var(--nd-accent);
+}
+.prefs-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
 /* Mini-volet de citation sur sélection (façon Claude) : ancré au-dessus
  * du texte sélectionné, propose « Répondre » comme contexte précis. */
 .quote-toolbar {

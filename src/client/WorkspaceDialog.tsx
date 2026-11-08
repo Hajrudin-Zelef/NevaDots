@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   CircleUserRound,
   Users,
+  Volume2,
   X,
 } from 'lucide-react';
 import type {
@@ -35,6 +36,7 @@ import { ExternalAccountsSection } from './ExternalAccountsSection';
 import { ApiProvidersPanel } from './ApiProvidersPanel';
 import { AccountsPanel } from './AccountsPanel';
 import { FeedbackPanel } from './FeedbackPanel';
+import { VoicePanel } from './VoicePanel';
 import { FaqDialog } from './FaqDialog';
 import { ProfileDialog } from './ProfileDialog';
 import { ModelSelectorPanel } from './ModelSelectorPanel';
@@ -80,6 +82,7 @@ type SettingsTab =
   | 'preferences'
   | 'dots'
   | 'connections'
+  | 'voice'
   | 'feedback'
   | 'health'
   | 'health'
@@ -626,6 +629,7 @@ export function WorkspaceDialog({
                     ['preferences', 'Réglages', SlidersHorizontal],
                     ['dots', 'Dots & Espaces', Bot],
                     ['connections', 'Connexions', Plug],
+                    ['voice', 'Voix', Volume2],
                     // Retours utilisateurs (votes + commentaires) = Admin seulement.
                     ['feedback', 'Feedback', MessageSquare],
                     ['health', 'Santé', Activity],
@@ -1293,6 +1297,9 @@ export function WorkspaceDialog({
                 {dialog.type === 'settings' &&
                   settingsTab === 'feedback' &&
                   myRole === 'admin' && <FeedbackPanel />}
+                {dialog.type === 'settings' && settingsTab === 'voice' && (
+                  <VoicePanel settings={state.settings} />
+                )}
               </div>
             </div>
           )}
