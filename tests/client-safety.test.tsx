@@ -24,11 +24,18 @@ function assistantTableMessage() {
 }
 
 describe('safeHref', () => {
-  it('ne laisse passer que http/https/mailto et les liens Spaces', () => {
+  it('ne laisse passer que http/https/mailto, liens Spaces et téléchargements attachments', () => {
     expect(safeHref('https://example.com/x')).toBe('https://example.com/x');
     expect(safeHref('http://example.com')).toBe('http://example.com');
     expect(safeHref('mailto:a@b.c')).toBe('mailto:a@b.c');
     expect(safeHref('/#/spaces/abc')).toBe('/#/spaces/abc');
+    // F1 : lien de fichier généré par le Dot — cliquable + téléchargeable.
+    const dl =
+      '/api/attachments/907998d3-bf18-46a9-9bc2-03c0153d6705/content?download=1';
+    expect(safeHref(dl)).toBe(dl);
+    expect(
+      safeHref('/api/attachments/907998d3-bf18-46a9-9bc2-03c0153d6705/content'),
+    ).toBe('/api/attachments/907998d3-bf18-46a9-9bc2-03c0153d6705/content');
     // Neutralisés : texte affiché sans lien cliquable.
     expect(safeHref('javascript:alert(1)')).toBeNull();
     expect(safeHref('JaVaScRiPt:alert(1)')).toBeNull();
@@ -37,6 +44,11 @@ describe('safeHref', () => {
     expect(safeHref('vbscript:msgbox(1)')).toBeNull();
     expect(safeHref('//evil.com/x')).toBeNull();
     expect(safeHref('/relative/path')).toBeNull();
+    expect(safeHref('/api/attachments/not-a-uuid/content')).toBeNull();
+    expect(
+      safeHref('/api/attachments/xxx/content?download=1&evil=1'),
+    ).toBeNull();
+    expect(safeHref('/api/other')).toBeNull();
     expect(safeHref('#anchor')).toBeNull();
     expect(safeHref('not a url')).toBeNull();
     expect(safeHref('')).toBeNull();
@@ -81,6 +93,25 @@ describe('ChatTranscript', () => {
     expect(html).toContain('<th>Élément</th>');
     expect(html).toContain('<td>B</td>');
     expect(html).not.toContain('| --- |');
+  });
+
+  it('rend les liens de téléchargement attachments cliquables (F1)', () => {
+    const id = '907998d3-bf18-46a9-9bc2-03c0153d6705';
+    const html = renderToStaticMarkup(
+      <ChatTranscript
+        messages={[
+          {
+            id: 'm1',
+            role: 'assistant',
+            content: `[dames.html](/api/attachments/${id}/content?download=1)`,
+          } as unknown as Message,
+        ]}
+        calls={[]}
+      />,
+    );
+    expect(html).toContain(`/api/attachments/${id}/content?download=1`);
+    expect(html).toContain('download');
+    expect(html).toContain('dames.html');
   });
 
   it('rend les blocs de code en carte sombre avec langage et copie', () => {

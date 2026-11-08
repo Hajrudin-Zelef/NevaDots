@@ -16,6 +16,7 @@ export const markdownComponents = {
     const safe = safeHref(href);
     if (safe === null) return <span>{children}</span>;
     const internal = safe.startsWith('/#/spaces/');
+    const attachment = safe.startsWith('/api/attachments/');
     return (
       <a
         onClick={(event) => {
@@ -27,6 +28,7 @@ export const markdownComponents = {
         href={safe}
         target={internal ? undefined : '_blank'}
         rel="noreferrer"
+        {...(attachment ? { download: '' } : {})}
       >
         {children}
       </a>
