@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   Brain,
@@ -7,9 +7,11 @@ import {
   Globe,
   Link2,
   Plus,
+  Smile,
   X,
 } from 'lucide-react';
 import { shouldSubmitComposerOnKeyDown } from './chat-composer';
+import { EMOJI_CATEGORIES } from './emoji';
 import { type ModelsResponse } from '../shared/models';
 import { ModelSelector } from './ModelSelector';
 
@@ -124,12 +126,50 @@ export function Composer(props: ComposerProps) {
   // puis le texte défile à l'intérieur. Sans ça, un long message reste écrasé
   // sur une ligne et le texte « casse » visuellement.
   const innerRef = useRef<HTMLTextAreaElement>(null);
+  const emojiWrapRef = useRef<HTMLSpanElement>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [emojiTab, setEmojiTab] = useState(0);
   useEffect(() => {
     const el = innerRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }, [text]);
+  useEffect(() => {
+    if (!emojiOpen || typeof document === 'undefined') return;
+    const outside = (event: PointerEvent) => {
+      if (!emojiWrapRef.current?.contains(event.target as Node | null))
+        setEmojiOpen(false);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setEmojiOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', key);
+    };
+  }, [emojiOpen]);
+  /** Insère l'emoji au curseur (fin du texte en repli sans vrai DOM). */
+  const insertEmoji = (emoji: string) => {
+    const el = innerRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    onTextChange(text.slice(0, start) + emoji + text.slice(end));
+    if (typeof requestAnimationFrame === 'undefined') return;
+    requestAnimationFrame(() => {
+      const target = innerRef.current;
+      if (!target) return;
+      target.focus();
+      const pos = start + emoji.length;
+      try {
+        target.setSelectionRange(pos, pos);
+      } catch {
+        /* repli : curseur en fin de champ */
+      }
+    });
+  };
 
   return (
     <form
@@ -212,10 +252,57 @@ export function Composer(props: ComposerProps) {
             aria-label="Aide pour rédiger un prompt"
             title="Suggestions de prompts"
             aria-expanded={promptMenuOpen}
-            onClick={onTogglePromptMenu}
+            onClick={() => onTogglePromptMenu()}
           >
             <CircleHelp size={17} />
           </button>
+          <span className="emoji-wrap" ref={emojiWrapRef}>
+            <button
+              type="button"
+              className={`icon-button ${emojiOpen ? 'active' : ''}`}
+              aria-label="Insérer un emoji"
+              title="Emojis"
+              aria-expanded={emojiOpen}
+              onClick={() => setEmojiOpen((open) => !open)}
+            >
+              <Smile size={17} />
+            </button>
+            {emojiOpen && (
+              <div className="emoji-panel" role="dialog" aria-label="Emojis">
+                <div className="emoji-tabs" role="tablist">
+                  {EMOJI_CATEGORIES.map((category, index) => (
+                    <button
+                      key={category.label}
+                      type="button"
+                      role="tab"
+                      aria-selected={index === emojiTab}
+                      className={index === emojiTab ? 'active' : ''}
+                      title={category.label}
+                      onClick={() => setEmojiTab(index)}
+                    >
+                      {category.items[0]}
+                    </button>
+                  ))}
+                </div>
+                <div className="emoji-grid">
+                  {EMOJI_CATEGORIES[emojiTab].items.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className="emoji-item"
+                      aria-label={`Insérer ${emoji}`}
+                      onClick={() => {
+                        insertEmoji(emoji);
+                        setEmojiOpen(false);
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </span>
           {voiceButton}
           {modelOptions.providers.length > 0 && (
             <ModelSelector

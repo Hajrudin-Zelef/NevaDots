@@ -1,0 +1,120 @@
+/** Volet emoji du composer : sélection curée, sans dépendance.
+ *  Insertion au curseur (voir `Composer`) ; les variations de genre/ton
+ *  sont volontairement exclues pour garder la grille lisible. */
+export interface EmojiCategory {
+  label: string;
+  items: string[];
+}
+
+export const EMOJI_CATEGORIES: EmojiCategory[] = [
+  {
+    label: 'Visages',
+    items: [
+      '😀',
+      '😁',
+      '😂',
+      '🤣',
+      '😊',
+      '😍',
+      '😎',
+      '🤔',
+      '😐',
+      '🙄',
+      '😴',
+      '😷',
+      '🤯',
+      '🥳',
+      '😢',
+      '😡',
+    ],
+  },
+  {
+    label: 'Gestes',
+    items: [
+      '👍',
+      '👎',
+      '👏',
+      '🙏',
+      '💪',
+      '👋',
+      '✌️',
+      '🤝',
+      '👀',
+      '🙌',
+      '✍️',
+      '💅',
+    ],
+  },
+  {
+    label: 'Cœurs',
+    items: [
+      '❤️',
+      '🧡',
+      '💛',
+      '💚',
+      '💙',
+      '💜',
+      '🤍',
+      '🖤',
+      '💔',
+      '💯',
+      '✨',
+      '🔥',
+    ],
+  },
+  {
+    label: 'Objets',
+    items: [
+      '💡',
+      '📎',
+      '📌',
+      '✂️',
+      '📷',
+      '💻',
+      '📱',
+      '⌨️',
+      '🔋',
+      '🔍',
+      '🔑',
+      '🎁',
+    ],
+  },
+  {
+    label: 'Nature',
+    items: [
+      '🌞',
+      '🌙',
+      '⭐',
+      '🌈',
+      '🔥',
+      '💧',
+      '🌱',
+      '🌳',
+      '🌸',
+      '🍀',
+      '🐱',
+      '🐶',
+    ],
+  },
+  {
+    label: 'Nourriture',
+    items: ['☕', '🍵', '🍎', '🍕', '🍰', '🍺', '🥐', '🍇'],
+  },
+  {
+    label: 'Symboles',
+    items: [
+      '✅',
+      '❌',
+      '⚠️',
+      '❓',
+      '❗',
+      '➡️',
+      '⬅️',
+      '🔁',
+      '⏰',
+      '📅',
+      '🎉',
+      '🏆',
+    ],
+  },
+];
