@@ -15,6 +15,7 @@ import type { Platform } from './platform.js';
 import { VoiceService } from './voice.js';
 import { workspaceRoutes } from './workspace-routes.js';
 import { providerRoutes } from './provider-routes.js';
+import { ttsRoutes } from './tts-routes.js';
 import { skillRoutes } from './skill-routes.js';
 import { externalAccountRoutes } from './external-accounts.js';
 import { systemMetrics } from './metrics.js';
@@ -805,6 +806,7 @@ export function createApp({
   const voice = platform ? new VoiceService(platform) : undefined;
   if (platform && voice) app.route('/api', workspaceRoutes(platform, voice));
   if (platform) app.route('/api', providerRoutes(platform));
+  if (platform) app.route('/api', ttsRoutes(platform));
   if (platform)
     app.route('/api', skillRoutes(platform.skills, platform.workspace));
   if (platform?.config.externalAccounts)
