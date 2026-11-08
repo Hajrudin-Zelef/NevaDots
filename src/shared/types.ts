@@ -79,12 +79,13 @@ export interface FeedbackInput {
   model?: string | null;
 }
 /** Provider configuré pouvant porter la synthèse vocale neuronale.
- *  `known` = modèles TTS référencés, `gateway` = passerelle (amont
- *  incertain, à valider par l'extrait), `unknown` = à tester. */
+ *  `gateway` = passerelle (amont TTS incertain, à valider par l'extrait),
+ *  `unknown` = modèle à découvrir via le catalogue live. Seuls les
+ *  providers réellement configurés (clé présente) sont listés. */
 export interface TtsProvider {
   id: string;
   label: string;
-  support: 'known' | 'gateway' | 'unknown';
+  support: 'gateway' | 'unknown';
 }
 export interface Task {
   id: string;

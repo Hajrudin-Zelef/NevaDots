@@ -338,7 +338,7 @@ export function VoicePanel({ settings }: { settings: Settings }) {
                     </option>
                   ))}
                 {providers.some((p) => p.support === 'unknown') && (
-                  <optgroup label="À tester (support inconnu)">
+                  <optgroup label="Autres (catalogue live à vérifier)">
                     {providers
                       .filter((p) => p.support === 'unknown')
                       .map((p) => (
@@ -376,35 +376,33 @@ export function VoicePanel({ settings }: { settings: Settings }) {
               </select>
             ) : (
               <p className="muted">
-                Aucun modèle TTS détecté pour ce provider. Vérifiez la clé et
-                l’endpoint, ou essayez quand même une voix connue.
+                Aucun modèle TTS détecté dans le catalogue live de ce provider.
+                Vérifiez sa clé et ses modèles disponibles, puis rechargez la
+                liste.
               </p>
             )}
           </div>
           <div className="prefs-field">
             <span className="prefs-field-label">Voix du modèle</span>
-            {modelVoices.length ? (
-              <select
-                className="field-input"
-                aria-label="Voix du modèle"
-                value={voice}
-                onChange={(e) => setVoice(e.target.value)}
-              >
-                <option value="">Voix par défaut</option>
-                {modelVoices.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                className="field-input"
-                aria-label="Voix du modèle (nom libre)"
-                placeholder="Ex. alloy, nova…"
-                value={voice}
-                onChange={(e) => setVoice(e.target.value)}
-              />
+            <select
+              className="field-input"
+              aria-label="Voix du modèle"
+              value={voice}
+              onChange={(e) => setVoice(e.target.value)}
+            >
+              <option value="">Auto (le provider décide)</option>
+              {modelVoices.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            {!modelVoices.length && (
+              <p className="muted prefs-lead">
+                Ce provider n’expose pas de liste de voix : « Auto » laisse le
+                endpoint choisir. N’inventez pas de nom : un nom inconnu est
+                refusé (erreur 400 du provider).
+              </p>
             )}
           </div>
           <RangeField

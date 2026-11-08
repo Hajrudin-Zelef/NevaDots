@@ -6,20 +6,29 @@ import type { AppVariables } from './request-context.js';
 const TTS_TIMEOUT_MS = 30_000;
 const TTS_MAX_CHARS = 4000;
 
-/** Modèles TTS connus par provider (repli quand le catalogue live échoue). */
-const KNOWN_TTS_MODELS: Record<string, string[]> = {
-  openai: ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'],
-  // Passerelle OpenCode (zen) : compatible OpenAI, modèles OpenAI servis.
-  opencode: ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'],
-};
-/** Voix connues par provider (repli quand `/audio/voices` est absent). */
-const KNOWN_TTS_VOICES: Record<string, string[]> = {
-  openai: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
-  opencode: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
-};
+/** Voix par défaut quand l'utilisateur n'en choisit pas (le provider
+ *  tranche ; 'auto' laisse le endpoint décider). */
+const DEFAULT_VOICE = 'auto';
 /** Motifs de modèles TTS dans un catalogue OpenAI-compatible. */
-const TTS_MODEL_PATTERN = /(tts|audio|speak|voice|bark|xtts|parler|vits)/i;
+const TTS_MODEL_PATTERN =
+  /(tts|audio|speak|voice|bark|xtts|parler|vits|suno|fish|cosyvoice)/i;
 const STT_PATTERN = /(whisper|transcri|stt|diariz)/i;
+
+interface CatalogEntry {
+  id?: unknown;
+  architecture?: { output_modalities?: unknown };
+}
+
+function isTtsModel(entry: CatalogEntry): entry is { id: string } {
+  if (typeof entry.id !== 'string' || !entry.id) return false;
+  if (TTS_MODEL_PATTERN.test(entry.id) && !STT_PATTERN.test(entry.id))
+    return true;
+  const modalities = entry.architecture?.output_modalities;
+  return (
+    Array.isArray(modalities) &&
+    modalities.some((m) => typeof m === 'string' && m.toLowerCase() === 'audio')
+  );
+}
 
 async function fetchJson(url: string, key: string, timeoutMs: number) {
   const controller = new AbortController();
@@ -31,7 +40,10 @@ async function fetchJson(url: string, key: string, timeoutMs: number) {
     });
     if (!response.ok) return null;
     return (await response.json().catch(() => null)) as {
-      data?: Array<{ id?: unknown }>;
+      data?: Array<{
+        id?: unknown;
+        architecture?: { output_modalities?: unknown };
+      }>;
     } | null;
   } catch {
     return null;
@@ -40,13 +52,38 @@ async function fetchJson(url: string, key: string, timeoutMs: number) {
   }
 }
 
+/** Extrait le message d'erreur lisible d'une réponse provider (JSON OpenAI
+ *  `{error:{message}}` ou texte brut), tronqué. */
+function extractProviderMessage(detail: string): string {
+  if (!detail) return 'Vérifiez le modèle, la voix et la clé.';
+  try {
+    const parsed = JSON.parse(detail) as {
+      error?: { message?: unknown } | string;
+      message?: unknown;
+      detail?: unknown;
+    };
+    const message =
+      typeof parsed.error === 'string'
+        ? parsed.error
+        : typeof parsed.error?.message === 'string'
+          ? parsed.error.message
+          : typeof parsed.message === 'string'
+            ? parsed.message
+            : typeof parsed.detail === 'string'
+              ? parsed.detail
+              : detail;
+    return String(message).slice(0, 300);
+  } catch {
+    return detail.slice(0, 300);
+  }
+}
+
 export function ttsRoutes(platform: Platform) {
   const app = new Hono<{ Variables: AppVariables }>();
 
-  /** Providers configurés pouvant porter la synthèse : connus (modèles
-   *  TTS référencés), passerelle (agrège peut-être un amont TTS) ou autres
-   *  (à valider via le bouton d'essai). La compatibilité réelle d'un modèle
-   *  est prouvée par `/api/tts/models` + l'extrait de test. */
+  /** Providers configurés (clé présente). Le support TTS réel n'est
+   *  prouvé que par `/api/tts/models` + l'extrait de test — aucun modèle
+   *  n'est inventé ici. */
   app.get('/tts/providers', (c) => {
     const registry = platform.config.providerRegistry;
     const providers = (registry?.list() ?? [])
@@ -54,17 +91,13 @@ export function ttsRoutes(platform: Platform) {
       .map((provider) => ({
         id: provider.id,
         label: provider.label,
-        support:
-          provider.id in KNOWN_TTS_MODELS
-            ? 'known'
-            : provider.id === 'litellm'
-              ? 'gateway'
-              : 'unknown',
+        support: provider.id === 'litellm' ? 'gateway' : 'unknown',
       }));
     return c.json({ providers });
   });
-  /** Modèles TTS compatibles d'un provider : catalogue live filtré,
-   *  sinon liste statique connue, sinon vide explicite. */
+  /** Modèles TTS compatibles d'un provider : UNIQUEMENT le catalogue live
+   *  filtré (motif TTS ou modalité de sortie audio, STT exclus). Jamais de
+   *  liste devinée : catalogue injoignable = liste vide + explication. */
   app.get('/tts/models', async (c) => {
     const registry = platform.config.providerRegistry;
     const providerId = c.req.query('provider') ?? undefined;
@@ -78,18 +111,29 @@ export function ttsRoutes(platform: Platform) {
       provider.apiKey,
       8000,
     );
-    const live = (catalog?.data ?? [])
-      .map((entry) => (typeof entry.id === 'string' ? entry.id : ''))
-      .filter(Boolean)
-      .filter((id) => TTS_MODEL_PATTERN.test(id) && !STT_PATTERN.test(id));
-    if (live.length)
-      return c.json({ models: live, voices: [], source: 'live' });
-    const known = KNOWN_TTS_MODELS[provider.id] ?? [];
-    return c.json({
-      models: known,
-      voices: KNOWN_TTS_VOICES[provider.id] ?? [],
-      source: known.length ? 'static' : 'none',
-    });
+    if (!catalog)
+      return c.json({
+        models: [],
+        voices: [],
+        source: 'none',
+        error:
+          'Catalogue injoignable : vérifiez la clé et l’endpoint du provider.',
+      });
+    const live = (catalog.data ?? []).filter(isTtsModel).map((e) => e.id);
+    // Voix : endpoint dédié quand il existe, sinon l'utilisateur garde
+    // 'auto' (le provider tranche).
+    const voicesCatalog = await fetchJson(
+      `${provider.baseUrl.replace(/\/$/, '')}/audio/voices`,
+      provider.apiKey,
+      8000,
+    );
+    const voices = (voicesCatalog?.data ?? [])
+      .map((entry) => {
+        const id = (entry as { id?: unknown }).id;
+        return typeof id === 'string' ? id : '';
+      })
+      .filter(Boolean);
+    return c.json({ models: live, voices, source: 'live' });
   });
 
   /** Synthèse vocale neuronale : le texte part au provider (clé serveur,
@@ -118,20 +162,23 @@ export function ttsRoutes(platform: Platform) {
         },
         404,
       );
+    // Modèle : choix explicite de l'utilisateur, sinon un modèle TTS
+    // déclaré dans la config du provider (jamais deviné).
     const ttsModel =
       model ??
-      KNOWN_TTS_MODELS[provider.id]?.[0] ??
       provider.models.find(
         (m) => TTS_MODEL_PATTERN.test(m) && !STT_PATTERN.test(m),
       );
     if (!ttsModel)
       return c.json(
         {
-          error: `Aucun modèle TTS connu pour ${provider.label}. Choisissez-en un dans Réglages → Voix.`,
+          error: `Aucun modèle TTS pour ${provider.label}. Listez-en un via Réglages → Voix (catalogue live du provider), puis réessayez.`,
         },
-        404,
+        400,
       );
-    const ttsVoice = voice ?? KNOWN_TTS_VOICES[provider.id]?.[0] ?? 'alloy';
+    // Voix : choix explicite, sinon 'auto' (le endpoint tranche — cf.
+    // certains providers qui refusent les noms inconnus).
+    const ttsVoice = voice || DEFAULT_VOICE;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TTS_TIMEOUT_MS);
     try {
@@ -155,11 +202,21 @@ export function ttsRoutes(platform: Platform) {
       );
       if (!response.ok) {
         const detail = await response.text().catch(() => '');
+        const providerMessage = extractProviderMessage(detail);
+        // 4xx = demande à corriger (modèle/voix/clé) → 400 lisible ;
+        // le reste = panne côté provider/passerelle.
+        if (response.status >= 400 && response.status < 500)
+          return c.json(
+            {
+              error: `Synthèse vocale refusée (${response.status}). ${providerMessage}`,
+            },
+            400,
+          );
         return c.json(
           {
-            error: `Synthèse vocale refusée (${response.status}). ${detail.slice(0, 200) || 'Vérifiez le modèle et la clé.'}`,
+            error: `Synthèse vocale refusée (${response.status}). ${providerMessage}`,
           },
-          response.status === 401 || response.status === 403 ? 502 : 502,
+          502,
         );
       }
       const audio = await response.arrayBuffer();

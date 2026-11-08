@@ -132,28 +132,37 @@ describe('Voix neuronale (/api/tts)', () => {
     expect((await bad({ text: 'x'.repeat(4001) })).status).toBe(400);
   });
 
-  it('404 sans clé configurée, 502 si le provider refuse', async () => {
+  it('404 sans clé configurée, 400 lisible si le provider refuse', async () => {
     const f = fixture();
     stores.push(f);
     await f.auth.createUser('boss', 'a-strong-password', 'admin');
     const boss = await loginAs(f.app, f.auth, 'boss', 'admin');
-    const fetchMock = vi.fn(async () => new Response('ko', { status: 401 }));
-    vi.stubGlobal('fetch', fetchMock);
-    // Aucune clé dans cet environnement de test : 404 avant tout appel.
     const noKey = await f.app.request('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...boss },
       body: JSON.stringify({ text: 'Bonjour', provider: 'opencode' }),
     });
     expect([401, 404]).toContain(noKey.status);
-    // Avec clé : l'erreur amont devient une 502 lisible.
+    // Avec clé : catalogue live OK (un modèle TTS), synthèse refusée (401).
     await setKey(f.app, boss, 'opencode', 'sk-test');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown) =>
+        String(url).endsWith('/models')
+          ? Response.json({ data: [{ id: 'tts-1' }] })
+          : new Response('ko', { status: 401 }),
+      ),
+    );
     const refused = await f.app.request('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...boss },
-      body: JSON.stringify({ text: 'Bonjour', provider: 'opencode' }),
+      body: JSON.stringify({
+        text: 'Bonjour',
+        provider: 'opencode',
+        model: 'tts-1',
+      }),
     });
-    expect(refused.status).toBe(502);
+    expect(refused.status).toBe(400);
     expect(((await refused.json()) as { error: string }).error).toContain(
       'refusée',
     );
@@ -204,7 +213,7 @@ describe('Voix neuronale (/api/tts)', () => {
     });
   });
 
-  it('liste les modèles TTS compatibles (live filtré, repli statique)', async () => {
+  it('liste les modèles TTS compatibles (live filtré, jamais deviné)', async () => {
     const f = fixture();
     stores.push(f);
     await f.auth.createUser('marie', 'a-strong-password', 'user');
@@ -249,7 +258,7 @@ describe('Voix neuronale (/api/tts)', () => {
     ).json()) as { models: string[]; source: string };
     expect(live.source).toBe('live');
     expect(live.models).toEqual(['tts-1', 'gpt-4o-mini-tts']);
-    // Catalogue en panne : repli statique connu.
+    // Catalogue injoignable : liste vide explicite, rien d'inventé.
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('ko', { status: 500 })),
@@ -258,9 +267,61 @@ describe('Voix neuronale (/api/tts)', () => {
       await f.app.request('/api/tts/models?provider=opencode', {
         headers: marie,
       })
-    ).json()) as { models: string[]; source: string };
-    expect(fallback.source).toBe('static');
-    expect(fallback.models).toContain('tts-1');
+    ).json()) as { models: string[]; source: string; error?: string };
+    expect(fallback.source).toBe('none');
+    expect(fallback.models).toEqual([]);
+    expect(fallback.error).toMatch(/injoignable/);
+  });
+
+  it('propage le message d’erreur provider sur 400 (modèle/voix invalide)', async () => {
+    const f = fixture();
+    stores.push(f);
+    await f.auth.createUser('boss', 'a-strong-password', 'admin');
+    const boss = await loginAs(f.app, f.auth, 'boss', 'admin');
+    await setKey(f.app, boss, 'opencode', 'sk-test');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { message: 'Invalid model name passed in model=bogus.' },
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    );
+    const res = await f.app.request('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...boss },
+      body: JSON.stringify({
+        text: 'Bonjour',
+        provider: 'opencode',
+        model: 'bogus',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain(
+      'Invalid model name',
+    );
+  });
+
+  it('liste les providers configurés (sans clé = absents)', async () => {
+    const f = fixture();
+    stores.push(f);
+    await f.auth.createUser('boss', 'a-strong-password', 'admin');
+    await f.auth.createUser('marie', 'a-strong-password', 'user');
+    const boss = await loginAs(f.app, f.auth, 'boss', 'admin');
+    await setKey(f.app, boss, 'opencode', 'sk-test');
+    const marie = await loginAs(f.app, f.auth, 'marie', 'user');
+    const list = (await (
+      await f.app.request('/api/tts/providers', { headers: marie })
+    ).json()) as {
+      providers: Array<{ id: string; label: string; support: string }>;
+    };
+    const opencode = list.providers.find((p) => p.id === 'opencode');
+    expect(opencode).toBeTruthy();
+    expect(opencode!.support).toBe('unknown');
   });
 
   it('PATCH /api/settings valide les champs voix', async () => {
