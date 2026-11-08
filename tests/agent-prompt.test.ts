@@ -70,6 +70,9 @@ describe('agent-prompt (phase 5)', () => {
     // Jour en toutes lettres + ISO : le Dot sait en permanence quel jour on est.
     expect(prompt).toMatch(/Date: .+ \(\d{4}-\d{2}-\d{2}\) —/);
     expect(prompt).not.toContain('Time:');
+    // F11 : la consigne anti-heure est verrouillée positivement —
+    // supprimer la phrase fait échouer ce test.
+    expect(prompt).toContain('Never state the time of day');
     // Style + langue de réponse (défauts) injectés.
     expect(prompt).toContain('STYLE');
     expect(prompt).toContain('LANGUAGE — Always reply in French');

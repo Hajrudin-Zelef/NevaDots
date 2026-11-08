@@ -3,7 +3,11 @@ import {
   buildReasoningStats,
   createReasoningFetch,
 } from '../src/server/reasoning.js';
-import { estimateCostUsd, priceForModel } from '../src/shared/pricing.js';
+import {
+  cacheHitFactorForModel,
+  estimateCostUsd,
+  priceForModel,
+} from '../src/shared/pricing.js';
 
 function sseResponse(lines: string[]): Response {
   const body = lines.join('\n');
@@ -287,11 +291,19 @@ it.each(cacheFormats)(
   },
 );
 
-it('facture les hits de cache à 0.1× le prix d’entrée', () => {
-  // 1000 prompt dont 800 relus : 200 plein + 80 × tarif cache.
+it('facture les hits de cache au tarif du provider (F6)', () => {
+  // DeepSeek : hit 0,07 $/1M contre 0,27 $ en miss (≈ 0,26×, pas 0,1×).
   expect(
     estimateCostUsd('deepseek/deepseek-chat-v3-0324', 1000, 0, 800),
-  ).toBeCloseTo(((200 + 800 * 0.1) * 0.27) / 1e6, 12);
+  ).toBeCloseTo(((200 + 800 * (0.07 / 0.27)) * 0.27) / 1e6, 12);
+  expect(cacheHitFactorForModel('deepseek/deepseek-chat-v3-0324')).toBeCloseTo(
+    0.07 / 0.27,
+    12,
+  );
+  // OpenAI/Anthropic : 0,1× inchangé.
+  expect(cacheHitFactorForModel('openai/gpt-5')).toBe(0.1);
+  expect(cacheHitFactorForModel('anthropic/claude-sonnet-4.5')).toBe(0.1);
+  // 1000 prompt dont 800 relus : 200 plein + 800 × tarif cache.
   const stats = buildReasoningStats('deepseek/deepseek-chat-v3-0324', {
     promptTokens: 1000,
     completionTokens: 2000,
@@ -300,7 +312,7 @@ it('facture les hits de cache à 0.1× le prix d’entrée', () => {
   });
   expect(stats.cachedTokens).toBe(500);
   expect(stats.costUsd).toBeCloseTo(
-    (500 * 0.27 + 500 * 0.1 * 0.27 + 2000 * 1.1) / 1e6,
+    (500 * 0.27 + 500 * (0.07 / 0.27) * 0.27 + 2000 * 1.1) / 1e6,
     12,
   );
   // cachedTokens absent = comportement historique inchangé.

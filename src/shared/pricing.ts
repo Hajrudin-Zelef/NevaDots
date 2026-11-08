@@ -72,8 +72,16 @@ export function priceForModel(modelId: string): [number, number] | undefined {
 }
 
 /** Les tokens relus depuis le cache préfixe du provider sont massivement
- * moins chers (DeepSeek/OpenAI/Anthropic ≈ 0.1× le prix d'entrée). */
+ * moins chers. Facteur par défaut 0.1× (OpenAI/Anthropic) ; DeepSeek
+ * facture le hit 0,07 $/1M contre 0,27 $ en miss, soit ≈ 0,26× (F6). */
 export const CACHE_HIT_FACTOR = 0.1;
+const CACHE_HIT_FACTOR_DEEPSEEK = 0.07 / 0.27;
+
+export function cacheHitFactorForModel(modelId: string): number {
+  const id = modelId.toLowerCase();
+  if (id.includes('deepseek')) return CACHE_HIT_FACTOR_DEEPSEEK;
+  return CACHE_HIT_FACTOR;
+}
 
 export function estimateCostUsd(
   modelId: string,
@@ -86,7 +94,8 @@ export function estimateCostUsd(
   if (!price) return null;
   const cached = Math.max(0, Math.min(cachedTokens ?? 0, promptTokens));
   return (
-    ((promptTokens - cached + cached * CACHE_HIT_FACTOR) * price[0] +
+    ((promptTokens - cached + cached * cacheHitFactorForModel(modelId)) *
+      price[0] +
       completionTokens * price[1]) /
     1_000_000
   );
