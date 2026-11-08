@@ -26,6 +26,14 @@ export function FilePreviewModal({
     attachment.textContent ?? null,
   );
   const [textError, setTextError] = useState('');
+  // Changement de pièce : repartir d'un état propre, sinon l'aperçu
+  // précédent (texte) reste affiché pour la nouvelle pièce (F2).
+  const [previewFor, setPreviewFor] = useState(attachment.id);
+  if (previewFor !== attachment.id) {
+    setPreviewFor(attachment.id);
+    setText(attachment.textContent ?? null);
+    setTextError('');
+  }
 
   const tooLarge = attachment.size > PREVIEW_LIMIT;
   const isLocal = attachment.id.startsWith('local-');
@@ -121,6 +129,7 @@ export function FilePreviewModal({
             />
           ) : attachment.category === 'pdf' && !isLocal ? (
             <iframe
+              key={contentUrl}
               src={contentUrl}
               title={attachment.name}
               className="file-preview-pdf"

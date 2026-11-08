@@ -274,13 +274,21 @@ export function ChatTranscript({
       if (event.key === 'Escape') setQuote(null);
     };
     const scroll = () => setQuote(null);
+    // Désélection (clic qui effondre la sélection, Ctrl+A relâché, etc.) :
+    // sans ça le volet « Répondre » reste affiché après désélection (F2).
+    const deselect = () => {
+      const selection = document.getSelection();
+      if (!selection || selection.isCollapsed) setQuote(null);
+    };
     document.addEventListener('pointerdown', hide);
     document.addEventListener('keydown', key);
     document.addEventListener('scroll', scroll, true);
+    document.addEventListener('selectionchange', deselect);
     return () => {
       document.removeEventListener('pointerdown', hide);
       document.removeEventListener('keydown', key);
       document.removeEventListener('scroll', scroll, true);
+      document.removeEventListener('selectionchange', deselect);
     };
   }, [quote]);
   const onSelect = () => {
