@@ -3061,6 +3061,149 @@ h3 {
   vertical-align: 1px;
 }
 
+/* theme: fixed .code-card */
+/* Carte de code façon Claude : volontairement sombre dans les deux thèmes
+ * (le plugin dark-theme ne l'inverse pas — voir `theme: fixed` ci-dessus). */
+.code-card {
+  background: #16181d;
+  border: 1px solid #262a33;
+  border-radius: 12px;
+  margin: 12px 0;
+  overflow: hidden;
+}
+.code-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 8px 7px 14px;
+  background: #1e2128;
+  border-bottom: 1px solid #262a33;
+}
+.code-card-lang {
+  font-size: 12px;
+  font-weight: 500;
+  color: #9aa5b1;
+}
+.code-card-actions {
+  display: flex;
+  gap: 2px;
+}
+.code-card-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #9aa5b1;
+  cursor: pointer;
+}
+.code-card-button:hover {
+  background: #2a2f3a;
+  color: #fff;
+}
+.chat-bubble.assistant pre.code-card-body,
+.brief pre.code-card-body,
+.code-card-body {
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  max-height: 480px;
+  background: #16181d;
+  border: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #d4d9e0;
+  white-space: pre;
+}
+.chat-bubble.assistant .code-card code,
+.brief .code-card code,
+.page-review-body .code-card code,
+.code-card code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+.code-card .hljs-keyword,
+.code-card .hljs-selector-tag,
+.code-card .hljs-doctag {
+  color: #bb9af7;
+}
+.code-card .hljs-string,
+.code-card .hljs-regexp {
+  color: #9ece6a;
+}
+.code-card .hljs-number,
+.code-card .hljs-literal {
+  color: #e5a06b;
+}
+.code-card .hljs-comment,
+.code-card .hljs-quote {
+  color: #636d83;
+  font-style: italic;
+}
+.code-card .hljs-tag {
+  color: #9aa5b1;
+}
+.code-card .hljs-name {
+  color: #f07178;
+}
+.code-card .hljs-attr,
+.code-card .hljs-attribute,
+.code-card .hljs-selector-class,
+.code-card .hljs-selector-id {
+  color: #e0af68;
+}
+.code-card .hljs-title,
+.code-card .hljs-title.function_,
+.code-card .hljs-section {
+  color: #7aa2f7;
+}
+.code-card .hljs-built_in,
+.code-card .hljs-type {
+  color: #7dcfff;
+}
+.code-card .hljs-variable,
+.code-card .hljs-template-variable {
+  color: #f07178;
+}
+.code-card .hljs-operator {
+  color: #89ddff;
+}
+.code-card .hljs-punctuation {
+  color: #8b93a3;
+}
+.code-card .hljs-property {
+  color: #9ece6a;
+}
+.code-card .hljs-meta {
+  color: #bb9af7;
+}
+.code-card-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+}
+.code-card-full {
+  width: min(1000px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.code-card-full .code-card-body {
+  max-height: none;
+  flex: 1 1 auto;
+}
+/* theme: end */
+
 /* A Dot's persistent computer shares the findings panel. */
 .computer-overlay {
   position: fixed;

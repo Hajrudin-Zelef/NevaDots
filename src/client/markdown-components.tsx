@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { Children, isValidElement, type ReactNode } from 'react';
 import { openPageLink } from './page-navigation';
 import { safeHref } from './safe-href';
+import { CodeBlock } from './CodeBlock';
 
 /**
  * Map de composants partagée par tous les rendus ReactMarkdown du client
@@ -30,5 +31,19 @@ export const markdownComponents = {
         {children}
       </a>
     );
+  },
+  pre: ({ children }: { children?: ReactNode }) => {
+    // Bloc clôturé ```lang : carte sombre façon Claude (langage, copie,
+    // agrandir, coloration). Le code inline n'a pas de `pre` : il garde
+    // la pastille bleue via `code`.
+    const child = Children.toArray(children)[0];
+    if (isValidElement<{ className?: string; children?: unknown }>(child)) {
+      const className = child.props.className ?? '';
+      const language = /language-([\w+-]+)/.exec(className)?.[1] ?? '';
+      const text = String(child.props.children ?? '').replace(/\n$/, '');
+      if (language || text.includes('\n'))
+        return <CodeBlock language={language} code={text} />;
+    }
+    return <pre>{children}</pre>;
   },
 };

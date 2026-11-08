@@ -83,6 +83,45 @@ describe('ChatTranscript', () => {
     expect(html).not.toContain('| --- |');
   });
 
+  it('rend les blocs de code en carte sombre avec langage et copie', () => {
+    const html = renderToStaticMarkup(
+      <ChatTranscript
+        messages={[
+          {
+            id: 'm1',
+            role: 'assistant',
+            content: '```html\n<div class="x">ok</div>\n```',
+          } as unknown as Message,
+        ]}
+        calls={[]}
+      />,
+    );
+    expect(html).toContain('code-card');
+    expect(html).toContain('Html');
+    expect(html).toContain('Copier le code');
+    expect(html).toContain('Agrandir le code');
+    // Coloration appliquée (pas de code brut) : balise mise en valeur.
+    expect(html).toContain('hljs-');
+  });
+
+  it('bloc sans langage ou langage inconnu : repli texte sans planter', () => {
+    const html = renderToStaticMarkup(
+      <ChatTranscript
+        messages={[
+          {
+            id: 'm1',
+            role: 'assistant',
+            content: '```zzzlang\nligne 1\nligne 2\n```',
+          } as unknown as Message,
+        ]}
+        calls={[]}
+      />,
+    );
+    expect(html).toContain('code-card');
+    expect(html).toContain('Texte');
+    expect(html).toContain('ligne 1');
+  });
+
   it('neutralise les images en texte (alt seul)', () => {
     const html = renderToStaticMarkup(
       <ChatTranscript
