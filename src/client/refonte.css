@@ -307,6 +307,16 @@ textarea::placeholder {
   background: var(--nd-bg-hover);
   color: var(--nd-text);
 }
+/* Barre d'actions sous une réponse (copier, régénérer, avis, lecture). */
+.message-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+}
+.message-actions .icon-button.active {
+  color: var(--nd-accent);
+  background: var(--nd-bg-hover);
+}
 .text-button {
   color: var(--nd-accent);
 }

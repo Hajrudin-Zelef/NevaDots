@@ -18,6 +18,7 @@ import {
   parseUserMessageWithAttachments,
 } from './attachments';
 import { markdownComponents } from './markdown-components';
+import { MessageActions } from './MessageActions';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt';
 import { isScheduledTaskMessage } from '../shared/scheduled-message';
 
@@ -224,6 +225,8 @@ export function ChatTranscript({
   reasoningForMessage,
   onOpenReasoning,
   streaming = false,
+  running = false,
+  onRetry,
 }: {
   messages: Message[];
   calls: CallReceipt[];
@@ -231,6 +234,10 @@ export function ChatTranscript({
   reasoningForMessage?: (message: Message) => string | undefined;
   onOpenReasoning?: (reasoningId: string) => void;
   streaming?: boolean;
+  /** Tour en cours (désactive « Régénérer »). */
+  running?: boolean;
+  /** Régénère la dernière réponse (tronque au dernier message user). */
+  onRetry?: () => void;
 }) {
   const ids = new Set(messages.map((message) => message.id));
   const lastAssistantId = [...messages]
@@ -281,6 +288,16 @@ export function ChatTranscript({
               ) : (
                 <StaticMarkdown content={String(message.content)} />
               )}
+              {message.role === 'assistant' &&
+                typeof message.content === 'string' && (
+                  <MessageActions
+                    messageId={message.id}
+                    text={message.content}
+                    isLast={message.id === lastAssistantId}
+                    running={running}
+                    onRetry={() => onRetry?.()}
+                  />
+                )}
             </div>
           )}
           {message.role === 'assistant' && renderTools?.(message)}

@@ -488,19 +488,11 @@ export function Chat({
       active = false;
     };
   }, [agent, copilotkit, isReady]);
-  const runPrompt = async (text: string) => {
+  const executeTurn = async () => {
     setError('');
     runError.current = '';
     setRunning(true);
     resetSteps();
-    agent.addMessage({
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: contextualMessage(text, pageContext),
-    });
-    setDraft('');
-    setSource('');
-    setSourceOpen(false);
     try {
       const result = await copilotkit.runAgent({ agent });
       const answered = result.newMessages.some(
@@ -526,8 +518,34 @@ export function Chat({
       setRunning(false);
     }
   };
+  const runPrompt = async (text: string) => {
+    agent.addMessage({
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: contextualMessage(text, pageContext),
+    });
+    setDraft('');
+    setSource('');
+    setSourceOpen(false);
+    await executeTurn();
+  };
+  /** Régénère la dernière réponse : tronque au dernier message user
+   *  (le snapshot serveur est écrasé au prochain run — pas de fantôme). */
+  const retryTurn = () => {
+    if (running) return;
+    const msgs = agent.messages;
+    let lastUser = -1;
+    msgs.forEach((message, index) => {
+      if (message.role === 'user') lastUser = index;
+    });
+    if (lastUser < 0) return;
+    window.speechSynthesis?.cancel();
+    agent.setMessages(msgs.slice(0, lastUser + 1));
+    void executeTurn();
+  };
   const send = (text: string) => {
     if (!text.trim() || !loaded || !contextReady || paused) return;
+    window.speechSynthesis?.cancel();
     // While a turn runs, hold the message and start it as soon as the turn ends.
     if (running) {
       setQueued((current) => [...current, text.trim()]);
@@ -840,6 +858,8 @@ export function Chat({
           reasoningForMessage={reasoningForMessage}
           onOpenReasoning={openReasoning}
           streaming={running}
+          running={running}
+          onRetry={retryTurn}
         />
         {queued.map((text, index) => (
           <div className="chat-bubble user pending" key={`queued-${index}`}>
