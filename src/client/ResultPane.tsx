@@ -8,6 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Dot, Result, Status } from '../shared/types';
 import { Mascot } from './Mascot';
 import { ComputerPanel, type ComputerPanelTab } from './ComputerPanel';
@@ -131,6 +132,7 @@ export function ResultPane({
           )}
           <article className="brief">
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 img: ({ alt }) => (
                   <span>{alt ? `[Image: ${alt}]` : '[Image omitted]'}</span>

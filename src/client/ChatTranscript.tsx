@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { FileText, PhoneOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { AssistantMessage, Message } from '@ag-ui/core';
 import type { CallReceipt } from '../shared/types';
 import { formatChars, parseUserMessageWithAttachments } from './attachments';
@@ -76,7 +77,9 @@ const StaticMarkdown = memo(function StaticMarkdown({
   content: string;
 }) {
   return (
-    <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {content}
+    </ReactMarkdown>
   );
 });
 
@@ -146,7 +149,12 @@ export function StreamingMarkdown({
 
   if (!streaming)
     return (
-      <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={markdownComponents}
+      >
+        {content}
+      </ReactMarkdown>
     );
 
   const shown = Math.min(view.shown, content.length);

@@ -58,6 +58,25 @@ it('ChatTranscript neutralise les liens piégés du modèle', () => {
   expect(html).toContain('piège');
 });
 
+it('ChatTranscript rend les tableaux GFM au lieu du brut', () => {
+  const html = renderToStaticMarkup(
+    <ChatTranscript
+      messages={[
+        {
+          id: 'm1',
+          role: 'assistant',
+          content: '| Élément | Détail |\n| --- | --- |\n| A | B |\n| C | D |',
+        } as unknown as Message,
+      ]}
+      calls={[]}
+    />,
+  );
+  expect(html).toContain('<table>');
+  expect(html).toContain('<th>Élément</th>');
+  expect(html).toContain('<td>B</td>');
+  expect(html).not.toContain('| --- |');
+});
+
 it('PageReviewCard neutralise les liens piégés du brouillon', () => {
   const html = renderToStaticMarkup(
     <PageReviewCard

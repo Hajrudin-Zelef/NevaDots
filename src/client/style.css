@@ -2268,6 +2268,33 @@ h3 {
 .chat-bubble p:last-child {
   margin: 0;
 }
+.chat-bubble table,
+.brief table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.chat-bubble th,
+.chat-bubble td,
+.brief th,
+.brief td {
+  border: 1px solid #d8ddd2;
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.chat-bubble th,
+.brief th {
+  background: #f0f3ea;
+  font-weight: 600;
+}
+.chat-bubble td p,
+.chat-bubble th p,
+.brief td p,
+.brief th p {
+  margin: 0;
+}
 .chat-bubble.user {
   align-self: flex-end;
   max-width: 79%;
