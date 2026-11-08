@@ -787,6 +787,15 @@ export class Store {
   deleteFeedback(id: string): void {
     this.db.prepare('DELETE FROM feedback WHERE id = ?').run(id);
   }
+  /** Retrait du vote par son auteur : suppression par (compte, message),
+   *  jamais par id de ligne (H3 — l'id est inconnu du client). */
+  deleteOwnFeedbackByMessage(messageId: string): boolean {
+    const userId = this.requireUser();
+    const result = this.db
+      .prepare('DELETE FROM feedback WHERE user_id = ? AND messageId = ?')
+      .run(userId, messageId);
+    return result.changes > 0;
+  }
   /** Phase E : coût du mois calendaire en cours (UTC) pour ce compte. */
   monthCostUsd(now = Date.now()): number {
     const start = new Date(now);

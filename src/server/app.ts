@@ -1021,6 +1021,15 @@ export function createApp({
         .listAllFeedback(limit, c.req.query('filter') === 'negatif'),
     });
   });
+  // Retrait du vote par son auteur (H3) : le client ne connaît que le
+  // messageId, pas l'id de ligne — et n'est pas Admin.
+  app.delete('/api/feedback/by-message/:messageId', (c) => {
+    const removed = c
+      .get('store')
+      .deleteOwnFeedbackByMessage(c.req.param('messageId'));
+    if (!removed) return c.json({ error: 'Feedback not found.' }, 404);
+    return c.json({ ok: true });
+  });
   app.delete('/api/feedback/:id', (c) => {
     const denied = requireAdmin(c);
     if (denied) return denied;

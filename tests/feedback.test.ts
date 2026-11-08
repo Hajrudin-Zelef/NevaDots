@@ -196,6 +196,64 @@ describe('POST /api/feedback', () => {
     ).toBe(400);
   });
 
+  it("l'auteur retire son vote par messageId, sans toucher aux autres (H3)", async () => {
+    const f = fixture();
+    stores.push(f);
+    await f.auth.createUser('marie', 'a-strong-password', 'user');
+    await f.auth.createUser('paul', 'a-strong-password', 'user');
+    await f.auth.createUser('boss', 'a-strong-password', 'admin');
+    const marie = await loginAs(f.app, 'marie', 'a-strong-password');
+    const paul = await loginAs(f.app, 'paul', 'a-strong-password');
+    const boss = await loginAs(f.app, 'boss', 'a-strong-password');
+    // Sans session → 401.
+    expect(
+      (
+        await f.app.request('/api/feedback/by-message/m1', {
+          method: 'DELETE',
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await f.app.request(
+          '/api/feedback',
+          json({ messageId: 'm1', vote: -1 }, marie),
+        )
+      ).status,
+    ).toBe(201);
+    expect(
+      (
+        await f.app.request(
+          '/api/feedback',
+          json({ messageId: 'm1', vote: 1 }, paul),
+        )
+      ).status,
+    ).toBe(201);
+    // Marie retire : son vote disparaît, celui de Paul reste.
+    expect(
+      (
+        await f.app.request('/api/feedback/by-message/m1', {
+          method: 'DELETE',
+          headers: marie,
+        })
+      ).status,
+    ).toBe(200);
+    const list = (await (
+      await f.app.request('/api/feedback', { headers: boss })
+    ).json()) as { feedback: Array<{ messageId: string; username: string }> };
+    expect(list.feedback).toHaveLength(1);
+    expect(list.feedback[0].username).toBe('paul');
+    // Second retrait → 404 (déjà parti).
+    expect(
+      (
+        await f.app.request('/api/feedback/by-message/m1', {
+          method: 'DELETE',
+          headers: marie,
+        })
+      ).status,
+    ).toBe(404);
+  });
+
   it('suppression admin', async () => {
     const f = fixture();
     stores.push(f);

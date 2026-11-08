@@ -285,9 +285,11 @@ export function MessageActions({
     setVote(next);
     persistLocal(next);
     if (next === 0) {
-      void api(`/feedback/${encodeURIComponent(messageId)}`, 'DELETE').catch(
-        () => {},
-      );
+      // Retrait par (compte, message) : route auteur, pas l'id de ligne (H3).
+      void api(
+        `/api/feedback/by-message/${encodeURIComponent(messageId)}`,
+        'DELETE',
+      ).catch(() => {});
     } else void postFeedback(next);
   };
 
