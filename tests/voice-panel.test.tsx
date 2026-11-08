@@ -76,6 +76,52 @@ it('enregistre les 7 champs voix via PATCH /settings', async () => {
   });
 });
 
+it('propose Recharger + Toutes langues, et l’aide quand ≤ 1 voix FR', async () => {
+  vi.mocked(api).mockResolvedValue({ providers: [] });
+  const speech = {
+    getVoices: () => [
+      { name: 'Google français', lang: 'fr-FR', voiceURI: 'g' },
+    ],
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  };
+  vi.stubGlobal('window', { speechSynthesis: speech });
+  const renderer = renderPanel();
+  await act(async () => {});
+  expect(
+    renderer.root
+      .findAllByType('button')
+      .some((b) =>
+        Children.toArray(b.props.children).includes('Recharger les voix'),
+      ),
+  ).toBe(true);
+  const checkbox = renderer.root.findAllByProps({ type: 'checkbox' })[0];
+  expect(checkbox).toBeTruthy();
+  // Aide visible : une seule voix FR.
+  expect(
+    renderer.root
+      .findAllByType('p')
+      .some((p) =>
+        Children.toArray(p.props.children)
+          .join('')
+          .includes('Pour obtenir plus de voix'),
+      ),
+  ).toBe(true);
+  // Opt-in : les voix non-FR apparaissent après rechargement.
+  speech.getVoices = () => [
+    { name: 'Google français', lang: 'fr-FR', voiceURI: 'g' },
+    { name: 'Zoe', lang: 'en-US', voiceURI: 'zoe' },
+  ];
+  act(() => {
+    checkbox.props.onChange({ target: { checked: true } });
+  });
+  const options = renderer.root
+    .findAllByType('option')
+    .map((o) => Children.toArray(o.props.children).join(''));
+  expect(options.some((label) => label.includes('Zoe (en-US)'))).toBe(true);
+  vi.unstubAllGlobals();
+});
+
 it('signale l’absence de synthèse pour l’extrait navigateur', async () => {
   vi.mocked(api).mockResolvedValue({ providers: [] });
   const renderer = renderPanel();

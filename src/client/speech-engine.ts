@@ -262,7 +262,31 @@ export function listFrenchVoices(
     );
 }
 
-/** Regroupe des blocs en requêtes API ≤ maxChars (file neuronale). */
+/** Toutes les voix du navigateur, françaises d'abord (même tri que
+ *  `listFrenchVoices`), puis les autres par langue puis nom — avec badge
+ *  de langue pour le sélecteur opt-in « Toutes les langues ». */
+export function listAllVoices(
+  voices: ReadonlyArray<{
+    name: string;
+    lang: string;
+    voiceURI: string;
+    localService?: boolean;
+  }>,
+): { uri: string; name: string; lang: string; natural: boolean }[] {
+  const french = new Set(listFrenchVoices(voices).map((voice) => voice.uri));
+  const others = voices
+    .filter((voice) => !french.has(voice.voiceURI))
+    .map((voice) => ({
+      uri: voice.voiceURI,
+      name: voice.name,
+      lang: voice.lang,
+      natural: false,
+    }))
+    .sort(
+      (a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name),
+    );
+  return [...listFrenchVoices(voices), ...others];
+}
 export function groupBlocksForApi(
   blocks: SpeechBlock[],
   maxChars = 3000,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
 import {
   groupBlocksForApi,
+  listAllVoices,
   listFrenchVoices,
   playAudioQueue,
   prepareSpeechBlocks,
@@ -43,6 +44,10 @@ export function VoicePanel({ settings }: { settings: Settings }) {
   const [nativeVoices, setNativeVoices] = useState<
     ReturnType<typeof listFrenchVoices>
   >([]);
+  /** Opt-in : afficher aussi les voix non françaises (dépannage — accent
+   *  étranger sur du français, jamais proposé par défaut). */
+  const [allLanguages, setAllLanguages] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [providers, setProviders] = useState<TtsProvider[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [modelVoices, setModelVoices] = useState<string[]>([]);
@@ -54,7 +59,12 @@ export function VoicePanel({ settings }: { settings: Settings }) {
   const [control, setControl] = useState<PlaybackControl | null>(null);
 
   useEffect(() => {
-    const load = () => setNativeVoices(listFrenchVoices(browserVoices()));
+    const load = () =>
+      setNativeVoices(
+        allLanguages
+          ? listAllVoices(browserVoices())
+          : listFrenchVoices(browserVoices()),
+      );
     load();
     try {
       window.speechSynthesis?.addEventListener?.('voiceschanged', load);
@@ -63,7 +73,24 @@ export function VoicePanel({ settings }: { settings: Settings }) {
     } catch {
       return undefined;
     }
-  }, []);
+  }, [allLanguages]);
+
+  /** Recharge manuelle : Chrome charge les voix en retard au premier
+   *  affichage — un clic suffit, sans recharger la page. */
+  const reloadVoices = () => {
+    setRefreshing(true);
+    const load = () =>
+      setNativeVoices(
+        allLanguages
+          ? listAllVoices(browserVoices())
+          : listFrenchVoices(browserVoices()),
+      );
+    load();
+    window.setTimeout(() => {
+      load();
+      setRefreshing(false);
+    }, 500);
+  };
 
   useEffect(
     () => () => {
@@ -261,6 +288,24 @@ export function VoicePanel({ settings }: { settings: Settings }) {
         <>
           <div className="prefs-field">
             <span className="prefs-field-label">Voix française</span>
+            <div className="voice-test-row">
+              <button
+                type="button"
+                className="text-button"
+                disabled={refreshing}
+                onClick={reloadVoices}
+              >
+                {refreshing ? 'Recherche…' : 'Recharger les voix'}
+              </button>
+              <label className="muted">
+                <input
+                  type="checkbox"
+                  checked={allLanguages}
+                  onChange={(e) => setAllLanguages(e.target.checked)}
+                />{' '}
+                Toutes les langues
+              </label>
+            </div>
             {nativeVoices.length ? (
               <select
                 className="field-input"
@@ -281,6 +326,14 @@ export function VoicePanel({ settings }: { settings: Settings }) {
                 Aucune voix française détectée dans ce navigateur. Vérifiez les
                 voix système (Windows : Paramètres → Heure et langue → Voix ;
                 Android : synthèse vocale Google).
+              </p>
+            )}
+            {nativeVoices.length <= 1 && (
+              <p className="muted prefs-lead">
+                Pour obtenir plus de voix : sur Windows, ajoutez une voix dans
+                Paramètres → Heure et langue → Voix puis redémarrez Chrome ; sur
+                Android, installez des voix françaises dans la synthèse vocale
+                Google puis rechargez la page.
               </p>
             )}
           </div>

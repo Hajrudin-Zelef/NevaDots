@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
   groupBlocksForApi,
+  listAllVoices,
   listFrenchVoices,
   pickFrenchVoice,
   playAudioQueue,
@@ -96,6 +97,24 @@ it('trie les voix FR : Google > Microsoft > génériques', () => {
     'google',
     'hortense',
     'espeak',
+  ]);
+});
+
+it('listAllVoices met les françaises d’abord puis les autres par langue', () => {
+  const voices = [
+    { name: 'Zoe', lang: 'en-US', voiceURI: 'zoe', localService: true },
+    {
+      name: 'Google français',
+      lang: 'fr-FR',
+      voiceURI: 'google',
+      localService: false,
+    },
+    { name: 'Anna', lang: 'de-DE', voiceURI: 'anna', localService: true },
+  ];
+  expect(listAllVoices(voices).map((v) => v.uri)).toEqual([
+    'google',
+    'anna',
+    'zoe',
   ]);
 });
 
