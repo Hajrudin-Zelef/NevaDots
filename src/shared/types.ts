@@ -68,6 +68,8 @@ export interface Feedback {
   vote: 1 | -1;
   comment: string | null;
   model: string | null;
+  /** Modèle réellement servi s'il diffère de l'alias (routeurs). */
+  resolvedModel?: string | null;
 }
 /** Corps de POST /api/feedback (upsert par compte + message). */
 export interface FeedbackInput {

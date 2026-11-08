@@ -82,6 +82,19 @@ export class Store {
     } catch {
       // Column already present — nothing to do.
     }
+    // Modèle réellement servi (routeurs type openrouter/auto) quand il
+    // diffère de l'alias demandé (2026-11-08) ; NULL = identique/inconnu.
+    try {
+      this.db.exec('ALTER TABLE usage ADD COLUMN resolvedModel TEXT');
+    } catch {
+      // Column already present — nothing to do.
+    }
+    // Même chose pour les retours (lier un avis au vrai modèle servi).
+    try {
+      this.db.exec('ALTER TABLE feedback ADD COLUMN resolvedModel TEXT');
+    } catch {
+      // Column already present — nothing to do.
+    }
     // settings : singleton (id=1) -> une ligne par compte (userId).
     const settingsSql = this.db
       .prepare(
@@ -684,6 +697,8 @@ export class Store {
     ts: number;
     dotId: string | null;
     model: string;
+    /** Modèle réellement servi s'il diffère de l'alias (routeurs). */
+    resolvedModel?: string | null;
     promptTokens: number | null;
     completionTokens: number | null;
     cachedTokens?: number | null;
@@ -694,12 +709,13 @@ export class Store {
     // store non lié écrit un orphelin (NULL), réclamé via le Dot au boot.
     this.db
       .prepare(
-        'INSERT INTO usage (ts, dotId, model, promptTokens, completionTokens, cachedTokens, costUsd, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO usage (ts, dotId, model, resolvedModel, promptTokens, completionTokens, cachedTokens, costUsd, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         entry.ts,
         entry.dotId,
         entry.model,
+        entry.resolvedModel ?? null,
         entry.promptTokens,
         entry.completionTokens,
         entry.cachedTokens ?? null,
@@ -716,16 +732,18 @@ export class Store {
     vote: 1 | -1;
     comment?: string | null;
     model?: string | null;
+    resolvedModel?: string | null;
     username?: string | null;
   }): void {
     this.db
       .prepare(
-        `INSERT INTO feedback (id, ts, user_id, username, dotId, threadId, messageId, vote, comment, model)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO feedback (id, ts, user_id, username, dotId, threadId, messageId, vote, comment, model, resolvedModel)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(user_id, messageId) DO UPDATE SET
            ts = excluded.ts, username = excluded.username, dotId = excluded.dotId,
            threadId = excluded.threadId, vote = excluded.vote,
-           comment = excluded.comment, model = excluded.model`,
+           comment = excluded.comment, model = excluded.model,
+           resolvedModel = excluded.resolvedModel`,
       )
       .run(
         randomUUID(),
@@ -738,6 +756,7 @@ export class Store {
         entry.vote,
         entry.comment ?? null,
         entry.model ?? null,
+        entry.resolvedModel ?? null,
       );
   }
   /** Liste admin (tous comptes) : sans filtre user — route réservée Admin. */
@@ -745,12 +764,24 @@ export class Store {
     const rows = this.db
       .prepare(
         `SELECT id, ts, user_id AS userId, username, dotId, threadId, messageId,
-                vote, comment, model
+                vote, comment, model, resolvedModel
            FROM feedback ${onlyNegative ? 'WHERE vote = -1' : ''}
           ORDER BY ts DESC LIMIT ?`,
       )
       .all(limit) as unknown as Feedback[];
     return rows;
+  }
+  /** Dernier modèle réellement servi pour ce Dot (vote → vrai modèle). */
+  latestResolvedModel(dotId: string | null | undefined): string | null {
+    if (!dotId) return null;
+    const row = this.db
+      .prepare(
+        `SELECT resolvedModel FROM usage
+          WHERE user_id = ? AND dotId = ? AND resolvedModel IS NOT NULL
+          ORDER BY ts DESC LIMIT 1`,
+      )
+      .get(this.userId, dotId) as { resolvedModel?: string } | undefined;
+    return typeof row?.resolvedModel === 'string' ? row.resolvedModel : null;
   }
   /** Suppression admin (modération du volet Feedback). */
   deleteFeedback(id: string): void {

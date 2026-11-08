@@ -109,7 +109,19 @@ export function FeedbackPanel() {
                     })}
                   </span>
                   {item.username && <span>{item.username}</span>}
-                  {item.model && <span>{item.model}</span>}
+                  {(item.resolvedModel ?? item.model) && (
+                    <span
+                      title={
+                        item.resolvedModel &&
+                        item.model &&
+                        item.resolvedModel !== item.model
+                          ? `demandé : ${item.model}`
+                          : undefined
+                      }
+                    >
+                      {item.resolvedModel ?? item.model}
+                    </span>
+                  )}
                 </div>
                 {item.comment ? (
                   <p className="feedback-comment">{item.comment}</p>

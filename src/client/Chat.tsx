@@ -751,7 +751,14 @@ export function Chat({
     onComputer?.();
   }, [running, latestBrowserCall, onComputer]);
   // Cumulative session tokens for the cetas-style token bar.
-  const [session, setSession] = useState({ in: 0, out: 0, cost: 0, cached: 0 });
+  const [session, setSession] = useState({
+    in: 0,
+    out: 0,
+    cost: 0,
+    cached: 0,
+    /** Vrai dès qu'un tour a un coût inconnu (modèle non tarifé). */
+    unknownCost: false,
+  });
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (!running) return;
@@ -799,6 +806,7 @@ export function Chat({
           out: previous.out + (stats.completionTokens ?? 0),
           cost: previous.cost + (stats.costUsd ?? 0),
           cached: previous.cached + (stats.cachedTokens ?? 0),
+          unknownCost: previous.unknownCost || stats.costUsd == null,
         }));
         return;
       }
@@ -1116,7 +1124,22 @@ export function Chat({
           {session.in > 0
             ? ` (${Math.round((session.cached / session.in) * 100)} %)`
             : ''}{' '}
-          Tokens · Coût estimé : ${session.cost.toFixed(4).replace('.', ',')}
+          Tokens · Coût estimé :{' '}
+          {session.unknownCost && session.cost === 0 ? (
+            <span title="Modèle non tarifé : coût réel inconnu (voir OpenRouter → Activity)">
+              ~
+            </span>
+          ) : (
+            <>
+              ${session.cost.toFixed(4).replace('.', ',')}
+              {session.unknownCost && (
+                <span title="Coût partiel : certains tours utilisent un modèle non tarifé">
+                  {' '}
+                  (~)
+                </span>
+              )}
+            </>
+          )}
         </span>
       </div>
       <Composer

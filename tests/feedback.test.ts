@@ -40,6 +40,7 @@ describe('POST /api/feedback', () => {
     return {
       app,
       auth,
+      store,
       close() {
         db.close();
         auth.close();
@@ -101,6 +102,57 @@ describe('POST /api/feedback', () => {
     ).json()) as { feedback: Array<{ vote: number; comment: string | null }> };
     expect(second.feedback).toHaveLength(1);
     expect(second.feedback[0].vote).toBe(1);
+  });
+
+  it('lie le vote au modèle réellement servi quand il est connu', async () => {
+    const f = fixture();
+    stores.push(f);
+    await f.auth.createUser('marie', 'a-strong-password', 'user');
+    const marie = await loginAs(f.app, 'marie', 'a-strong-password');
+    const marieId = f.auth.getUserByUsername('marie')?.id;
+    expect(marieId).toBeTruthy();
+    const usage = f.store.forUser(marieId as string);
+    // Sans appel modèle : resolvedModel reste null.
+    expect(
+      (
+        await f.app.request(
+          '/api/feedback',
+          json({ messageId: 'm0', vote: 1, dotId: 'd9' }, marie),
+        )
+      ).status,
+    ).toBe(201);
+    // Un appel via openrouter/auto servi par gpt-6-luna.
+    usage.recordUsage({
+      ts: Date.now(),
+      dotId: 'd1',
+      model: 'openrouter/auto',
+      resolvedModel: 'openai/gpt-6-luna',
+      promptTokens: 10,
+      completionTokens: 2,
+      costUsd: null,
+    });
+    expect(usage.latestResolvedModel('d1')).toBe('openai/gpt-6-luna');
+    expect(usage.latestResolvedModel('d9')).toBeNull();
+    expect(
+      (
+        await f.app.request(
+          '/api/feedback',
+          json({ messageId: 'm1', vote: -1, dotId: 'd1' }, marie),
+        )
+      ).status,
+    ).toBe(201);
+    const boss = await (async () => {
+      await f.auth.createUser('boss', 'a-strong-password', 'admin');
+      return loginAs(f.app, 'boss', 'a-strong-password');
+    })();
+    const list = (await (
+      await f.app.request('/api/feedback', { headers: boss })
+    ).json()) as {
+      feedback: Array<{ messageId: string; resolvedModel: string | null }>;
+    };
+    const byId = new Map(list.feedback.map((item) => [item.messageId, item]));
+    expect(byId.get('m0')?.resolvedModel).toBeNull();
+    expect(byId.get('m1')?.resolvedModel).toBe('openai/gpt-6-luna');
   });
 
   it('requiert une session ; la lecture est réservée Admin', async () => {

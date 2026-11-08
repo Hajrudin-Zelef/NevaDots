@@ -80,7 +80,16 @@ export function ReasoningPanel({
         <dl className="reasoning-stats">
           <div>
             <dt>Modèle</dt>
-            <dd className="reasoning-model">{modelName}</dd>
+            <dd
+              className="reasoning-model"
+              title={
+                stats?.resolvedModel && stats.resolvedModel !== stats.model
+                  ? `demandé : ${stats.model}`
+                  : undefined
+              }
+            >
+              {stats?.resolvedModel ?? stats?.model ?? modelName}
+            </dd>
           </div>
           <div>
             <dt>Temps</dt>

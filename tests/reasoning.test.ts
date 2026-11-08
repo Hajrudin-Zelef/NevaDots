@@ -47,6 +47,7 @@ it('captures reasoning_content deltas and usage from an SSE stream', async () =>
     promptTokens: 120,
     completionTokens: 45,
     cachedTokens: null,
+    resolvedModel: null,
   });
   expect(hooks.onEnd).toHaveBeenCalledTimes(1);
   const info = hooks.onEnd.mock.calls[0][0];
@@ -99,8 +100,36 @@ it('capture l’usage même quand le provider ne streame pas de reasoning', asyn
     promptTokens: 250,
     completionTokens: 30,
     cachedTokens: null,
+    resolvedModel: null,
   });
   expect(hooks.onEnd).not.toHaveBeenCalled();
+});
+
+it('capture le modèle résolu du premier chunk (routeurs type openrouter/auto)', async () => {
+  const chunks = [
+    'data: {"model":"openai/gpt-6-luna","choices":[{"delta":{"content":"Hi"}}]}',
+    'data: {"usage":{"prompt_tokens":10,"completion_tokens":2}}',
+    'data: [DONE]',
+  ];
+  const baseFetch = vi.fn(async () => sseResponse(chunks));
+  const hooks = {
+    onStart: vi.fn(),
+    onDelta: vi.fn(),
+    onUsage: vi.fn(),
+    onEnd: vi.fn(),
+  };
+  const wrapped = createReasoningFetch(
+    baseFetch as unknown as typeof fetch,
+    (url) => url.startsWith(CHAT_URL),
+    hooks,
+  );
+  await (await wrapped(CHAT_URL)).text();
+  expect(hooks.onUsage).toHaveBeenCalledWith({
+    promptTokens: 10,
+    completionTokens: 2,
+    cachedTokens: null,
+    resolvedModel: 'openai/gpt-6-luna',
+  });
 });
 
 it('passes non-chat-completions requests through untouched', async () => {
@@ -136,6 +165,26 @@ it('builds stats with tok/s and cost estimate', () => {
     0.27, 1.1,
   ]);
   expect(estimateCostUsd('deepseek/deepseek-chat-v3-0324', null, 5)).toBeNull();
+});
+
+it('tarifie sur le modèle résolu quand un routeur a servi (openrouter/auto)', () => {
+  // L'alias seul est inconnu → coût null (jamais 0).
+  expect(
+    buildReasoningStats('openrouter/auto', {
+      promptTokens: 1000,
+      completionTokens: 500,
+      durationMs: 1000,
+    }).costUsd,
+  ).toBeNull();
+  // Résolu gpt-6-luna : 1000×0.10 + 500×0.50 par million.
+  const stats = buildReasoningStats('openrouter/auto', {
+    promptTokens: 1000,
+    completionTokens: 500,
+    durationMs: 1000,
+    resolvedModel: 'openai/gpt-6-luna',
+  });
+  expect(stats.resolvedModel).toBe('openai/gpt-6-luna');
+  expect(stats.costUsd).toBeCloseTo((1000 * 0.1 + 500 * 0.5) / 1e6, 12);
 });
 
 it('finalizes stats on [DONE] even when the connection stays open', async () => {

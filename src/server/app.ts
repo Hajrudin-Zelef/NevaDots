@@ -1000,8 +1000,10 @@ export function createApp({
     if (!parsed.success)
       return c.json({ error: 'Invalid feedback payload.' }, 400);
     const userId = c.get('userId');
-    c.get('store').recordFeedback({
+    const store = c.get('store');
+    store.recordFeedback({
       ...parsed.data,
+      resolvedModel: store.latestResolvedModel(parsed.data.dotId),
       username: auth?.getUserById(userId)?.username ?? null,
     });
     return c.json({ ok: true }, 201);

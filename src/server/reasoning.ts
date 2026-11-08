@@ -10,6 +10,8 @@ import { estimateCostUsd } from '../shared/pricing.js';
 
 export interface ReasoningRunStats {
   model: string;
+  /** Modèle réellement servi s'il diffère de l'alias (routeurs). */
+  resolvedModel?: string | null;
   /** Wall-clock ms of the reasoning phase (first delta -> end). */
   durationMs: number;
   promptTokens: number | null;
@@ -46,11 +48,14 @@ export interface ReasoningStreamHooks {
   onDelta(text: string): void;
   /** The answer/tool call started: close the reasoning message now. */
   onAnswerStart?(): void;
-  /** Usage d'un appel modèle, même sans reasoning (suivi des coûts). */
+  /** Usage d'un appel modèle, même sans reasoning (suivi des coûts).
+   *  `resolvedModel` = champ `model` du premier chunk SSE (routeurs type
+   *  `openrouter/auto`), null si absent — l'alias demandé est conservé. */
   onUsage?(info: {
     promptTokens: number | null;
     completionTokens: number | null;
     cachedTokens: number | null;
+    resolvedModel: string | null;
   }): void;
   onEnd(info: {
     promptTokens: number | null;
@@ -98,6 +103,8 @@ interface SseUsage {
 interface SseChunk {
   choices?: SseChoice[];
   usage?: SseUsage;
+  /** Modèle réellement servi (routeurs : diffère de la demande). */
+  model?: unknown;
 }
 
 /** DeepSeek-style `reasoning_content` and OpenRouter-style `reasoning`. */
@@ -162,6 +169,7 @@ export function createReasoningFetch(
     let promptTokens: number | null = null;
     let completionTokens: number | null = null;
     let cachedTokens: number | null = null;
+    let resolvedModel: string | null = null;
     const finish = () => {
       if (ended) return;
       ended = true;
@@ -174,6 +182,7 @@ export function createReasoningFetch(
           promptTokens,
           completionTokens,
           cachedTokens,
+          resolvedModel,
         });
       if (reasoningActive) {
         hooks.onEnd({
@@ -204,6 +213,8 @@ export function createReasoningFetch(
         return;
       }
       const usage = json.usage;
+      if (typeof json.model === 'string' && json.model && !resolvedModel)
+        resolvedModel = json.model;
       if (usage && typeof usage === 'object') {
         const p = toNumber(usage.prompt_tokens);
         const c = toNumber(usage.completion_tokens);
@@ -283,6 +294,7 @@ export function buildReasoningStats(
     completionTokens: number | null;
     cachedTokens?: number | null;
     durationMs: number;
+    resolvedModel?: string | null;
   },
 ): ReasoningRunStats {
   const tokensPerSecond =
@@ -291,13 +303,14 @@ export function buildReasoningStats(
       : null;
   return {
     model,
+    resolvedModel: info.resolvedModel ?? null,
     durationMs: info.durationMs,
     promptTokens: info.promptTokens,
     cachedTokens: info.cachedTokens ?? null,
     completionTokens: info.completionTokens,
     tokensPerSecond,
     costUsd: estimateCostUsd(
-      model,
+      info.resolvedModel ?? model,
       info.promptTokens,
       info.completionTokens,
       info.cachedTokens,

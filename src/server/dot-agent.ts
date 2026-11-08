@@ -143,6 +143,7 @@ export class DotAgent extends AbstractAgent {
         completionTokens: 0,
         cachedTokens: 0,
         calls: 0,
+        resolvedModel: null as string | null,
       };
       const userTurnText = lastUserText(input.messages);
       // Phase 3 : associe chaque appel d'outil à son libellé d'étape
@@ -585,22 +586,32 @@ export class DotAgent extends AbstractAgent {
             promptTokens: number | null;
             completionTokens: number | null;
             cachedTokens: number | null;
+            resolvedModel: string | null;
           }) => {
             turnUsage.promptTokens += info.promptTokens ?? 0;
             turnUsage.completionTokens += info.completionTokens ?? 0;
             turnUsage.cachedTokens += info.cachedTokens ?? 0;
             turnUsage.calls += 1;
+            if (info.resolvedModel)
+              turnUsage.resolvedModel = info.resolvedModel;
+            // Modèle réellement servi (routeurs) s'il diffère de l'alias
+            // demandé ; coût calculé sur le servi quand il est connu.
+            const servedModel = info.resolvedModel ?? model;
             // Une ligne par appel modèle (y compris sans reasoning).
             try {
               this.store.recordUsage({
                 ts: Date.now(),
                 dotId: dot.id,
                 model,
+                resolvedModel:
+                  info.resolvedModel && info.resolvedModel !== model
+                    ? info.resolvedModel
+                    : null,
                 promptTokens: info.promptTokens,
                 completionTokens: info.completionTokens,
                 cachedTokens: info.cachedTokens,
                 costUsd: estimateCostUsd(
-                  model,
+                  servedModel,
                   info.promptTokens,
                   info.completionTokens,
                   info.cachedTokens,
@@ -630,6 +641,7 @@ export class DotAgent extends AbstractAgent {
                   ? turnUsage.cachedTokens
                   : info.cachedTokens,
               durationMs: info.durationMs,
+              resolvedModel: turnUsage.resolvedModel,
             });
             saveReasoningStats(reasoningMessageId, stats);
             closeReasoning();
