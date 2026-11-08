@@ -243,7 +243,6 @@ export function App() {
   const [prompt, setPrompt] = useState('');
   const [promptSource, setPromptSource] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
-  const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const attachments = useAttachments(`home:${selectedDot}`);
   const attachmentBar = useRef<AttachmentBarHandle>(null);
@@ -378,7 +377,6 @@ export function App() {
       setPrompt('');
       setPromptSource('');
       setSourceOpen(false);
-      setPromptMenuOpen(false);
       setComposerToolsOpen(false);
       setView('chat');
       setPane(false);
@@ -400,7 +398,6 @@ export function App() {
       setPrompt('');
       setPromptSource('');
       setSourceOpen(false);
-      setPromptMenuOpen(false);
       setComposerToolsOpen(false);
       setView('chat');
       setMobile(false);
@@ -1034,7 +1031,6 @@ export function App() {
                     submitAriaLabel="Démarrer la conversation"
                     submitLabel="Démarrer"
                     hideSource
-                    hideHelp
                     sourceOpen={sourceOpen}
                     onToggleSource={() => setSourceOpen((open) => !open)}
                     source={promptSource}
@@ -1082,31 +1078,6 @@ export function App() {
                         }}
                       />
                     }
-                    promptMenuOpen={promptMenuOpen}
-                    onTogglePromptMenu={() => {
-                      setComposerToolsOpen(false);
-                      setPromptMenuOpen((open) => !open);
-                    }}
-                    promptMenu={
-                      <div className="welcome-prompt-menu">
-                        {[
-                          'Aide-moi à réfléchir à cette idée',
-                          'Fais une recherche sur cette page',
-                          'Propose-moi un plan d’action',
-                        ].map((suggestion) => (
-                          <button
-                            type="button"
-                            key={suggestion}
-                            onClick={() => {
-                              setPrompt(suggestion);
-                              setPromptMenuOpen(false);
-                            }}
-                          >
-                            {suggestion}
-                          </button>
-                        ))}
-                      </div>
-                    }
                     dotId={dot.id}
                     modelValue={modelControls.modelValue}
                     modelOptions={modelControls.models}
@@ -1114,8 +1085,11 @@ export function App() {
                     onModelSaved={refresh}
                     onModelError={setError}
                     reasoningEffort={modelControls.reasoningEffort}
-                    reasoningLabel={modelControls.reasoningLabel}
-                    onCycleReasoning={modelControls.cycleReasoning}
+                    onSetReasoningEffort={(effort) =>
+                      void modelControls.setReasoningEffort(effort)
+                    }
+                    reasoningLevels={modelControls.reasoningLevels}
+                    reasoningMandatory={modelControls.reasoningMandatory}
                     reasoningDisabled={modelControls.reasoningBusy}
                     voiceButton={
                       <button

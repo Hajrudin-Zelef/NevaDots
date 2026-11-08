@@ -217,7 +217,6 @@ export function Chat({
     setWebSearch(dot.researchAllowed);
   }, [dot.id, dot.researchAllowed]);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
-  const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [error, setError] = useState('');
   const toggleWebSearch = async () => {
     const next = !webSearch;
@@ -1211,31 +1210,6 @@ export function Chat({
             }}
           />
         }
-        promptMenuOpen={promptMenuOpen}
-        onTogglePromptMenu={() => {
-          setComposerToolsOpen(false);
-          setPromptMenuOpen((open) => !open);
-        }}
-        promptMenu={
-          <div className="welcome-prompt-menu">
-            {[
-              'Aide-moi à réfléchir à cette idée',
-              'Fais une recherche sur cette page',
-              'Propose-moi un plan d’action',
-            ].map((suggestion) => (
-              <button
-                type="button"
-                key={suggestion}
-                onClick={() => {
-                  setDraft(suggestion);
-                  setPromptMenuOpen(false);
-                }}
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        }
         dotId={dot.id}
         modelValue={modelControls.modelValue}
         modelOptions={modelControls.models}
@@ -1243,8 +1217,11 @@ export function Chat({
         onModelSaved={onSaved}
         onModelError={setModelError}
         reasoningEffort={modelControls.reasoningEffort}
-        reasoningLabel={modelControls.reasoningLabel}
-        onCycleReasoning={modelControls.cycleReasoning}
+        onSetReasoningEffort={(effort) =>
+          void modelControls.setReasoningEffort(effort)
+        }
+        reasoningLevels={modelControls.reasoningLevels}
+        reasoningMandatory={modelControls.reasoningMandatory}
         reasoningDisabled={modelControls.reasoningBusy}
         stopButton={
           running ? (

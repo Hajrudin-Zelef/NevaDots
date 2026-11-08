@@ -1,15 +1,8 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
-import {
-  ArrowUp,
-  Brain,
-  CircleHelp,
-  Globe,
-  Link2,
-  Plus,
-  X,
-} from 'lucide-react';
+import { ArrowUp, Brain, Globe, Link2, Plus, X } from 'lucide-react';
 import { shouldSubmitComposerOnKeyDown } from './chat-composer';
+import { reasoningEffortLabel } from './useDotModelControls';
 import { type ModelsResponse } from '../shared/models';
 import { ModelSelector } from './ModelSelector';
 
@@ -43,11 +36,6 @@ export interface ComposerProps {
   onToggleMenu: () => void;
   menu: ReactNode;
 
-  // --- Prompt suggestions (?) ---
-  promptMenuOpen: boolean;
-  onTogglePromptMenu: () => void;
-  promptMenu: ReactNode;
-
   // --- Model select (shared logic: PUT /dots/:id/model) ---
   dotId: string;
   modelValue: string;
@@ -56,11 +44,14 @@ export interface ComposerProps {
   onModelSaved: () => Promise<void> | void;
   onModelError: (message: string) => void;
 
-  // --- Reasoning (DeepThink) ---
+  // --- Reasoning (variantes natives + Défaut auto) ---
   reasoningEffort: string | null | undefined;
-  reasoningLabel: string;
-  onCycleReasoning: () => void;
+  onSetReasoningEffort: (effort: string | null) => void;
   reasoningDisabled?: boolean;
+  /** Niveaux natifs du modèle courant (null = en attente/pending). */
+  reasoningLevels?: string[] | null;
+  /** Modèle à raisonnement obligatoire (désactivation refusée). */
+  reasoningMandatory?: boolean;
 
   // --- Contextual extras ---
   /** Voice button (new conversation). */
@@ -74,8 +65,6 @@ export interface ComposerProps {
   stopButton?: ReactNode;
   /** Masque le bouton globe (source web) — accueil uniquement. */
   hideSource?: boolean;
-  /** Masque le bouton aide (suggestions de prompts) — accueil uniquement. */
-  hideHelp?: boolean;
 
   // --- Attachments (Phase 2) ---
   /** File cards row, rendered above the textarea. */
@@ -113,9 +102,6 @@ export function Composer(props: ComposerProps) {
     menuOpen,
     onToggleMenu,
     menu,
-    promptMenuOpen,
-    onTogglePromptMenu,
-    promptMenu,
     dotId,
     modelValue,
     modelOptions,
@@ -123,16 +109,16 @@ export function Composer(props: ComposerProps) {
     onModelSaved,
     onModelError,
     reasoningEffort,
-    reasoningLabel,
-    onCycleReasoning,
+    onSetReasoningEffort,
     reasoningDisabled,
+    reasoningLevels,
+    reasoningMandatory,
     voiceButton,
     stopButton,
     webSearchOn,
     onToggleWebSearch,
     webSearchDisabled,
     hideSource,
-    hideHelp,
     attachmentCards,
     note,
     textareaRef,
@@ -181,7 +167,6 @@ export function Composer(props: ComposerProps) {
         </div>
       )}
       {menuOpen && menu}
-      {promptMenuOpen && promptMenu}
       {attachmentCards}
       <div className="chat-compose-row">
         <textarea
@@ -246,18 +231,6 @@ export function Composer(props: ComposerProps) {
               </button>
             )
           )}
-          {!hideHelp && (
-            <button
-              type="button"
-              className={`icon-button ${promptMenuOpen ? 'active' : ''}`}
-              aria-label="Aide pour rédiger un prompt"
-              title="Suggestions de prompts"
-              aria-expanded={promptMenuOpen}
-              onClick={() => onTogglePromptMenu()}
-            >
-              <CircleHelp size={17} />
-            </button>
-          )}
           {voiceButton}
           {modelOptions.providers.length > 0 && (
             <ModelSelector
@@ -274,13 +247,71 @@ export function Composer(props: ComposerProps) {
             className={`icon-button reasoning-button ${
               reasoningEffort && reasoningEffort !== 'none' ? 'active' : ''
             }`}
-            aria-label={`Réflexion : ${reasoningLabel}`}
-            title={`Réflexion : ${reasoningLabel} — cliquez pour changer`}
-            onClick={() => void onCycleReasoning()}
+            aria-label={`Réflexion : ${reasoningEffortLabel(reasoningEffort)}`}
+            title={`Réflexion : ${reasoningEffortLabel(reasoningEffort)} — cliquez pour revenir au Standard (auto)`}
+            onClick={() => onSetReasoningEffort(null)}
             disabled={reasoningDisabled}
           >
             <Brain size={17} />
           </button>
+          {reasoningLevels === null ? (
+            <select
+              className="model-select reasoning-select"
+              aria-label="Variantes de raisonnement"
+              title="En attente — source native pas encore ajoutée pour ce provider"
+              disabled
+              value="auto"
+            >
+              <option value="auto">Standard (auto)</option>
+            </select>
+          ) : (
+            <select
+              className="model-select reasoning-select"
+              aria-label="Variante de raisonnement"
+              title="Niveau natif du modèle ; grisé = non supporté nativement"
+              value={reasoningEffort ?? 'auto'}
+              disabled={reasoningDisabled}
+              onChange={(e) =>
+                onSetReasoningEffort(
+                  e.target.value === 'auto' ? null : e.target.value,
+                )
+              }
+            >
+              <option value="auto">Standard (auto)</option>
+              <option value="none" disabled={reasoningMandatory}>
+                Désactivée
+              </option>
+              {(
+                [
+                  ['low', 'Basse'],
+                  ['medium', 'Moyenne'],
+                  ['high', 'Haute'],
+                  ['max', 'Max'],
+                ] as const
+              ).map(([value, label]) => {
+                const native =
+                  reasoningLevels === undefined ||
+                  reasoningLevels.includes(value);
+                // Icône Brain : un appui revient toujours à la variante Défaut
+                // (Standard, auto) — le select à côté sert au choix direct.
+
+                return (
+                  <option
+                    key={value}
+                    value={value}
+                    disabled={!native}
+                    title={
+                      native
+                        ? undefined
+                        : `« ${label.toLowerCase()} » non supporté nativement par ce modèle`
+                    }
+                  >
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+          )}
           {stopButton}
           {submitLabel ? (
             <button

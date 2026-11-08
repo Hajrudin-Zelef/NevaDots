@@ -10,6 +10,7 @@ import {
   validateLearningSettings,
 } from '../shared/learning.js';
 import { getReasoningStats } from './reasoning.js';
+import { reasoningLevelsFor } from './reasoning-levels.js';
 import { errorResponse } from './error-response.js';
 import { AVATAR_IDS } from '../shared/avatars.js';
 import { defaultProvider, findProvider, providersView } from './providers.js';
@@ -110,6 +111,15 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     // object rather than 404 so the client poll does not log console errors.
     const stats = getReasoningStats(messageId);
     return c.json(stats ?? {});
+  });
+  // Niveaux de raisonnement natifs (sélecteur de variantes) : live
+  // OpenRouter quand provider=openrouter, `pending` sinon (aucune
+  // source fiable — rien d'inventé), `unknown` en fail-open.
+  app.get('/reasoning-levels', async (c) => {
+    const provider = (c.req.query('provider') ?? '').trim();
+    const model = (c.req.query('model') ?? '').trim();
+    if (!provider || !model) return c.json({ status: 'pending' });
+    return c.json(await reasoningLevelsFor(provider, model));
   });
   // Avatar animation quality preference. `auto` (default) lets the client pick
   // a tier from the network/device; a concrete tier forces it.
@@ -459,7 +469,9 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   app.put('/dots/:id/reasoning', async (c) => {
     const data = z
       .object({
-        effort: z.enum(['none', 'low', 'medium', 'high']).nullable(),
+        effort: z
+          .enum(['none', 'low', 'medium', 'high', 'max', 'auto'])
+          .nullable(),
       })
       .strict()
       .safeParse(await c.req.json().catch(() => null));

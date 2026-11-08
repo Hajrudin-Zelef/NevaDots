@@ -109,7 +109,7 @@ it('recharge au signal models-changed et replie sur le fallback', async () => {
   expect(snapshot().modelValue).toBe('');
 });
 
-it('cycle le reasoning, efface l’erreur et prévient', async () => {
+it('fixe le reasoning, efface l’erreur et prévient', async () => {
   const onSaved = vi.fn(async () => {});
   const onStart = vi.fn();
   const onError = vi.fn();
@@ -121,11 +121,11 @@ it('cycle le reasoning, efface l’erreur et prévient', async () => {
     onReasoningError: onError,
   });
   await act(async () => {
-    await latest!.cycleReasoning();
+    await latest!.setReasoningEffort('high');
   });
   expect(onStart).toHaveBeenCalledTimes(1);
   expect(api).toHaveBeenCalledWith('/dots/d1/reasoning', 'PUT', {
-    effort: 'low',
+    effort: 'high',
   });
   expect(onSaved).toHaveBeenCalledTimes(1);
   expect(onError).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ it('cycle le reasoning, efface l’erreur et prévient', async () => {
   api.mockClear();
   await mount({ dotId: null, reasoningEffort: '' });
   await act(async () => {
-    await latest!.cycleReasoning();
+    await latest!.setReasoningEffort('low');
   });
   expect(api).not.toHaveBeenCalledWith(
     expect.stringContaining('/reasoning'),

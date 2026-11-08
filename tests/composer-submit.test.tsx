@@ -8,8 +8,12 @@ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 function renderComposer(
   submitLabel?: string,
   hideSource?: boolean,
-  hideHelp?: boolean,
   webSearch?: { on: boolean; onToggle: () => void; disabled?: boolean },
+  reasoning?: {
+    effort: string | null;
+    onSet: () => void;
+    levels?: string[] | null;
+  },
 ) {
   const nothing: ReactNode = null;
   let renderer: ReactTestRenderer;
@@ -27,7 +31,6 @@ function renderComposer(
         submitAriaLabel: 'Envoyer',
         submitLabel,
         hideSource,
-        hideHelp,
         webSearchOn: webSearch?.on,
         onToggleWebSearch: webSearch?.onToggle,
         webSearchDisabled: webSearch?.disabled,
@@ -38,18 +41,15 @@ function renderComposer(
         menuOpen: false,
         onToggleMenu: () => {},
         menu: nothing,
-        promptMenuOpen: false,
-        onTogglePromptMenu: () => {},
-        promptMenu: nothing,
         dotId: 'd1',
         modelValue: '',
         modelOptions: { default: null, providers: [] },
         defaultModelLabel: null,
         onModelSaved: () => Promise.resolve(),
         onModelError: () => {},
-        reasoningEffort: 'none',
-        reasoningLabel: 'Non',
-        onCycleReasoning: () => {},
+        reasoningEffort: reasoning?.effort ?? 'none',
+        onSetReasoningEffort: reasoning?.onSet ?? (() => {}),
+        reasoningLevels: reasoning?.levels,
         note: nothing,
       }),
     );
@@ -83,27 +83,38 @@ it('pastille flèche seule sans submitLabel (conversation en cours)', () => {
   expect(sends[0].props.className).not.toContain('send-labeled');
 });
 
-it('masque aide + globe sur le composer d’accueil (hideHelp/hideSource)', () => {
-  const renderer = renderComposer('Démarrer', true, true);
+it('masque le globe sur le composer d’accueil (hideSource)', () => {
+  const renderer = renderComposer('Démarrer', true);
   const labels = renderer.root
     .findAllByType('button')
     .map((b) => b.props['aria-label']);
-  expect(labels).not.toContain('Aide pour rédiger un prompt');
   expect(labels).not.toContain('Ajouter une page web');
+  expect(labels).not.toContain('Recherche web');
 });
 
-it('affiche aide + globe par défaut (conversation en cours)', () => {
+it('aucun bouton aide dans le composer', () => {
+  for (const renderer of [
+    renderComposer(undefined),
+    renderComposer('Démarrer', true),
+  ]) {
+    const labels = renderer.root
+      .findAllByType('button')
+      .map((b) => b.props['aria-label']);
+    expect(labels).not.toContain('Aide pour rédiger un prompt');
+  }
+});
+
+it('affiche le globe par défaut (conversation en cours)', () => {
   const renderer = renderComposer(undefined);
   const labels = renderer.root
     .findAllByType('button')
     .map((b) => b.props['aria-label']);
-  expect(labels).toContain('Aide pour rédiger un prompt');
   expect(labels).toContain('Ajouter une page web');
 });
 
 it('globe = interrupteur websearch quand le handler est fourni', () => {
   const onToggle = vi.fn();
-  const renderer = renderComposer(undefined, false, false, {
+  const renderer = renderComposer(undefined, false, {
     on: true,
     onToggle,
   });
@@ -122,4 +133,35 @@ it('globe reste une source quand aucun handler websearch (comportement historiqu
     'aria-label': 'Ajouter une page web',
   });
   expect(globe).toBeTruthy();
+});
+
+it('Brain = retour au Standard (auto), jamais de cycle', () => {
+  const onSet = vi.fn();
+  const renderer = renderComposer(undefined, false, undefined, {
+    effort: 'high',
+    onSet,
+    levels: ['low', 'high'],
+  });
+  const brain = renderer.root.findByProps({
+    'aria-label': 'Réflexion : haute',
+  });
+  act(() => {
+    brain.props.onClick();
+  });
+  expect(onSet).toHaveBeenCalledTimes(1);
+  expect(onSet).toHaveBeenCalledWith(null);
+});
+
+it('option non native grisée avec motif au survol', () => {
+  const renderer = renderComposer(undefined, false, undefined, {
+    effort: null,
+    onSet: () => {},
+    levels: ['low'],
+  });
+  const options = renderer.root.findAllByType('option');
+  const max = options.find((o) => o.props.value === 'max')!;
+  expect(max.props.disabled).toBe(true);
+  expect(String(max.props.title)).toContain('non supporté nativement');
+  const low = options.find((o) => o.props.value === 'low')!;
+  expect(low.props.disabled).toBeFalsy();
 });

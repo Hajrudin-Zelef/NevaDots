@@ -59,6 +59,7 @@ import {
   saveReasoningStats,
 } from './reasoning.js';
 import { StepTracker, stepLabelForTool } from './agent-steps.js';
+import { pickAutoReasoningEffort } from './reasoning-effort.js';
 import { buildSystemPrompt } from './agent-prompt.js';
 import { injectAttachedImages } from './attached-images.js';
 import { screenshotMiddleware } from './screenshot-middleware.js';
@@ -939,10 +940,13 @@ export class DotAgent extends AbstractAgent {
                 // (fichiers > ~7 Ko) : le tour échouait. 8192 par défaut,
                 // surchargeable via MAX_COMPLETION_TOKENS.
                 max_completion_tokens: this.config.maxCompletionTokens ?? 8192,
-                // Thinking off by default for speed; the composer toggle can
-                // raise it to 'low'/'high' per Dot. LiteLLM drops the field for
-                // models that do not support it.
-                reasoning_effort: dot.reasoningEffort ?? 'none',
+                // `null` (Standard) = Défaut auto : heuristique déterministe
+                // sur la requête (voir reasoning-effort.ts). LiteLLM ignore
+                // le champ pour les modèles qui ne le supportent pas.
+                reasoning_effort:
+                  dot.reasoningEffort == null || dot.reasoningEffort === 'auto'
+                    ? pickAutoReasoningEffort(userTurnText)
+                    : dot.reasoningEffort,
               },
               agentLoopStrategy: maxIterations(5),
               // Phase 5a : injecte les screenshots computer comme images.
