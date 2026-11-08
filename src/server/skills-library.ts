@@ -19,6 +19,47 @@ const MAX_TOOL_FILES = 40;
 /** Ticket de bundle : usage unique, 30 s, lié au Dot et au skill. */
 const BUNDLE_TTL_MS = 30_000;
 const BUNDLE_CAP = 1000;
+/** Garde-fou : un skill ne contient jamais autant de fichiers légitimes. */
+export const MAX_BUNDLE_FILES = 20_000;
+
+/** Fichiers archivables d'un bundle : réguliers uniquement — ni symlink
+ *  (persisterait dans le workspace du Dot et serait suivi par les
+ *  lectures/exécutions ultérieures), ni hardlink (embarquerait le contenu
+ *  d'un fichier hôte), ni spéciaux. Chemins relatifs triés. */
+export function collectBundleFiles(
+  dir: string,
+  cap = MAX_BUNDLE_FILES,
+): string[] {
+  const out: string[] = [];
+  const visit = (current: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (out.length >= cap) return;
+      const full = join(current, entry.name);
+      let st;
+      try {
+        st = lstatSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isSymbolicLink()) continue;
+      if (st.isDirectory()) {
+        visit(full);
+        continue;
+      }
+      if (!st.isFile()) continue;
+      if (st.nlink > 1) continue;
+      out.push(relative(dir, full));
+    }
+  };
+  visit(dir);
+  return out.sort();
+}
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.cache']);
 
 export interface IndexedSkill extends SkillSummary {

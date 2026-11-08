@@ -3,7 +3,11 @@ import { Readable } from 'node:stream';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppVariables } from './request-context.js';
-import type { SkillLibrary } from './skills-library.js';
+import {
+  MAX_BUNDLE_FILES,
+  collectBundleFiles,
+  type SkillLibrary,
+} from './skills-library.js';
 import type { WorkspaceStore } from './workspace.js';
 
 /** Diagnostic + reindex de la bibliothèque de skills (host). */
@@ -17,10 +21,26 @@ export function skillRoutes(skills: SkillLibrary, workspace: WorkspaceStore) {
     if (!bound) return c.json({ error: 'Invalid or expired ticket.' }, 401);
     const skill = skills.get(bound.skillId);
     if (!skill) return c.json({ error: 'Skill not found.' }, 404);
-    const child = spawn('tar', ['-czf', '-', '-C', skill.dir, '.'], {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    // H2 : liste explicite de fichiers réguliers (ni symlink ni
+    // hardlink ni spéciaux) — `tar -C dir .` embarquerait le reste.
+    const files = collectBundleFiles(skill.dir);
+    if (files.length === 0)
+      return c.json({ error: 'Skill bundle is empty.' }, 400);
+    if (files.length >= MAX_BUNDLE_FILES)
+      return c.json({ error: 'Skill bundle has too many files.' }, 400);
+    const child = spawn(
+      'tar',
+      ['--null', '-czf', '-', '-C', skill.dir, '-T', '-'],
+      { stdio: ['pipe', 'pipe', 'ignore'] },
+    );
     child.on('error', () => {});
+    try {
+      child.stdin?.write(files.join('\0'));
+      child.stdin?.end();
+    } catch {
+      // stdin fermé : tar part avec une liste vide, réponse 200 vide —
+      // le conteneur détecte l'échec (bundle sans SKILL.md).
+    }
     return c.body(Readable.toWeb(child.stdout) as ReadableStream, 200, {
       'Content-Type': 'application/gzip',
       'Cache-Control': 'no-store',

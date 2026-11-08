@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SkillLibrary } from '../src/server/skills-library';
+import { SkillLibrary, collectBundleFiles } from '../src/server/skills-library';
 
 const cleanup: (() => void)[] = [];
 afterEach(() =>
@@ -180,5 +180,31 @@ describe('SkillLibrary', () => {
     );
     lib.reindex();
     expect(lib.get('repo-a/alpha')!.version).not.toBe(before);
+  });
+});
+
+describe('collectBundleFiles (H2)', () => {
+  it('exclut symlinks et hardlinks, garde les réguliers', async () => {
+    const { linkSync } = await import('node:fs');
+    const root = mkdtempSync(join(tmpdir(), 'bundle-'));
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    writeFileSync(join(root, 'SKILL.md'), '# S');
+    writeFileSync(join(root, 'run.sh'), '#!/bin/sh\n');
+    mkdirSync(join(root, 'sub'));
+    writeFileSync(join(root, 'sub', 'data.txt'), 'x');
+    writeFileSync(join(tmpdir(), 'bundle-outside.txt'), 'secret');
+    cleanup.push(() =>
+      rmSync(join(tmpdir(), 'bundle-outside.txt'), { force: true }),
+    );
+    symlinkSync(join(tmpdir(), 'bundle-outside.txt'), join(root, 'evil'));
+    symlinkSync(join(root, 'run.sh'), join(root, 'inner-link'));
+    linkSync(join(tmpdir(), 'bundle-outside.txt'), join(root, 'hard'));
+    const files = collectBundleFiles(root);
+    expect(files).toContain('SKILL.md');
+    expect(files).toContain('run.sh');
+    expect(files).toContain('sub/data.txt');
+    expect(files).not.toContain('evil');
+    expect(files).not.toContain('inner-link');
+    expect(files).not.toContain('hard');
   });
 });
