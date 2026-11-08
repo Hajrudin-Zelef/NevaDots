@@ -56,6 +56,7 @@ import { answerObserver, type SetupTelemetry } from './setup-telemetry.js';
 import {
   buildReasoningStats,
   createReasoningFetch,
+  getReasoningStats,
   saveReasoningStats,
 } from './reasoning.js';
 import { StepTracker, stepLabelForTool } from './agent-steps.js';
@@ -1026,11 +1027,13 @@ export class DotAgent extends AbstractAgent {
                     completionTokens: turnUsage.completionTokens,
                     cachedTokens: turnUsage.cachedTokens,
                     durationMs: Date.now() - turnStartedAt,
+                    resolvedModel: turnUsage.resolvedModel,
                   });
                   const ids = assistantMessageIds.size
                     ? assistantMessageIds
                     : new Set([reasoningMessageId]);
-                  for (const id of ids) saveReasoningStats(id, stats);
+                  for (const id of ids)
+                    if (!getReasoningStats(id)) saveReasoningStats(id, stats);
                 }
                 if (
                   event.type === EventType.RUN_FINISHED &&

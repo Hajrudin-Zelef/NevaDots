@@ -370,6 +370,54 @@ it('tells the model the current date so scheduled runs do not invent one', async
   }
 });
 
+it('secours RUN_FINISHED : stats avec le modèle résolu, sans écraser onEnd', async () => {
+  const f = fixture();
+  const served = 'served-model-h-a';
+  const sse = (chunks: Array<Record<string, unknown>>) =>
+    new Response(
+      chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') +
+        'data: [DONE]\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    );
+  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    sse([
+      {
+        id: 'c1',
+        object: 'chat.completion.chunk',
+        model: served,
+        choices: [{ index: 0, delta: { content: 'Salut' } }],
+      },
+      {
+        id: 'c1',
+        object: 'chat.completion.chunk',
+        model: served,
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 10, completion_tokens: 3 },
+      },
+    ]),
+  );
+  const events = await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+  const ids = [
+    ...new Set(
+      events
+        .filter(
+          (event) =>
+            event.type === EventType.TEXT_MESSAGE_START ||
+            event.type === EventType.TEXT_MESSAGE_CONTENT ||
+            event.type === EventType.TEXT_MESSAGE_CHUNK,
+        )
+        .map((event) => (event as { messageId?: unknown }).messageId)
+        .filter((id): id is string => typeof id === 'string'),
+    ),
+  ];
+  expect(ids.length).toBeGreaterThan(0);
+  const saved = ids
+    .map((id) => getReasoningStats(id))
+    .find((stats) => stats !== undefined);
+  expect(saved).toMatchObject({ resolvedModel: served });
+  expect(f.store.usageSummary().today.costUsd).toBeGreaterThanOrEqual(0);
+});
+
 it('reports a turn that hits the time limit as a RUN_ERROR instead of ending silently', async () => {
   vi.useFakeTimers();
   try {
