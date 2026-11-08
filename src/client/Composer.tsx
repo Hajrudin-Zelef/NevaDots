@@ -65,6 +65,11 @@ export interface ComposerProps {
   // --- Contextual extras ---
   /** Voice button (new conversation). */
   voiceButton?: ReactNode;
+  /** Recherche web classique (hors computer) — fourni = le globe devient
+   *  un interrupteur, absent = comportement source historique. */
+  webSearchOn?: boolean;
+  onToggleWebSearch?: () => void;
+  webSearchDisabled?: boolean;
   /** Stop button (chat, while running). */
   stopButton?: ReactNode;
   /** Masque le bouton globe (source web) — accueil uniquement. */
@@ -123,6 +128,9 @@ export function Composer(props: ComposerProps) {
     reasoningDisabled,
     voiceButton,
     stopButton,
+    webSearchOn,
+    onToggleWebSearch,
+    webSearchDisabled,
     hideSource,
     hideHelp,
     attachmentCards,
@@ -206,17 +214,37 @@ export function Composer(props: ComposerProps) {
           >
             <Plus size={17} />
           </button>
-          {!hideSource && (
+          {onToggleWebSearch ? (
             <button
               type="button"
-              className={`icon-button ${sourceOpen ? 'active' : ''}`}
-              aria-label="Ajouter une page web"
-              title="Ajouter une page web"
-              aria-expanded={sourceOpen}
-              onClick={onToggleSource}
+              className={`icon-button globe-toggle ${webSearchOn ? 'active' : ''}`}
+              aria-label="Recherche web"
+              title={
+                webSearchDisabled
+                  ? 'Recherche web désactivée dans Réglages'
+                  : webSearchOn
+                    ? 'Recherche web activée (méthode classique, sans ordinateur) — cliquez pour désactiver'
+                    : 'Recherche web désactivée — cliquez pour activer (méthode classique, sans ordinateur)'
+              }
+              aria-pressed={webSearchOn ?? false}
+              disabled={webSearchDisabled}
+              onClick={onToggleWebSearch}
             >
               <Globe size={17} />
             </button>
+          ) : (
+            !hideSource && (
+              <button
+                type="button"
+                className={`icon-button ${sourceOpen ? 'active' : ''}`}
+                aria-label="Ajouter une page web"
+                title="Ajouter une page web"
+                aria-expanded={sourceOpen}
+                onClick={onToggleSource}
+              >
+                <Globe size={17} />
+              </button>
+            )
           )}
           {!hideHelp && (
             <button

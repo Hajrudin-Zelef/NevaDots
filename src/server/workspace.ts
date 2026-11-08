@@ -550,6 +550,16 @@ export class WorkspaceStore {
       .run(effort, id, this.userId);
     return this.dot(id)!;
   }
+  /** Toggle globe du composer : recherche web classique par Dot (hors
+   *  computer). Effectif au tour suivant (outils retirés du schéma). */
+  setDotResearchAllowed(id: string, allowed: boolean): Dot {
+    this.requireUser();
+    if (!this.dot(id)) throw new Error('Dot not found.');
+    this.db
+      .prepare('UPDATE dots SET researchAllowed=? WHERE id=? AND user_id=?')
+      .run(allowed ? 1 : 0, id, this.userId);
+    return this.dot(id)!;
+  }
   /** Phase 6 : budget de contexte par Dot (null = Max/agentique). */
   setDotContextBudget(id: string, budget: number | null): Dot {
     this.requireUser();

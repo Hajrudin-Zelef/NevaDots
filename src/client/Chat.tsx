@@ -210,9 +210,30 @@ export function Chat({
   };
   const [source, setSource] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
+  /** Globe du composer : recherche web classique (hors computer), par Dot.
+   *  Effectif au tour suivant (outils retirés du schéma serveur). */
+  const [webSearch, setWebSearch] = useState(dot.researchAllowed);
+  useEffect(() => {
+    setWebSearch(dot.researchAllowed);
+  }, [dot.id, dot.researchAllowed]);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [error, setError] = useState('');
+  const toggleWebSearch = async () => {
+    const next = !webSearch;
+    setWebSearch(next);
+    try {
+      await api(`/dots/${dot.id}/research`, 'PUT', { allowed: next });
+      onSaved();
+    } catch (cause) {
+      setWebSearch(!next);
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Recherche web non enregistrée.',
+      );
+    }
+  };
   const [loaded, setLoaded] = useState(false);
   const [running, setRunning] = useState(false);
   const prevRunForNotify = useRef(false);
@@ -1139,6 +1160,9 @@ export function Chat({
         onToggleSource={() => setSourceOpen((open) => !open)}
         source={source}
         onSourceChange={setSource}
+        webSearchOn={webSearch && settings?.researchAllowed !== false}
+        onToggleWebSearch={() => void toggleWebSearch()}
+        webSearchDisabled={settings?.researchAllowed === false}
         menuOpen={composerToolsOpen}
         onToggleMenu={() => setComposerToolsOpen((open) => !open)}
         menu={

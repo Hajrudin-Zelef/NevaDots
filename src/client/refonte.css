@@ -2542,6 +2542,11 @@ textarea::placeholder {
   color: var(--nd-accent);
   background: color-mix(in oklab, var(--nd-accent) 14%, transparent);
 }
+/* Globe websearch : allumé = palette du modèle (accent), éteint = gris. */
+.template-app .chat-compose-tools .icon-button.globe-toggle.active {
+  color: var(--nd-accent);
+  background: color-mix(in oklab, var(--nd-accent) 14%, transparent);
+}
 
 /* Phase B — streaming caret, file d'attente (queue/steer) */
 .stream-caret {

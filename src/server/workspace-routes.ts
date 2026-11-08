@@ -471,6 +471,22 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       c.get('workspace').setDotReasoning(c.req.param('id'), data.data.effort),
     );
   });
+  // Toggle globe du composer : recherche web classique par Dot (hors
+  // computer). Effectif au tour suivant.
+  app.put('/dots/:id/research', async (c) => {
+    const data = z
+      .object({ allowed: z.boolean() })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success) return c.json({ error: 'Invalid research flag.' }, 400);
+    if (!c.get('workspace').dot(c.req.param('id')))
+      return c.json({ error: 'Dot not found.' }, 404);
+    return c.json(
+      c
+        .get('workspace')
+        .setDotResearchAllowed(c.req.param('id'), data.data.allowed),
+    );
+  });
   // Phase 6 : budget de contexte par Dot (null = Max/agentique).
   app.put('/dots/:id/context-budget', async (c) => {
     const data = z

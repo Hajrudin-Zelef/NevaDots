@@ -9,6 +9,7 @@ function renderComposer(
   submitLabel?: string,
   hideSource?: boolean,
   hideHelp?: boolean,
+  webSearch?: { on: boolean; onToggle: () => void; disabled?: boolean },
 ) {
   const nothing: ReactNode = null;
   let renderer: ReactTestRenderer;
@@ -27,6 +28,9 @@ function renderComposer(
         submitLabel,
         hideSource,
         hideHelp,
+        webSearchOn: webSearch?.on,
+        onToggleWebSearch: webSearch?.onToggle,
+        webSearchDisabled: webSearch?.disabled,
         sourceOpen: false,
         onToggleSource: () => {},
         source: '',
@@ -95,4 +99,27 @@ it('affiche aide + globe par défaut (conversation en cours)', () => {
     .map((b) => b.props['aria-label']);
   expect(labels).toContain('Aide pour rédiger un prompt');
   expect(labels).toContain('Ajouter une page web');
+});
+
+it('globe = interrupteur websearch quand le handler est fourni', () => {
+  const onToggle = vi.fn();
+  const renderer = renderComposer(undefined, false, false, {
+    on: true,
+    onToggle,
+  });
+  const globe = renderer.root.findByProps({ 'aria-label': 'Recherche web' });
+  expect(globe.props['aria-pressed']).toBe(true);
+  expect(String(globe.props.title)).toContain('activée');
+  act(() => {
+    globe.props.onClick();
+  });
+  expect(onToggle).toHaveBeenCalledTimes(1);
+});
+
+it('globe reste une source quand aucun handler websearch (comportement historique)', () => {
+  const renderer = renderComposer(undefined);
+  const globe = renderer.root.findByProps({
+    'aria-label': 'Ajouter une page web',
+  });
+  expect(globe).toBeTruthy();
 });
