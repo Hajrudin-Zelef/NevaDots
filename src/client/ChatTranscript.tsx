@@ -12,7 +12,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { AssistantMessage, Message } from '@ag-ui/core';
 import type { CallReceipt } from '../shared/types';
-import { formatChars, parseUserMessageWithAttachments } from './attachments';
+import {
+  fileExtension,
+  formatChars,
+  parseUserMessageWithAttachments,
+} from './attachments';
 import { markdownComponents } from './markdown-components';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt';
 import { isScheduledTaskMessage } from '../shared/scheduled-message';
@@ -177,19 +181,23 @@ export function UserMessageContent({ content }: { content: string }) {
   return (
     <>
       {parts.text && <StaticMarkdown content={parts.text} />}
-      {parts.attachments.map((attachment, index) => (
-        <details key={index} className="chat-attachment-chip">
-          <summary>
-            <FileText size={13} />
-            <span>{attachment.name}</span>
-            <span className="muted">
-              · {formatChars(attachment.chars)}
-              {attachment.truncated ? ' · tronqué' : ''}
-            </span>
-          </summary>
-          <pre>{attachment.body}</pre>
-        </details>
-      ))}
+      {parts.attachments.map((attachment, index) => {
+        const ext = fileExtension(attachment.name);
+        return (
+          <details key={index} className="chat-attachment-chip">
+            <summary>
+              <FileText size={13} />
+              <span>{attachment.name}</span>
+              {ext && <span className="file-ext">{ext}</span>}
+              <span className="muted">
+                · {formatChars(attachment.chars)}
+                {attachment.truncated ? ' · tronqué' : ''}
+              </span>
+            </summary>
+            <pre>{attachment.body}</pre>
+          </details>
+        );
+      })}
     </>
   );
 }

@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 import {
   buildMessageWithAttachments,
+  fileExtension,
   formatChars,
   parseUserMessageWithAttachments,
   type Attachment,
@@ -105,4 +106,29 @@ it('la bulle utilisateur affiche brouillon + puces, contenu replié', async () =
   expect(textOf(details[0].findByType('pre').children)).toBe(
     'contenu complet brut',
   );
+});
+
+it('fileExtension extrait l’extension en minuscules, vide sinon', () => {
+  expect(fileExtension('Rapport.PDF')).toBe('.pdf');
+  expect(fileExtension('archive.tar.gz')).toBe('.gz');
+  expect(fileExtension('dossier/note.md')).toBe('.md');
+  expect(fileExtension('Makefile')).toBe('');
+  expect(fileExtension('.gitignore')).toBe('');
+  expect(fileExtension('bizarre.')).toBe('');
+});
+
+it('la puce pièce jointe affiche le badge d’extension ambre', async () => {
+  const msg = buildMessageWithAttachments('voici', [file('note.md', 'abc')]);
+  let root!: ReturnType<typeof create>;
+  await act(async () => {
+    root = create(
+      createElement(ChatTranscript, {
+        messages: [{ id: 'm1', role: 'user', content: msg }],
+        calls: [],
+      }),
+    );
+  });
+  const badges = root.root.findAllByProps({ className: 'file-ext' });
+  expect(badges).toHaveLength(1);
+  expect(textOf(badges[0].children)).toBe('.md');
 });

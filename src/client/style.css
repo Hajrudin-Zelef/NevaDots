@@ -3009,6 +3009,58 @@ h3 {
   text-underline-offset: 3px;
 }
 
+/* Tokens différenciés du markdown (chat assistant, brief, revue de page) :
+ * liens orange, code bleu, extensions ambre (badges `.file-ext`). Couleurs
+ * unies : le plugin sombre les convertit au build. Bulle user préservée
+ * (blanc sur vert). */
+.chat-bubble.assistant a,
+.brief a,
+.page-review-body a {
+  color: #b45309;
+}
+.chat-bubble.assistant code,
+.brief code,
+.page-review-body code {
+  color: #1d4ed8;
+  background: #e8eefc;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 0.92em;
+}
+.chat-bubble.assistant pre,
+.brief pre {
+  background: #edf1f9;
+  border: 1px solid #d5def2;
+}
+.chat-bubble.assistant pre code,
+.brief pre code,
+.page-review-body pre code {
+  color: inherit;
+  background: transparent;
+  padding: 0;
+}
+.chat-bubble.user code {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 0.92em;
+}
+.file-ext {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #f5d78e;
+  border-radius: 5px;
+  padding: 0 5px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
 /* A Dot's persistent computer shares the findings panel. */
 .computer-overlay {
   position: fixed;

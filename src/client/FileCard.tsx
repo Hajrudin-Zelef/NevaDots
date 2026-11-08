@@ -8,7 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Attachment } from './attachments';
-import { attachmentContentUrl, formatSize } from './attachments';
+import { attachmentContentUrl, fileExtension, formatSize } from './attachments';
 import { ThinkingOrb } from './ThinkingOrb';
 
 const CATEGORY_ICON = {
@@ -40,6 +40,7 @@ export function FileCard({
       : undefined);
   const isUploading = attachment.status === 'uploading';
   const isError = attachment.status === 'error';
+  const ext = fileExtension(attachment.name);
 
   return (
     <div className="file-card" role="listitem">
@@ -58,7 +59,10 @@ export function FileCard({
           </span>
         )}
         <span className="file-card-meta">
-          <span className="file-card-name">{attachment.name}</span>
+          <span className="file-card-name">
+            {attachment.name}
+            {ext && <span className="file-ext">{ext}</span>}
+          </span>
           <span className="file-card-size">
             {isUploading ? (
               <span className="file-card-status">

@@ -183,6 +183,18 @@ export function formatChars(n: number): string {
 }
 
 /**
+ * Extension d'un nom de fichier (`.ts`, `.pdf`, …), en minuscules avec le
+ * point, ou `''` si aucune (dossiers, fichiers sans extension, dotfiles).
+ * Utilisé pour le badge ambre `.file-ext` (FileCard + puces du chat).
+ */
+export function fileExtension(name: string): string {
+  const base = name.split('/').at(-1) ?? name;
+  const dot = base.lastIndexOf('.');
+  if (dot <= 0 || dot === base.length - 1) return '';
+  return base.slice(dot).toLowerCase();
+}
+
+/**
  * Découpe un message utilisateur en brouillon + puces de pièces jointes.
  * Le nouveau format est déterministe (la longueur N de l'en-tête fixe la
  * fin exacte du bloc, quoi que contienne le texte). Sans bloc : le texte
