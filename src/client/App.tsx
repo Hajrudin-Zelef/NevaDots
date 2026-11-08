@@ -1030,7 +1030,7 @@ export function App() {
                       attachments.uploading ||
                       (!prompt.trim() && !attachments.items.length)
                     }
-                    submitTitle="Démarrer la conversation"
+                    submitTitle="Démarrer la conversation (Ctrl+Entrée)"
                     submitAriaLabel="Démarrer la conversation"
                     sourceOpen={sourceOpen}
                     onToggleSource={() => setSourceOpen((open) => !open)}

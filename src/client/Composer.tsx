@@ -20,7 +20,7 @@ export interface ComposerProps {
   placeholder: string;
   inputDisabled?: boolean;
   inputAriaLabel: string;
-  /** Gate for Enter-to-submit (e.g. configured && !busy && !!text.trim()). */
+  /** Gate for Ctrl/Cmd+Enter to submit (e.g. configured && !busy && !!text.trim()). */
   canSubmitOnEnter: boolean;
 
   // --- Form submit ---

@@ -1077,7 +1077,9 @@ export function Chat({
           !contextReady ||
           paused
         }
-        submitTitle={running ? 'Mettre en file' : 'Envoyer'}
+        submitTitle={
+          running ? 'Mettre en file (Ctrl+Entrée)' : 'Envoyer (Ctrl+Entrée)'
+        }
         submitAriaLabel={running ? 'Mettre en file' : 'Envoyer'}
         sourceOpen={sourceOpen}
         onToggleSource={() => setSourceOpen((open) => !open)}

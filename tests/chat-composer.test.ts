@@ -4,20 +4,27 @@ import {
   submitComposerOnEnter,
 } from '../src/client/chat-composer';
 
+// Entrée seule = saut de ligne (jamais d'envoi) ; Ctrl/⌘+Entrée = envoi.
 function keyEvent({
   key = 'Enter',
   shiftKey = false,
+  ctrlKey = false,
+  metaKey = false,
   isComposing = false,
   keyCode,
 }: {
   key?: string;
   shiftKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
   isComposing?: boolean;
   keyCode?: number;
 } = {}) {
   return {
     key,
     shiftKey,
+    ctrlKey,
+    metaKey,
     nativeEvent: {
       isComposing,
       keyCode,
@@ -25,24 +32,36 @@ function keyEvent({
   };
 }
 
-it('does not submit Enter while IME composition is active', () => {
-  expect(shouldSubmitComposerOnKeyDown(keyEvent({ isComposing: true }))).toBe(
-    false,
-  );
+it('Entrée seule insère un saut de ligne, sans envoi', () => {
+  expect(shouldSubmitComposerOnKeyDown(keyEvent())).toBe(false);
 });
 
-it('does not submit legacy IME composition Enter events', () => {
-  expect(shouldSubmitComposerOnKeyDown(keyEvent({ keyCode: 229 }))).toBe(false);
-});
-
-it('submits Enter after composition completes', () => {
-  expect(shouldSubmitComposerOnKeyDown(keyEvent())).toBe(true);
-});
-
-it('keeps Shift+Enter available for multiline drafts', () => {
+it('Maj+Entrée insère aussi un saut de ligne', () => {
   expect(shouldSubmitComposerOnKeyDown(keyEvent({ shiftKey: true }))).toBe(
     false,
   );
+  expect(
+    shouldSubmitComposerOnKeyDown(keyEvent({ shiftKey: true, ctrlKey: true })),
+  ).toBe(false);
+});
+
+it('Ctrl+Entrée et ⌘+Entrée envoient', () => {
+  expect(shouldSubmitComposerOnKeyDown(keyEvent({ ctrlKey: true }))).toBe(true);
+  expect(shouldSubmitComposerOnKeyDown(keyEvent({ metaKey: true }))).toBe(true);
+});
+
+it('pas d’envoi pendant la composition IME', () => {
+  expect(
+    shouldSubmitComposerOnKeyDown(
+      keyEvent({ ctrlKey: true, isComposing: true }),
+    ),
+  ).toBe(false);
+});
+
+it('pas d’envoi sur les événements IME legacy (keyCode 229)', () => {
+  expect(
+    shouldSubmitComposerOnKeyDown(keyEvent({ ctrlKey: true, keyCode: 229 })),
+  ).toBe(false);
 });
 
 function enterEvent(init: Parameters<typeof keyEvent>[0] = {}) {
@@ -59,25 +78,27 @@ function enterEvent(init: Parameters<typeof keyEvent>[0] = {}) {
   };
 }
 
-it('submits the form when Enter is pressed in the home composer', () => {
-  const { event, requestSubmit, preventDefault } = enterEvent();
+it('soumet le formulaire sur Ctrl+Entrée (composer d’accueil)', () => {
+  const { event, requestSubmit, preventDefault } = enterEvent({
+    ctrlKey: true,
+  });
   submitComposerOnEnter(event, true);
   expect(preventDefault).toHaveBeenCalled();
   expect(requestSubmit).toHaveBeenCalledTimes(1);
 });
 
-it('keeps Enter from adding a line but does not submit an empty or busy composer', () => {
+it('n’envoie pas sur Entrée seule (le textarea gère le saut de ligne)', () => {
   const { event, requestSubmit, preventDefault } = enterEvent();
-  submitComposerOnEnter(event, false);
-  expect(preventDefault).toHaveBeenCalled();
+  submitComposerOnEnter(event, true);
+  expect(preventDefault).not.toHaveBeenCalled();
   expect(requestSubmit).not.toHaveBeenCalled();
 });
 
-it('leaves Shift+Enter alone so it still inserts a newline', () => {
+it('n’envoie pas si le composer est vide ou occupé', () => {
   const { event, requestSubmit, preventDefault } = enterEvent({
-    shiftKey: true,
+    ctrlKey: true,
   });
-  submitComposerOnEnter(event, true);
-  expect(preventDefault).not.toHaveBeenCalled();
+  submitComposerOnEnter(event, false);
+  expect(preventDefault).toHaveBeenCalled();
   expect(requestSubmit).not.toHaveBeenCalled();
 });

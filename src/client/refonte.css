@@ -1881,6 +1881,14 @@ textarea::placeholder {
 .template-app .chat-compose-row .send-button:hover:not(:disabled) {
   background: var(--nd-accent-dark);
 }
+/* Stop : pastille rouge distincte de l'envoi (même gabarit, autre couleur). */
+.template-app .chat-compose-row .send-button.stop {
+  background: #dc2626;
+  color: #fff;
+}
+.template-app .chat-compose-row .send-button.stop:hover:not(:disabled) {
+  background: #b91c1c;
+}
 .template-app .chat-compose-note {
   padding-top: 5px;
   color: var(--nd-text-secondary);
