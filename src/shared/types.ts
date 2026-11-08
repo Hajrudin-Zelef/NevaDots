@@ -10,6 +10,9 @@ export type Status =
 export type ReplyStyle = 'concise' | 'standard' | 'detailed';
 /** Global reply language: 'fr' pins French, 'auto' follows the user. */
 export type ReplyLanguage = 'fr' | 'auto';
+/** Moteur de lecture vocale : synthèse du navigateur (gratuite) ou
+ *  modèle neuronal via la passerelle (qualité top, coût réel). */
+export type TtsMode = 'browser' | 'model';
 export interface Settings {
   name: string;
   paused: boolean;
@@ -19,6 +22,20 @@ export interface Settings {
   replyStyle: ReplyStyle;
   /** Reply language hint injected into the system prompt (default 'fr'). */
   replyLanguage: ReplyLanguage;
+  /** Moteur de lecture vocale des réponses (défaut 'browser'). */
+  ttsMode: TtsMode;
+  /** Voix : URI de voix navigateur OU id de voix modèle (ex. 'alloy'). */
+  ttsVoice: string;
+  /** Vitesse de lecture 0.5–2 (défaut 1). */
+  ttsRate: number;
+  /** Pause entre phrases en ms 0–1000 (défaut 300). */
+  ttsPauseSentenceMs: number;
+  /** Pause entre paragraphes en ms 0–2000 (défaut 600). */
+  ttsPauseParagraphMs: number;
+  /** Provider neuronal (clé serveur) ou null. */
+  ttsProvider: string | null;
+  /** Modèle TTS neuronal compatible ou null. */
+  ttsModel: string | null;
 }
 /** Aggregated model usage over a window (tokens + estimated cost). */
 export interface UsageSummary {

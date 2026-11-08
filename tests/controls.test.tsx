@@ -9,6 +9,13 @@ const settings: Settings = {
   memoryAllowed: true,
   replyStyle: 'standard',
   replyLanguage: 'fr',
+  ttsMode: 'browser',
+  ttsVoice: '',
+  ttsRate: 1,
+  ttsPauseSentenceMs: 300,
+  ttsPauseParagraphMs: 600,
+  ttsProvider: null,
+  ttsModel: null,
 };
 const task: Task = {
   id: 'one',

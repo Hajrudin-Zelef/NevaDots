@@ -913,6 +913,13 @@ export function createApp({
         memoryAllowed: z.boolean().optional(),
         replyStyle: z.enum(['concise', 'standard', 'detailed']).optional(),
         replyLanguage: z.enum(['fr', 'auto']).optional(),
+        ttsMode: z.enum(['browser', 'model']).optional(),
+        ttsVoice: z.string().max(200).optional(),
+        ttsRate: z.number().finite().min(0.5).max(2).optional(),
+        ttsPauseSentenceMs: z.number().int().min(0).max(1000).optional(),
+        ttsPauseParagraphMs: z.number().int().min(0).max(2000).optional(),
+        ttsProvider: z.string().max(120).nullable().optional(),
+        ttsModel: z.string().max(160).nullable().optional(),
       })
       .strict()
       .safeParse(await c.req.json().catch(() => null));

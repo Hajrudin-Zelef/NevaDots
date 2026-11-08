@@ -26,6 +26,13 @@ const defaults: Settings = {
   memoryAllowed: true,
   replyStyle: 'standard',
   replyLanguage: 'fr',
+  ttsMode: 'browser',
+  ttsVoice: '',
+  ttsRate: 1,
+  ttsPauseSentenceMs: 300,
+  ttsPauseParagraphMs: 600,
+  ttsProvider: null,
+  ttsModel: null,
 };
 /**
  * Store — Phase C1 : isolation par compte (même contrat que WorkspaceStore).

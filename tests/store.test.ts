@@ -39,6 +39,34 @@ describe('durable task lifecycle', () => {
     expect(store.settings().replyStyle).toBe('concise');
     expect(store.settings().replyLanguage).toBe('auto');
   });
+  it('provides TTS defaults and persists voice settings', () => {
+    const { store } = fixture();
+    expect(store.settings()).toMatchObject({
+      ttsMode: 'browser',
+      ttsVoice: '',
+      ttsRate: 1,
+      ttsPauseSentenceMs: 300,
+      ttsPauseParagraphMs: 600,
+      ttsProvider: null,
+      ttsModel: null,
+    });
+    store.updateSettings({
+      ttsMode: 'model',
+      ttsVoice: 'alloy',
+      ttsRate: 1.2,
+      ttsPauseSentenceMs: 400,
+      ttsProvider: 'openai',
+      ttsModel: 'tts-1',
+    });
+    expect(store.settings()).toMatchObject({
+      ttsMode: 'model',
+      ttsVoice: 'alloy',
+      ttsRate: 1.2,
+      ttsPauseSentenceMs: 400,
+      ttsProvider: 'openai',
+      ttsModel: 'tts-1',
+    });
+  });
   it('aggregates usage per day and per week', () => {
     const { store } = fixture();
     const now = Date.now();
