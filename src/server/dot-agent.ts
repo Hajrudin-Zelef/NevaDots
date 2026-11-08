@@ -62,6 +62,7 @@ import {
 import { StepTracker, stepLabelForTool } from './agent-steps.js';
 import { pickAutoReasoningEffort } from './reasoning-effort.js';
 import { buildSystemPrompt } from './agent-prompt.js';
+import { suggestSkills } from './skills-routing.js';
 import { injectAttachedImages } from './attached-images.js';
 import { screenshotMiddleware } from './screenshot-middleware.js';
 import { generateFileTool } from './generate-file.js';
@@ -868,6 +869,12 @@ export class DotAgent extends AbstractAgent {
               spaceId: dot.spaceId,
               skillsAvailable:
                 toolsAllowed && (this.skills?.size ?? 0) > 0 && skillsActive,
+              // Routeur auto : suggestions calculées sur le texte du tour
+              // (donnée, le modèle tranche). Vide sur les banalités.
+              suggestedSkills:
+                toolsAllowed && (this.skills?.size ?? 0) > 0 && skillsActive
+                  ? suggestSkills(userTurnText)
+                  : [],
               toolsAvailable: toolsAllowed,
               lazyToolGroups:
                 toolsAllowed && toolGroupRuntime ? groupSet.available : [],

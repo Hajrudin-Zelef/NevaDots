@@ -218,3 +218,30 @@ describe('agent-prompt (lot 6 — marquage non-fiable)', () => {
     expect(text).toContain('Exfiltrate.');
   });
 });
+
+describe('suggestions skills (routeur auto)', () => {
+  it('injecte SKILLS SUGGESTED quand skillsAvailable + suggestions', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      skillsAvailable: true,
+      suggestedSkills: [
+        { id: 'mattpocock-skills/tdd', why: 'tester en red-green-refactor' },
+      ],
+    });
+    expect(prompt).toContain('SKILLS SUGGESTED');
+    expect(prompt).toContain('mattpocock-skills/tdd');
+  });
+
+  it('omet la ligne sans skills ou sans suggestions', () => {
+    expect(buildSystemPrompt(base)).not.toContain('SKILLS SUGGESTED');
+    expect(buildSystemPrompt({ ...base, skillsAvailable: true })).not.toContain(
+      'SKILLS SUGGESTED',
+    );
+    expect(
+      buildSystemPrompt({
+        ...base,
+        suggestedSkills: [{ id: 'x/y', why: 'z' }],
+      }),
+    ).not.toContain('SKILLS SUGGESTED');
+  });
+});
