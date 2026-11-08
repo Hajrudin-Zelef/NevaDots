@@ -80,6 +80,10 @@ const ROUTES: Route[] = [
       'code',
       'script',
       'programme',
+      '\\bjeux?\\b',
+      'game',
+      'application',
+      'appli',
     ],
   },
   {
@@ -93,6 +97,8 @@ const ROUTES: Route[] = [
       'coverage',
       'corrige',
       'regression',
+      '\\bjeux?\\b',
+      'game',
     ],
   },
   {

@@ -67,6 +67,17 @@ describe('suggestSkills (les 5 maillons, FR+EN, sans accents)', () => {
     expect(ids).toEqual([...WORKFLOW_SKILL_IDS].slice(0, ids.length));
   });
 
+  it('un jeu est un travail de fond : implement + tdd (pas jeudi)', () => {
+    const ids = suggestSkills('Tu peux me faire un petit jeu de dames ?').map(
+      (s) => s.id,
+    );
+    expect(ids).toContain('mattpocock-skills/implement');
+    expect(ids).toContain('mattpocock-skills/tdd');
+    expect(
+      suggestSkills('On se voit jeudi pour en discuter').map((s) => s.id),
+    ).not.toContain('mattpocock-skills/implement');
+  });
+
   it('ne suggère que les 5 maillons (jamais d’id inventé)', () => {
     const ids = suggestSkills('debug ce test qui échoue puis refactor le code');
     for (const id of ids.map((s) => s.id))
