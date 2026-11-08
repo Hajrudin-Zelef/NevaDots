@@ -121,17 +121,29 @@ describe('POST /api/feedback', () => {
         )
       ).status,
     ).toBe(201);
-    // Un appel via openrouter/auto servi par gpt-6-luna.
+    // Un appel via openrouter/auto servi par gpt-6-luna (message m1),
+    // un autre servi par un autre modèle (message m2).
     usage.recordUsage({
       ts: Date.now(),
       dotId: 'd1',
       model: 'openrouter/auto',
       resolvedModel: 'openai/gpt-6-luna',
+      messageId: 'm1',
       promptTokens: 10,
       completionTokens: 2,
       costUsd: null,
     });
-    expect(usage.latestResolvedModel('d1')).toBe('openai/gpt-6-luna');
+    usage.recordUsage({
+      ts: Date.now(),
+      dotId: 'd1',
+      model: 'openrouter/auto',
+      resolvedModel: 'autre/modele',
+      messageId: 'm2',
+      promptTokens: 10,
+      completionTokens: 2,
+      costUsd: null,
+    });
+    expect(usage.latestResolvedModel('d1')).toBe('autre/modele');
     expect(usage.latestResolvedModel('d9')).toBeNull();
     expect(
       (
@@ -145,14 +157,24 @@ describe('POST /api/feedback', () => {
       await f.auth.createUser('boss', 'a-strong-password', 'admin');
       return loginAs(f.app, 'boss', 'a-strong-password');
     })();
-    const list = (await (
+    expect(
+      (
+        await f.app.request(
+          '/api/feedback',
+          json({ messageId: 'm2', vote: 1, dotId: 'd1' }, marie),
+        )
+      ).status,
+    ).toBe(201);
+    const rows = (await (
       await f.app.request('/api/feedback', { headers: boss })
     ).json()) as {
       feedback: Array<{ messageId: string; resolvedModel: string | null }>;
     };
-    const byId = new Map(list.feedback.map((item) => [item.messageId, item]));
-    expect(byId.get('m0')?.resolvedModel).toBeNull();
-    expect(byId.get('m1')?.resolvedModel).toBe('openai/gpt-6-luna');
+    const votes = new Map(rows.feedback.map((item) => [item.messageId, item]));
+    expect(votes.get('m0')?.resolvedModel).toBeNull();
+    // F9 : chaque vote porte le modèle de SON message, pas le dernier.
+    expect(votes.get('m1')?.resolvedModel).toBe('openai/gpt-6-luna');
+    expect(votes.get('m2')?.resolvedModel).toBe('autre/modele');
   });
 
   it('requiert une session ; la lecture est réservée Admin', async () => {

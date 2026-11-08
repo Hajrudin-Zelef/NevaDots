@@ -269,3 +269,29 @@ describe('one-shot scheduled tasks', () => {
     expect(store.claim(now)?.id).toBe(task.id);
   });
 });
+
+it('bindUsageMessages relie les appels aux messages servis dans l’ordre (F9)', () => {
+  const { store } = fixture();
+  const now = Date.now();
+  const usage = (messageId: string | null) =>
+    store.recordUsage({
+      ts: now,
+      dotId: 'd1',
+      model: 'openrouter/auto',
+      resolvedModel: 'srv',
+      messageId,
+      promptTokens: 1,
+      completionTokens: 1,
+      costUsd: null,
+    });
+  usage(null);
+  usage(null);
+  usage('deja-lie');
+  store.bindUsageMessages(['ma', 'mb'], 'd1', now);
+  expect(store.resolvedModelForMessage('ma', 'd1')).toBe('srv');
+  expect(store.resolvedModelForMessage('mb', 'd1')).toBe('srv');
+  // Ligne déjà liée conservée ; repli dot sinon.
+  expect(store.resolvedModelForMessage('deja-lie', 'd1')).toBe('srv');
+  expect(store.resolvedModelForMessage('inconnu', 'd1')).toBe('srv');
+  expect(store.resolvedModelForMessage('inconnu', 'autre-dot')).toBeNull();
+});

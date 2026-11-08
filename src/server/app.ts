@@ -1003,7 +1003,10 @@ export function createApp({
     const store = c.get('store');
     store.recordFeedback({
       ...parsed.data,
-      resolvedModel: store.latestResolvedModel(parsed.data.dotId),
+      resolvedModel: store.resolvedModelForMessage(
+        parsed.data.messageId,
+        parsed.data.dotId,
+      ),
       username: auth?.getUserById(userId)?.username ?? null,
     });
     return c.json({ ok: true }, 201);

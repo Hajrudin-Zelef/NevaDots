@@ -599,6 +599,9 @@ export class DotAgent extends AbstractAgent {
             // demandé ; coût calculé sur le servi quand il est connu.
             const servedModel = info.resolvedModel ?? model;
             // Une ligne par appel modèle (y compris sans reasoning).
+            // messageId opportuniste (souvent null : l'adaptateur n'a
+            // pas encore émis les ids) — le RUN_FINISHED relie (F9).
+            const servedIds = [...assistantMessageIds];
             try {
               this.store.recordUsage({
                 ts: Date.now(),
@@ -608,6 +611,9 @@ export class DotAgent extends AbstractAgent {
                   info.resolvedModel && info.resolvedModel !== model
                     ? info.resolvedModel
                     : null,
+                messageId: servedIds.length
+                  ? servedIds[servedIds.length - 1]
+                  : null,
                 promptTokens: info.promptTokens,
                 completionTokens: info.completionTokens,
                 cachedTokens: info.cachedTokens,
@@ -645,6 +651,17 @@ export class DotAgent extends AbstractAgent {
               resolvedModel: turnUsage.resolvedModel,
             });
             saveReasoningStats(reasoningMessageId, stats);
+            // F9 : relie les appels du tour aux messages servis.
+            if (assistantMessageIds.size)
+              try {
+                this.store.bindUsageMessages(
+                  [...assistantMessageIds],
+                  dot.id,
+                  turnStartedAt,
+                );
+              } catch {
+                // Best-effort.
+              }
             closeReasoning();
           },
         };
@@ -1034,6 +1051,17 @@ export class DotAgent extends AbstractAgent {
                     : new Set([reasoningMessageId]);
                   for (const id of ids)
                     if (!getReasoningStats(id)) saveReasoningStats(id, stats);
+                  // F9 : relie les appels du tour aux messages servis.
+                  if (assistantMessageIds.size)
+                    try {
+                      this.store.bindUsageMessages(
+                        [...assistantMessageIds],
+                        dot.id,
+                        turnStartedAt,
+                      );
+                    } catch {
+                      // Best-effort.
+                    }
                 }
                 if (
                   event.type === EventType.RUN_FINISHED &&

@@ -95,6 +95,12 @@ export class Store {
     } catch {
       // Column already present — nothing to do.
     }
+    // F9 : lier l'usage au message assistant servi (vote → vrai modèle).
+    try {
+      this.db.exec('ALTER TABLE usage ADD COLUMN messageId TEXT');
+    } catch {
+      // Column already present — nothing to do.
+    }
     // settings : singleton (id=1) -> une ligne par compte (userId).
     const settingsSql = this.db
       .prepare(
@@ -699,6 +705,8 @@ export class Store {
     model: string;
     /** Modèle réellement servi s'il diffère de l'alias (routeurs). */
     resolvedModel?: string | null;
+    /** Message assistant servi par cet appel (vote → vrai modèle, F9). */
+    messageId?: string | null;
     promptTokens: number | null;
     completionTokens: number | null;
     cachedTokens?: number | null;
@@ -709,13 +717,14 @@ export class Store {
     // store non lié écrit un orphelin (NULL), réclamé via le Dot au boot.
     this.db
       .prepare(
-        'INSERT INTO usage (ts, dotId, model, resolvedModel, promptTokens, completionTokens, cachedTokens, costUsd, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO usage (ts, dotId, model, resolvedModel, messageId, promptTokens, completionTokens, cachedTokens, costUsd, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         entry.ts,
         entry.dotId,
         entry.model,
         entry.resolvedModel ?? null,
+        entry.messageId ?? null,
         entry.promptTokens,
         entry.completionTokens,
         entry.cachedTokens ?? null,
@@ -778,10 +787,55 @@ export class Store {
       .prepare(
         `SELECT resolvedModel FROM usage
           WHERE user_id = ? AND dotId = ? AND resolvedModel IS NOT NULL
-          ORDER BY ts DESC LIMIT 1`,
+          ORDER BY ts DESC, rowid DESC LIMIT 1`,
       )
       .get(this.userId, dotId) as { resolvedModel?: string } | undefined;
     return typeof row?.resolvedModel === 'string' ? row.resolvedModel : null;
+  }
+  /** Relie les appels d'un tour aux messages assistant servis (F9) :
+   *  les lignes du tour sans messageId sont attribuées dans l'ordre
+   *  chronologique aux ids de messages (le surplus va au dernier —
+   *  cas standard : un appel → un message). */
+  bindUsageMessages(
+    messageIds: string[],
+    dotId: string | null,
+    sinceTs: number,
+  ): void {
+    if (!messageIds.length || !this.userId) return;
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM usage
+          WHERE user_id = ? AND dotId IS ? AND ts >= ? AND messageId IS NULL
+          ORDER BY rowid`,
+      )
+      .all(this.userId, dotId, sinceTs) as Array<{ id: number }>;
+    if (!rows.length) return;
+    const update = this.db.prepare(
+      'UPDATE usage SET messageId = ? WHERE id = ?',
+    );
+    const last = messageIds[messageIds.length - 1];
+    rows.forEach((row, index) => {
+      update.run(
+        messageIds[Math.min(index, messageIds.length - 1)] ?? last,
+        row.id,
+      );
+    });
+  }
+  /** Modèle réellement servi pour le message voté (F9) : jointure par
+   *  messageId d'abord, repli sur le dernier du Dot (compatibilité). */
+  resolvedModelForMessage(
+    messageId: string,
+    dotId: string | null | undefined,
+  ): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT resolvedModel FROM usage
+          WHERE user_id = ? AND messageId = ? AND resolvedModel IS NOT NULL
+          ORDER BY ts DESC, rowid DESC LIMIT 1`,
+      )
+      .get(this.userId, messageId) as { resolvedModel?: string } | undefined;
+    if (typeof row?.resolvedModel === 'string') return row.resolvedModel;
+    return this.latestResolvedModel(dotId);
   }
   /** Suppression admin (modération du volet Feedback). */
   deleteFeedback(id: string): void {
