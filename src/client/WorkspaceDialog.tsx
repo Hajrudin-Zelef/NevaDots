@@ -1298,7 +1298,10 @@ export function WorkspaceDialog({
                   settingsTab === 'feedback' &&
                   myRole === 'admin' && <FeedbackPanel />}
                 {dialog.type === 'settings' && settingsTab === 'voice' && (
-                  <VoicePanel settings={state.settings} />
+                  <VoicePanel
+                    settings={state.settings}
+                    onSaved={() => void mutate('/state', 'GET')}
+                  />
                 )}
               </div>
             </div>

@@ -29,7 +29,14 @@ function browserVoices(): SpeechSynthesisVoice[] {
  * voix, vitesse, pauses calibrées, extrait de test. Sauvegarde via
  * PATCH /api/settings (appliquée aux lectures suivantes).
  */
-export function VoicePanel({ settings }: { settings: Settings }) {
+export function VoicePanel({
+  settings,
+  onSaved,
+}: {
+  settings: Settings;
+  /** Appelé après une sauvegarde réussie (l'appelant recharge l'état). */
+  onSaved?: () => void;
+}) {
   const [mode, setMode] = useState<TtsMode>(settings.ttsMode);
   const [voice, setVoice] = useState(settings.ttsVoice);
   const [rate, setRate] = useState(settings.ttsRate);
@@ -245,6 +252,7 @@ export function VoicePanel({ settings }: { settings: Settings }) {
         ttsModel: model,
       });
       setSaved(true);
+      onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Enregistrement impossible.');
     } finally {

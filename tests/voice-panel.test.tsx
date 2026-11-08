@@ -122,6 +122,24 @@ it('propose Recharger + Toutes langues, et l’aide quand ≤ 1 voix FR', async 
   vi.unstubAllGlobals();
 });
 
+it('recharge l’état App après sauvegarde (voix appliquée aussitôt)', async () => {
+  vi.mocked(api).mockImplementation(async (path: string) => {
+    if (path === '/tts/providers') return { providers: [] };
+    return { ok: true };
+  });
+  const onSaved = vi.fn();
+  let renderer: ReactTestRenderer;
+  act(() => {
+    renderer = create(createElement(VoicePanel, { settings, onSaved }));
+  });
+  await act(async () => {
+    await renderer!.root
+      .findByProps({ children: 'Enregistrer' })
+      .props.onClick();
+  });
+  expect(onSaved).toHaveBeenCalledTimes(1);
+});
+
 it('signale l’absence de synthèse pour l’extrait navigateur', async () => {
   vi.mocked(api).mockResolvedValue({ providers: [] });
   const renderer = renderPanel();
