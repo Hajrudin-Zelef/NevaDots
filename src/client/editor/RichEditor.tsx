@@ -36,7 +36,7 @@ export default function RichEditor({
       ...documentExtensions(),
       Markdown,
       Placeholder.configure({
-        placeholder: 'Start writing, or type / for blocks…',
+        placeholder: 'Écris ici, ou tape / pour les blocs…',
       }),
       SlashCommands,
     ],
@@ -69,7 +69,7 @@ export default function RichEditor({
         if (/<(img|iframe|script)\b/i.test(html)) {
           event.preventDefault();
           notice.current(
-            'Images and embedded content are not supported here. Use Markdown source to keep their original markup.',
+            'Les images et contenus embarqués ne sont pas gérés ici. Utilise la source Markdown pour garder leur balisage d’origine.',
           );
           return true;
         }
@@ -115,22 +115,18 @@ export default function RichEditor({
     );
   return (
     <>
-      <div
-        className="format-toolbar"
-        role="toolbar"
-        aria-label="Text formatting"
-      >
+      <div className="format-toolbar" role="toolbar" aria-label="Mise en forme">
         <button
-          title="Bold (⌘/Ctrl B)"
-          aria-label="Bold"
+          title="Gras (⌘/Ctrl B)"
+          aria-label="Gras"
           aria-pressed={state?.bold}
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
           <Bold size={16} />
         </button>
         <button
-          title="Italic (⌘/Ctrl I)"
-          aria-label="Italic"
+          title="Italique (⌘/Ctrl I)"
+          aria-label="Italique"
           aria-pressed={state?.italic}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
@@ -138,43 +134,43 @@ export default function RichEditor({
         </button>
         <span className="toolbar-divider" />
         <button
-          title="Bullet list"
-          aria-label="Bullet list"
+          title="Liste à puces"
+          aria-label="Liste à puces"
           aria-pressed={state?.bullet}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         >
           <List size={17} />
         </button>
         <button
-          title="Numbered list"
-          aria-label="Numbered list"
+          title="Liste numérotée"
+          aria-label="Liste numérotée"
           aria-pressed={state?.ordered}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         >
           <ListOrdered size={17} />
         </button>
         <button
-          title="Quote"
-          aria-label="Quote"
+          title="Citation"
+          aria-label="Citation"
           aria-pressed={state?.quote}
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
         >
           <Quote size={15} />
         </button>
         <button
-          title="Code block"
-          aria-label="Code block"
+          title="Bloc de code"
+          aria-label="Bloc de code"
           aria-pressed={state?.code}
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         >
           <Code2 size={17} />
         </button>
         <button
-          title="Add link"
-          aria-label="Add link"
+          title="Ajouter un lien"
+          aria-label="Ajouter un lien"
           onClick={() => {
             const url = window.prompt(
-              'Link URL (https:// or an internal page link)',
+              'URL du lien (https:// ou lien de page interne)',
               editor.getAttributes('link').href ?? '',
             );
             if (url === null) return;
@@ -183,7 +179,9 @@ export default function RichEditor({
               return;
             }
             if (!/^(https?:\/\/|\/#\/spaces\/)/i.test(url)) {
-              onNotice('Use a public http(s) URL or an internal page link.');
+              onNotice(
+                'Utilise une URL http(s) publique ou un lien de page interne.',
+              );
               return;
             }
             editor
@@ -198,16 +196,16 @@ export default function RichEditor({
         </button>
         <span className="toolbar-divider" />
         <button
-          aria-label="Undo"
-          title="Undo"
+          aria-label="Annuler"
+          title="Annuler"
           disabled={!state?.undo}
           onClick={() => editor.chain().focus().undo().run()}
         >
           <Undo2 size={16} />
         </button>
         <button
-          aria-label="Redo"
-          title="Redo"
+          aria-label="Rétablir"
+          title="Rétablir"
           disabled={!state?.redo}
           onClick={() => editor.chain().focus().redo().run()}
         >
@@ -216,7 +214,7 @@ export default function RichEditor({
       </div>
       <EditorContent editor={editor} />
       <p className="editor-hint">
-        Type <kbd>/</kbd> for blocks · ⌘/Ctrl + S to save
+        Tape <kbd>/</kbd> pour les blocs · ⌘/Ctrl + S pour enregistrer
       </p>
     </>
   );

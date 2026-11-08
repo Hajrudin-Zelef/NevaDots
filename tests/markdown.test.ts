@@ -45,3 +45,17 @@ it('preserves reference definitions through explicit source fallback, including 
     inspectMarkdown('[Linked][ref]\n\n[ref]: https://example.com').supported,
   ).toBe(false);
 });
+
+it('accepte les checklists et tableaux en mode visuel (tokens taskList/taskItem/table)', () => {
+  expect(inspectMarkdown('- [ ] Ouverte\n- [x] Terminée').supported).toBe(true);
+  expect(inspectMarkdown('| A | B |\n| --- | --- |\n| 1 | 2 |').supported).toBe(
+    true,
+  );
+});
+
+it('les motifs de repli source sont en français', () => {
+  const result = inspectMarkdown('![a](https://example.com/x.png)');
+  expect(result.supported).toBe(false);
+  expect(result.reason).toMatch(/source/i);
+  expect(result.reason).not.toMatch(/Source mode/);
+});

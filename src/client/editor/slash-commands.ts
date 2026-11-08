@@ -15,53 +15,53 @@ const command =
   };
 export const blocks: Block[] = [
   {
-    title: 'Text',
-    description: 'Start with a plain paragraph',
+    title: 'Texte',
+    description: 'Un paragraphe simple',
     run: command((e) => e.chain().setParagraph().run()),
   },
   ...([1, 2, 3] as const).map((level) => ({
-    title: `Heading ${level}`,
+    title: `Titre ${level}`,
     description:
       level === 1
-        ? 'A large section heading'
+        ? 'Un grand titre de section'
         : level === 2
-          ? 'A medium section heading'
-          : 'A small section heading',
+          ? 'Un titre de section moyen'
+          : 'Un petit titre de section',
     run: command((e) => e.chain().setHeading({ level }).run()),
   })),
   {
-    title: 'Bullet list',
-    description: 'A simple unordered list',
+    title: 'Liste à puces',
+    description: 'Une liste simple',
     run: command((e) => e.chain().toggleBulletList().run()),
   },
   {
-    title: 'Numbered list',
-    description: 'An ordered sequence',
+    title: 'Liste numérotée',
+    description: 'Une suite ordonnée',
     run: command((e) => e.chain().toggleOrderedList().run()),
   },
   {
-    title: 'Checklist',
-    description: 'Track things to do',
+    title: 'Liste de tâches',
+    description: 'À cocher, pour suivre',
     run: command((e) => e.chain().toggleTaskList().run()),
   },
   {
-    title: 'Quote',
-    description: 'Highlight a passage',
+    title: 'Citation',
+    description: 'Mettre un passage en valeur',
     run: command((e) => e.chain().toggleBlockquote().run()),
   },
   {
     title: 'Code',
-    description: 'A code block',
+    description: 'Un bloc de code',
     run: command((e) => e.chain().toggleCodeBlock().run()),
   },
   {
-    title: 'Divider',
-    description: 'Separate sections',
+    title: 'Séparateur',
+    description: 'Séparer les sections',
     run: command((e) => e.chain().setHorizontalRule().run()),
   },
   {
-    title: 'Table',
-    description: 'Three columns with a header',
+    title: 'Tableau',
+    description: 'Trois colonnes avec en-tête',
     run: command((e) =>
       e.chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
     ),
@@ -108,11 +108,11 @@ export const SlashCommands = Extension.create({
             menu.replaceChildren();
             const label = document.createElement('div');
             label.className = 'slash-menu-label';
-            label.textContent = 'INSERT BLOCK';
+            label.textContent = 'INSÉRER UN BLOC';
             menu.append(label);
             if (!props.items.length) {
               const empty = document.createElement('p');
-              empty.textContent = 'No matching blocks';
+              empty.textContent = 'Aucun bloc correspondant';
               menu.append(empty);
             }
             props.items.forEach((item, i) => {

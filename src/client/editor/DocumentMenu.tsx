@@ -62,7 +62,7 @@ export function DocumentMenu({
       <button
         ref={trigger}
         className="document-icon"
-        aria-label="Page actions"
+        aria-label="Actions de la page"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
@@ -73,7 +73,7 @@ export function DocumentMenu({
         <div
           className="document-dropdown"
           role="menu"
-          aria-label="Page actions"
+          aria-label="Actions de la page"
         >
           {items.map((item) => (
             <button
