@@ -159,14 +159,9 @@
     top: 0;
     width: 100vw;
   }
-  .template-app .welcome-composer-actions {
-    flex-wrap: wrap;
-    row-gap: 6px;
-  }
-  .template-app .welcome-model-select {
-    flex: 1 1 auto;
-    width: auto;
-    min-width: 116px;
+  .template-app .chat-composer,
+  .chat-composer {
+    border-radius: 16px;
   }
   .chat-compose-row {
     flex-wrap: wrap;
@@ -191,10 +186,6 @@
   .chat-compose-row .send-button.send-labeled {
     flex-shrink: 0;
     margin-left: auto;
-  }
-  .template-app .chat-composer,
-  .chat-composer {
-    border-radius: 16px;
   }
   .provider-tabs {
     flex-wrap: nowrap;
@@ -234,8 +225,7 @@
   .api-kind-btn {
     min-height: 36px;
   }
-  .chat-compose-row .icon-button,
-  .welcome-composer-actions .icon-button {
+  .chat-compose-row .icon-button {
     min-width: 40px;
     min-height: 40px;
   }

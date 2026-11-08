@@ -4,7 +4,6 @@ import type { Platform } from './platform.js';
 import type { AppVariables } from './request-context.js';
 
 const TTS_TIMEOUT_MS = 30_000;
-const TTS_MAX_CHARS = 4000;
 
 /** Voix par défaut quand l'utilisateur n'en choisit pas (le provider
  *  tranche ; 'auto' laisse le endpoint décider). */
@@ -138,10 +137,13 @@ export function ttsRoutes(platform: Platform) {
 
   /** Synthèse vocale neuronale : le texte part au provider (clé serveur,
    *  jamais exposée), l'audio revient tel quel. Tout compte connecté. */
+  // Texte entier, sans plafond (décision utilisateur) : le client découpe
+  // déjà en groupes ≤ 3000 car. (`groupBlocksForApi`), chaque requête
+  // reste petite ; le serveur ne tronque jamais.
   app.post('/tts', async (c) => {
     const parsed = z
       .object({
-        text: z.string().min(1).max(TTS_MAX_CHARS),
+        text: z.string().min(1),
         voice: z.string().max(120).nullish(),
         model: z.string().max(160).nullish(),
         provider: z.string().max(120).nullish(),
