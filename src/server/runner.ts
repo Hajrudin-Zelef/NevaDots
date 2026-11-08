@@ -2,6 +2,13 @@ import { Store } from './store.js';
 import type { Result, Memory } from '../shared/types.js';
 import type { Claim } from './store.js';
 import { research, type Config } from './research.js';
+/** Hard wall-clock ceiling for one background run (env RESEARCH_TIMEOUT_MS). */
+const DEFAULT_RUN_TIMEOUT_MS = 10 * 60_000;
+function formatTimeout(ms: number): string {
+  if (ms >= 60_000) return `${Math.round(ms / 60_000)} min`;
+  if (ms >= 1000) return `${Math.round(ms / 1000)} s`;
+  return `${ms} ms`;
+}
 export class Runner {
   private timer?: ReturnType<typeof setInterval>;
   private active = new Map<string, AbortController>();
@@ -70,12 +77,15 @@ export class Runner {
         controller.abort(new Error('Run ownership check failed.'));
       }
     }, 100);
+    const runTimeoutMs = this.config.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
     const timeout = setTimeout(
       () =>
         controller.abort(
-          new Error('Research exceeded the 90 second time limit.'),
+          new Error(
+            `La tâche a dépassé la limite de temps (${formatTimeout(runTimeoutMs)}) et a été arrêtée.`,
+          ),
         ),
-      90_000,
+      runTimeoutMs,
     );
     try {
       const settings = scoped.settings();

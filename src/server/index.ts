@@ -130,6 +130,7 @@ const researchConfig = {
   parallelApiKey: config.parallelApiKey,
   browserUrl: config.browserUrl,
   browserSecret: config.browserSecret,
+  timeoutMs: positiveInt(process.env.RESEARCH_TIMEOUT_MS),
 };
 const runner = new Runner(
   store,

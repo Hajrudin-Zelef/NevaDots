@@ -8,6 +8,9 @@ export interface Config extends WebConfig {
   model?: string;
   browserUrl?: string;
   browserSecret?: string;
+  /** Hard wall-clock ceiling for one background run (Runner). Default
+   * 10 min, env RESEARCH_TIMEOUT_MS. */
+  timeoutMs?: number;
 }
 export const browserResponse = z.object({
   title: z.string(),

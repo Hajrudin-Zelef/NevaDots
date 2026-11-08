@@ -205,3 +205,30 @@ it('aborts work instead of throwing from an ownership timer', async () => {
     store.close();
   }
 });
+it('aborts a run at the configured timeout with a French message', async () => {
+  vi.useFakeTimers();
+  try {
+    const store = new Store(':memory:').forUser('owner');
+    const runner = new Runner(
+      store,
+      { ...config, timeoutMs: 50 },
+      (_claim, _memories, signal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    );
+    const task = store.createTask('Long task');
+    const tick = runner.tick();
+    await vi.advanceTimersByTimeAsync(51);
+    await tick;
+    const detail = store.detail(task.id);
+    expect(detail?.task.status).toBe('failed');
+    expect(detail?.task.error).toMatch(/limite de temps/i);
+    runner.stop();
+    store.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
