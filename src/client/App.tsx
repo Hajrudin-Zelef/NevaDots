@@ -61,6 +61,7 @@ import type { ComputerPanelTab } from './ComputerPanel';
 import { TaskRow } from './TaskPresentation';
 import { TaskActions } from './TaskActions';
 import { initialsOf } from './initials';
+import { createSubmitGuard } from './submit-guard';
 import { WorkspaceDialog, type Dialog } from './WorkspaceDialog';
 
 function describeFailure(error: unknown, fallback: string) {
@@ -249,6 +250,9 @@ export function App() {
   const [pendingPrompt, setPendingPrompt] = useState<string>();
   const [pendingVoice, setPendingVoice] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Verrou anti-double-submit (H5) : pas un state (stale entre deux appels
+  // rapprochés), même motif que Chat.tsx `sendingRef`.
+  const startingGuard = useRef(createSubmitGuard());
   const [search, setSearch] = useState('');
   const [conversationSearch, setConversationSearch] = useState('');
   const [conversationCategory, setConversationCategory] = useState('all');
@@ -384,6 +388,9 @@ export function App() {
       return;
     }
     if (!dot || !configured || busy) return;
+    // H5 : `busy` est stale entre deux appels rapprochés et `prepareSend`
+    // est async — le garde synchrone bloque le second appel.
+    if (!startingGuard.current.tryAcquire()) return;
     setBusy(true);
     setError('');
     try {
@@ -407,6 +414,7 @@ export function App() {
       );
     } finally {
       setBusy(false);
+      startingGuard.current.release();
     }
   };
   const deleteConversation = async (id: string) => {
