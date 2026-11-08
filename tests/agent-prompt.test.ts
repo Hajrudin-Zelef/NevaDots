@@ -51,13 +51,16 @@ describe('agent-prompt (phase 5)', () => {
   it('buildSystemPrompt est en anglais, compressé, avec persona et flow', () => {
     const prompt = buildSystemPrompt(base);
     // ~250 tokens statiques : bien sous les ~472 d'avant (cap relevé pour
-    // les marquages « untrusted », délibérés, du Lot 6).
-    expect(prompt.length).toBeLessThan(2400);
+    // les marquages « untrusted » du Lot 6 et la section AUTONOMY).
+    expect(prompt.length).toBeLessThan(3000);
     expect(prompt).toContain('PERSONA');
     expect(prompt).toContain('Demanding mentor');
     expect(prompt).toContain('Never invent');
     expect(prompt).toContain('FLOW');
     expect(prompt).toContain('self-audit');
+    expect(prompt).toContain('AUTONOMY');
+    expect(prompt).toContain('Never end a turn with a promise');
+    expect(prompt).toContain('retry with a different approach');
     expect(prompt).toContain('Role instructions: Be helpful.');
     // Pas de JSON brut injecté.
     expect(prompt).not.toContain('JSON.stringify');
