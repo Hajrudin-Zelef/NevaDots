@@ -135,6 +135,16 @@ export function Composer(props: ComposerProps) {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }, [text]);
 
+  // Icône Brain : interrupteur — éteint (`none`) si un niveau est actif,
+  // rallume au Standard (auto) si éteint. Le select à côté sert au
+  // choix direct d'une variante.
+  const toggleBrain = () => {
+    if (reasoningDisabled) return;
+    const current = reasoningEffort ?? 'auto';
+    if (current === 'none' || reasoningMandatory) onSetReasoningEffort(null);
+    else onSetReasoningEffort('none');
+  };
+
   return (
     <form
       className="chat-composer"
@@ -248,8 +258,12 @@ export function Composer(props: ComposerProps) {
               reasoningEffort && reasoningEffort !== 'none' ? 'active' : ''
             }`}
             aria-label={`Réflexion : ${reasoningEffortLabel(reasoningEffort)}`}
-            title={`Réflexion : ${reasoningEffortLabel(reasoningEffort)} — cliquez pour revenir au Standard (auto)`}
-            onClick={() => onSetReasoningEffort(null)}
+            title={
+              (reasoningEffort ?? 'auto') === 'none'
+                ? 'Réflexion désactivée — cliquez pour activer (Standard, auto)'
+                : `Réflexion : ${reasoningEffortLabel(reasoningEffort)} — cliquez pour désactiver`
+            }
+            onClick={toggleBrain}
             disabled={reasoningDisabled}
           >
             <Brain size={17} />
@@ -292,9 +306,6 @@ export function Composer(props: ComposerProps) {
                 const native =
                   reasoningLevels === undefined ||
                   reasoningLevels.includes(value);
-                // Icône Brain : un appui revient toujours à la variante Défaut
-                // (Standard, auto) — le select à côté sert au choix direct.
-
                 return (
                   <option
                     key={value}

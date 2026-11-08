@@ -81,9 +81,8 @@ describe('reasoningLevelsFor', () => {
     const failing = vi.fn(async () => {
       throw new Error('réseau');
     }) as unknown as typeof fetch;
-    expect(
-      await reasoningLevelsFor('openrouter', 'x/y', failing),
-    ).toEqual({ status: 'unknown' });
-  });
+    expect(await reasoningLevelsFor('openrouter', 'x/y', failing)).toEqual({
+      status: 'unknown',
+    });
   });
 });

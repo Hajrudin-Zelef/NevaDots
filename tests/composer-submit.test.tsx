@@ -135,7 +135,7 @@ it('globe reste une source quand aucun handler websearch (comportement historiqu
   expect(globe).toBeTruthy();
 });
 
-it('Brain = retour au Standard (auto), jamais de cycle', () => {
+it('Brain = interrupteur Standard ↔ Désactivée', () => {
   const onSet = vi.fn();
   const renderer = renderComposer(undefined, false, undefined, {
     effort: 'high',
@@ -149,7 +149,19 @@ it('Brain = retour au Standard (auto), jamais de cycle', () => {
     brain.props.onClick();
   });
   expect(onSet).toHaveBeenCalledTimes(1);
-  expect(onSet).toHaveBeenCalledWith(null);
+  expect(onSet).toHaveBeenCalledWith('none');
+  const onSet2 = vi.fn();
+  const renderer2 = renderComposer(undefined, false, undefined, {
+    effort: 'none',
+    onSet: onSet2,
+    levels: ['low', 'high'],
+  });
+  act(() => {
+    renderer2.root
+      .findByProps({ 'aria-label': 'Réflexion : désactivée' })
+      .props.onClick();
+  });
+  expect(onSet2).toHaveBeenCalledWith(null);
 });
 
 it('option non native grisée avec motif au survol', () => {
