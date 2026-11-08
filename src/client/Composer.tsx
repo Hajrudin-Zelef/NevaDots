@@ -71,6 +71,9 @@ export interface ComposerProps {
 
   // --- Note under the composer ---
   note: ReactNode;
+
+  // --- Focus programmé (citation « Répondre », suggestions) ---
+  textareaRef?: { current: HTMLTextAreaElement | null };
 }
 
 /**
@@ -114,14 +117,15 @@ export function Composer(props: ComposerProps) {
     stopButton,
     attachmentCards,
     note,
+    textareaRef,
   } = props;
 
   // Auto-agrandissement du textarea : suit le contenu jusqu'à max-height (120px),
   // puis le texte défile à l'intérieur. Sans ça, un long message reste écrasé
   // sur une ligne et le texte « casse » visuellement.
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const innerRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    const el = textareaRef.current;
+    const el = innerRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
@@ -163,7 +167,10 @@ export function Composer(props: ComposerProps) {
       {attachmentCards}
       <div className="chat-compose-row">
         <textarea
-          ref={textareaRef}
+          ref={(el) => {
+            innerRef.current = el;
+            if (textareaRef) textareaRef.current = el;
+          }}
           aria-label={inputAriaLabel}
           placeholder={placeholder}
           value={text}

@@ -168,6 +168,18 @@ export function Chat({
     };
   }, [thread.id, contextAttempt]);
   const [draft, setDraft] = useState('');
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  /** Cite une sélection (« Répondre ») comme contexte du prochain message. */
+  const quoteSelection = (text: string) => {
+    const quoted = text
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    setDraft((current) =>
+      current ? `${quoted}\n\n${current}` : `${quoted}\n\n`,
+    );
+    composerInputRef.current?.focus();
+  };
   const [queued, setQueued] = useState<string[]>([]);
   const attachments = useAttachments(`thread:${thread.id}`);
   const attachmentBar = useRef<AttachmentBarHandle>(null);
@@ -860,6 +872,7 @@ export function Chat({
           streaming={running}
           running={running}
           onRetry={retryTurn}
+          onQuote={quoteSelection}
         />
         {queued.map((text, index) => (
           <div className="chat-bubble user pending" key={`queued-${index}`}>
@@ -1069,6 +1082,7 @@ export function Chat({
       <Composer
         text={draft}
         onTextChange={setDraft}
+        textareaRef={composerInputRef}
         placeholder={`Demander à ${dot.name}`}
         inputAriaLabel={`Discuter avec ${dot.name}`}
         canSubmitOnEnter={!!draft.trim() && loaded && contextReady && !paused}

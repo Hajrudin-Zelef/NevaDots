@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { FileText, PhoneOff } from 'lucide-react';
+import { CornerUpLeft, FileText, PhoneOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { AssistantMessage, Message } from '@ag-ui/core';
@@ -227,6 +227,7 @@ export function ChatTranscript({
   streaming = false,
   running = false,
   onRetry,
+  onQuote,
 }: {
   messages: Message[];
   calls: CallReceipt[];
@@ -238,13 +239,94 @@ export function ChatTranscript({
   running?: boolean;
   /** Régénère la dernière réponse (tronque au dernier message user). */
   onRetry?: () => void;
+  /** Cite la sélection (« Répondre ») comme contexte du prochain message. */
+  onQuote?: (text: string) => void;
 }) {
   const ids = new Set(messages.map((message) => message.id));
   const lastAssistantId = [...messages]
     .reverse()
     .find((message) => message.role === 'assistant')?.id;
+  const [quote, setQuote] = useState<{
+    x: number;
+    y: number;
+    text: string;
+  } | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!quote) return;
+    const hide = (event: PointerEvent) => {
+      if (!toolbarRef.current?.contains(event.target as Node | null))
+        setQuote(null);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setQuote(null);
+    };
+    const scroll = () => setQuote(null);
+    document.addEventListener('pointerdown', hide);
+    document.addEventListener('keydown', key);
+    document.addEventListener('scroll', scroll, true);
+    return () => {
+      document.removeEventListener('pointerdown', hide);
+      document.removeEventListener('keydown', key);
+      document.removeEventListener('scroll', scroll, true);
+    };
+  }, [quote]);
+  const onSelect = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+      setQuote(null);
+      return;
+    }
+    const text = selection.toString().trim();
+    if (text.length < 3 || text.length > 2000) {
+      setQuote(null);
+      return;
+    }
+    const anchor = selection.anchorNode;
+    const element =
+      anchor instanceof Element ? anchor : (anchor?.parentElement ?? undefined);
+    if (!element?.closest?.('.chat-bubble.assistant')) {
+      setQuote(null);
+      return;
+    }
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    setQuote({
+      x: Math.min(
+        Math.max(rect.left + rect.width / 2, 120),
+        window.innerWidth - 120,
+      ),
+      y: Math.max(rect.top, 8),
+      text,
+    });
+  };
   return (
-    <>
+    <div className="chat-transcript" onMouseUp={onSelect}>
+      {quote && (
+        <div
+          ref={toolbarRef}
+          className="quote-toolbar"
+          role="toolbar"
+          aria-label="Citer la sélection"
+          style={{
+            left: quote.x,
+            top: quote.y,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          <button
+            type="button"
+            className="quote-reply"
+            onClick={() => {
+              onQuote?.(quote.text);
+              window.getSelection()?.removeAllRanges();
+              setQuote(null);
+            }}
+          >
+            <CornerUpLeft size={13} />
+            Répondre
+          </button>
+        </div>
+      )}
       {calls
         .filter(
           (call) => !call.anchorMessageId || !ids.has(call.anchorMessageId),
@@ -308,6 +390,6 @@ export function ChatTranscript({
             ))}
         </Fragment>
       ))}
-    </>
+    </div>
   );
 }
