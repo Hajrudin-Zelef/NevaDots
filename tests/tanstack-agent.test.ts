@@ -15,6 +15,7 @@ import { ToolGroupState } from '../src/server/tool-groups.js';
 import { getReasoningStats } from '../src/server/reasoning.js';
 import { pageReviewTool } from '../src/shared/page-review.js';
 import { connectionActionTool } from '../src/shared/connection-types.js';
+import type { PlatformConfig } from '../src/server/platform-config.js';
 
 const databases: Array<{ close(): void }> = [];
 afterEach(() => {
@@ -29,6 +30,7 @@ function fixture(
   sessionBrains?: SessionBrainStore,
   sessionSummarizer?: SessionBrainSummarizer,
   toolGroups?: ToolGroupState,
+  config?: Partial<PlatformConfig>,
 ) {
   const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'owner');
@@ -56,6 +58,7 @@ function fixture(
       runtimeUrl: '',
       voiceName: 'marin',
       slackUsers: [],
+      ...config,
     },
     dot.id,
     false,
@@ -97,14 +100,14 @@ function fixture(
   return { store, workspace, dot, agent, input };
 }
 
-function createPageCall(args: Record<string, unknown>) {
+function createPageCall(args: Record<string, unknown>, id = 'create-page') {
   return completion(
     {
       role: 'assistant',
       tool_calls: [
         {
           index: 0,
-          id: 'create-page',
+          id,
           type: 'function',
           function: {
             name: 'create_space_page',
@@ -180,6 +183,54 @@ it('executes a page tool, continues with its result, and emits AG-UI text and to
       }),
     ]),
   );
+});
+
+it('continue au-delà de 5 tours d’outils dans le même message', async () => {
+  const f = fixture();
+  const network = vi.spyOn(globalThis, 'fetch');
+  for (let i = 0; i < 10; i += 1)
+    network.mockResolvedValueOnce(
+      createPageCall(
+        { title: `Notes ${i}`, content: `# Notes ${i}` },
+        `create-page-${i}`,
+      ),
+    );
+  network.mockResolvedValueOnce(
+    completion({ role: 'assistant', content: 'Tout est créé.' }),
+  );
+  const events = await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+  expect(network).toHaveBeenCalledTimes(11);
+  expect(events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: EventType.TEXT_MESSAGE_CHUNK,
+        delta: 'Tout est créé.',
+      }),
+    ]),
+  );
+});
+
+it('s’arrête proprement au plafond de sécurité configuré', async () => {
+  const f = fixture(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { maxAgentIterations: 3 },
+  );
+  const network = vi.spyOn(globalThis, 'fetch');
+  for (let i = 0; i < 4; i += 1)
+    network.mockResolvedValueOnce(
+      createPageCall({ title: `Cap ${i}`, content: '# Cap' }, `cap-page-${i}`),
+    );
+  const events = await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+  expect(network).toHaveBeenCalledTimes(3);
+  expect(
+    events.filter((event) => event.type === EventType.RUN_ERROR),
+  ).toHaveLength(0);
+  expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
 });
 
 it('offers the canonical review tool and waits for the client without saving a page', async () => {
@@ -421,7 +472,15 @@ it('secours RUN_FINISHED : stats avec le modèle résolu, sans écraser onEnd', 
 it('reports a turn that hits the time limit as a RUN_ERROR instead of ending silently', async () => {
   vi.useFakeTimers();
   try {
-    const f = fixture();
+    const f = fixture(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { turnTimeLimitMs: 1000 },
+    );
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       (_url, init) =>
         new Promise((_resolve, reject) => {
@@ -435,13 +494,13 @@ it('reports a turn that hits the time limit as a RUN_ERROR instead of ending sil
         }),
     );
     const finished = lastValueFrom(f.agent.run(f.input).pipe(toArray()));
-    await vi.advanceTimersByTimeAsync(90_001);
+    await vi.advanceTimersByTimeAsync(1001);
     const events = await finished;
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: EventType.RUN_ERROR,
-          message: expect.stringMatching(/time limit/i),
+          message: expect.stringMatching(/limite de temps/i),
         }),
       ]),
     );

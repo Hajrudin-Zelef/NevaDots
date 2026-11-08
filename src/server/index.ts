@@ -69,6 +69,11 @@ else if (!process.env.SECRETS_KEY?.trim())
     'No SECRETS_KEY: storing provider keys, MCP tokens or ' +
       'credentials is disabled until one is set.',
   );
+const positiveInt = (value: string | undefined): number | undefined => {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+};
 const config: PlatformConfig = {
   databasePath: database,
   apiKey: process.env.OPENAI_API_KEY,
@@ -91,6 +96,8 @@ const config: PlatformConfig = {
   maxCompletionTokens: process.env.MAX_COMPLETION_TOKENS
     ? Number(process.env.MAX_COMPLETION_TOKENS)
     : undefined,
+  maxAgentIterations: positiveInt(process.env.AGENT_MAX_ITERATIONS),
+  turnTimeLimitMs: positiveInt(process.env.AGENT_TURN_TIMEOUT_MS),
   skillsDir: process.env.SKILLS_DIR,
   computerHostUrl: process.env.COMPUTER_HOST_URL ?? `http://172.17.0.1:${port}`,
   webSearchProvider: webSearchProvider(process.env.WEB_SEARCH_PROVIDER),

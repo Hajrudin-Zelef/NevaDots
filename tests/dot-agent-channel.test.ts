@@ -6,6 +6,7 @@ import { Subject } from 'rxjs';
 import { DotAgent } from '../src/server/dot-agent.js';
 import { Store } from '../src/server/store.js';
 import { WorkspaceStore } from '../src/server/workspace.js';
+import type { PlatformConfig } from '../src/server/platform-config.js';
 const inner = vi.hoisted(() => ({
   configure:
     vi.fn<
@@ -93,7 +94,7 @@ it('preserves tools and override restrictions for channel runs', async () => {
     expect.objectContaining({ type: 'tanstack' }),
   );
 });
-function fixture(channel = true) {
+function fixture(channel = true, config?: Partial<PlatformConfig>) {
   const store = new Store(':memory:').forUser('owner');
   const workspace = new WorkspaceStore(':memory:', 'owner');
   workspace.ensureSeed();
@@ -111,6 +112,7 @@ function fixture(channel = true) {
       runtimeUrl: '',
       voiceName: 'marin',
       slackUsers: [],
+      ...config,
     },
     dot.id,
     channel,
@@ -221,7 +223,7 @@ it.each(['abort', 'timeout'])(
   async (reason) => {
     vi.useFakeTimers();
     try {
-      const f = fixture(false);
+      const f = fixture(false, { turnTimeLimitMs: 1000 });
       const capture = vi.spyOn(f.telemetry, 'capture');
       const stream = new Subject<BaseEvent>();
       inner.run.mockReturnValue(stream);
@@ -236,7 +238,7 @@ it.each(['abort', 'timeout'])(
         messageId: 'answer',
         delta: 'private answer',
       });
-      if (reason === 'timeout') await vi.advanceTimersByTimeAsync(90000);
+      if (reason === 'timeout') await vi.advanceTimersByTimeAsync(1001);
       else f.agent.abortRun();
       stream.next({
         type: EventType.RUN_FINISHED,

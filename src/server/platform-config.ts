@@ -15,6 +15,13 @@ export interface PlatformConfig extends WebConfig {
   /** Max output tokens per completion. Too low truncates tool arguments
    * mid-JSON (large files); default 8192, env MAX_COMPLETION_TOKENS. */
   maxCompletionTokens?: number;
+  /** Safety cap on model turns inside one chat turn. Default 200,
+   * env AGENT_MAX_ITERATIONS. The loop still stops naturally when the
+   * model returns a final answer (no tool call). */
+  maxAgentIterations?: number;
+  /** Wall-clock ceiling for one chat turn in milliseconds. Default
+   * 60 min, env AGENT_TURN_TIMEOUT_MS. */
+  turnTimeLimitMs?: number;
   /** Bibliothèque de skills locale (host). Défaut `data/skills`. */
   skillsDir?: string;
   /** URL de l'app vue depuis le conteneur (bridge Docker) pour les bundles

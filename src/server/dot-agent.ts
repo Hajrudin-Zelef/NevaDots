@@ -84,7 +84,18 @@ const channelError = () => ({
   message:
     'NevaDots could not complete this request. Please check the app and try again.',
 });
-const TURN_TIME_LIMIT_MS = 90_000;
+/** Wall-clock ceiling for one chat turn (env AGENT_TURN_TIMEOUT_MS). */
+const DEFAULT_TURN_TIME_LIMIT_MS = 60 * 60_000;
+/**
+ * Safety cap on model turns inside one chat turn (env
+ * AGENT_MAX_ITERATIONS). The loop stops naturally as soon as the model
+ * returns a final answer (no tool call); this only guards runaway loops.
+ */
+const DEFAULT_MAX_AGENT_ITERATIONS = 200;
+function formatDuration(ms: number): string {
+  if (ms >= 60_000) return `${Math.round(ms / 60_000)} min`;
+  return `${Math.round(ms / 1000)} s`;
+}
 /**
  * Cap the size of a tool result fed back to the model. Large page/terminal
  * outputs are kept in full for the UI (capture/brief) but resent to the model
@@ -155,14 +166,16 @@ export class DotAgent extends AbstractAgent {
       const observe = answerObserver((event) =>
         this.setupTelemetry?.capture(event),
       );
+      const turnTimeLimitMs =
+        this.config.turnTimeLimitMs ?? DEFAULT_TURN_TIME_LIMIT_MS;
       const timeout = setTimeout(() => {
         timedOut = true;
         observe({ type: EventType.RUN_ERROR });
         this.abortRun();
-      }, TURN_TIME_LIMIT_MS);
+      }, turnTimeLimitMs);
       const timeLimitError = () => ({
         type: EventType.RUN_ERROR,
-        message: `This turn reached the ${TURN_TIME_LIMIT_MS / 1000} second time limit and was stopped. Try a smaller request.`,
+        message: `Ce tour a atteint la limite de temps (${formatDuration(turnTimeLimitMs)}) et a été arrêté. Découpe la demande ou réessaie.`,
       });
       // Reasoning capture teardown hooks (assigned inside try when used).
       let closeReasoning: () => void = () => {};
@@ -965,6 +978,9 @@ export class DotAgent extends AbstractAgent {
                   };
                 }),
             });
+            const maxAgentIterations =
+              this.config.maxAgentIterations ?? DEFAULT_MAX_AGENT_ITERATIONS;
+            const loopStrategy = maxIterations(maxAgentIterations);
             return chat({
               adapter,
               messages: converted.messages,
@@ -985,7 +1001,14 @@ export class DotAgent extends AbstractAgent {
                     ? pickAutoReasoningEffort(userTurnText)
                     : dot.reasoningEffort,
               },
-              agentLoopStrategy: maxIterations(5),
+              agentLoopStrategy: (state) => {
+                const shouldContinue = loopStrategy(state);
+                if (!shouldContinue)
+                  console.warn(
+                    `[agent] max iterations reached (${maxAgentIterations}) for dot ${dot.id}`,
+                  );
+                return shouldContinue;
+              },
               // Phase 5a : injecte les screenshots computer comme images.
               middleware,
               tools: toolsAllowed
