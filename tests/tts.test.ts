@@ -57,6 +57,7 @@ describe('Voix neuronale (/api/tts)', () => {
     return {
       app,
       auth,
+      store,
       close() {
         db.close();
         auth.close();
@@ -129,7 +130,8 @@ describe('Voix neuronale (/api/tts)', () => {
       });
     expect((await bad({})).status).toBe(400);
     expect((await bad({ text: '' })).status).toBe(400);
-    expect((await bad({ text: 'x'.repeat(4001) })).status).toBe(400);
+    // Provider inconnu → 404 (pas de repli silencieux).
+    expect((await bad({ text: 'Bonjour', provider: 'nope' })).status).toBe(404);
   });
 
   it('404 sans clé configurée, 400 lisible si le provider refuse', async () => {
@@ -211,6 +213,30 @@ describe('Voix neuronale (/api/tts)', () => {
       voice: 'nova',
       speed: 1.1,
     });
+    // Traçabilité : l'appel est enregistré (modèle tracé, coût inconnu).
+    const rows = (
+      f.store as unknown as {
+        db: { prepare(s: string): { all(): Array<Record<string, unknown>> } };
+      }
+    ).db
+      .prepare('SELECT model, costUsd FROM usage')
+      .all();
+    expect(rows.some((row) => row.model === 'tts-1')).toBe(true);
+  });
+
+  it('GET /tts/models exige un provider explicite (pas de repli)', async () => {
+    const f = fixture();
+    stores.push(f);
+    await f.auth.createUser('boss', 'a-strong-password', 'admin');
+    const boss = await loginAs(f.app, f.auth, 'boss', 'admin');
+    const noProvider = await f.app.request('/api/tts/models', {
+      headers: boss,
+    });
+    expect(noProvider.status).toBe(400);
+    const unknown = await f.app.request('/api/tts/models?provider=nope', {
+      headers: boss,
+    });
+    expect(unknown.status).toBe(404);
   });
 
   it('liste les modèles TTS compatibles (live filtré, jamais deviné)', async () => {
@@ -304,6 +330,77 @@ describe('Voix neuronale (/api/tts)', () => {
     expect(((await res.json()) as { error: string }).error).toContain(
       'Invalid model name',
     );
+  });
+
+  it('Phase E : provider/modèle restreints et plafond mensuel (H1)', async () => {
+    const f = fixture();
+    stores.push(f);
+    await f.auth.createUser('boss', 'a-strong-password', 'admin');
+    const boss = await loginAs(f.app, f.auth, 'boss', 'admin');
+    await setKey(f.app, boss, 'opencode', 'sk-test');
+    await f.auth.createUser(
+      'restreint',
+      'a-strong-password',
+      'user',
+      undefined,
+      {
+        allowedProviders: ['autre-provider'],
+        monthlyLimitUsd: 0,
+      },
+    );
+    const restreint = await loginAs(f.app, f.auth, 'restreint', 'user');
+    const post = (session: { Cookie: string }, body: unknown) =>
+      f.app.request('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...session },
+        body: JSON.stringify(body),
+      });
+    // Provider hors allowlist → 404 (pas d'énumération).
+    expect(
+      (await post(restreint, { text: 'Bonjour', provider: 'opencode' })).status,
+    ).toBe(404);
+    // Catalogue et liste providers filtrés aussi.
+    expect(
+      (await (
+        await f.app.request('/api/tts/models?provider=opencode', {
+          headers: restreint,
+        })
+      ).json()) as { error?: string },
+    ).toMatchObject({ error: 'Unknown provider.' });
+    const list = (await (
+      await f.app.request('/api/tts/providers', { headers: restreint })
+    ).json()) as { providers: Array<{ id: string }> };
+    expect(list.providers.find((p) => p.id === 'opencode')).toBeUndefined();
+    // Plafond mensuel atteint (0 $) → 403 même sur provider autorisé.
+    await f.auth.createUser('plafond', 'a-strong-password', 'user', undefined, {
+      allowedProviders: ['opencode'],
+      monthlyLimitUsd: 0,
+    });
+    const plafond = await loginAs(f.app, f.auth, 'plafond', 'user');
+    expect(
+      (
+        await post(plafond, {
+          text: 'Bonjour',
+          provider: 'opencode',
+          model: 'tts-1',
+        })
+      ).status,
+    ).toBe(403);
+    // Modèle hors allowlist → 403 (fail-closed).
+    await f.auth.createUser('partiel', 'a-strong-password', 'user', undefined, {
+      allowedProviders: ['opencode'],
+      allowedModels: ['chat-seulement'],
+    });
+    const partiel = await loginAs(f.app, f.auth, 'partiel', 'user');
+    expect(
+      (
+        await post(partiel, {
+          text: 'Bonjour',
+          provider: 'opencode',
+          model: 'tts-1',
+        })
+      ).status,
+    ).toBe(403);
   });
 
   it('liste les providers configurés (sans clé = absents)', async () => {

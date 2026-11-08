@@ -85,8 +85,16 @@ export function ttsRoutes(platform: Platform) {
    *  n'est inventé ici. */
   app.get('/tts/providers', (c) => {
     const registry = platform.config.providerRegistry;
+    // Phase E : un Utilisateur restreint ne voit que ses providers
+    // autorisés (même règle que GET /providers, pas d'énumération).
+    const limits = platform.workspace.forUser(c.get('userId')).userLimits();
     const providers = (registry?.list() ?? [])
       .filter((provider) => !!provider.apiKey)
+      .filter(
+        (provider) =>
+          !limits?.allowedProviders ||
+          limits.allowedProviders.includes(provider.id),
+      )
       .map((provider) => ({
         id: provider.id,
         label: provider.label,
@@ -99,11 +107,31 @@ export function ttsRoutes(platform: Platform) {
    *  liste devinée : catalogue injoignable = liste vide + explication. */
   app.get('/tts/models', async (c) => {
     const registry = platform.config.providerRegistry;
-    const providerId = c.req.query('provider') ?? undefined;
-    const provider =
-      (providerId ? registry?.get(providerId) : undefined) ??
-      registry?.list().find((p) => !!p.apiKey);
-    if (!provider || !provider.apiKey)
+    // Provider explicite exigé : aucun repli silencieux sur un autre
+    // provider (l'utilisateur pourrait synthétiser — et dépenser — sur
+    // un provider qu'il n'a pas choisi).
+    const providerId = (c.req.query('provider') ?? '').trim();
+    if (!providerId)
+      return c.json(
+        {
+          models: [],
+          voices: [],
+          source: 'none',
+          error: 'Provider requis : choisissez un provider.',
+        },
+        400,
+      );
+    const provider = registry?.get(providerId);
+    if (!provider) return c.json({ error: 'Unknown provider.' }, 404);
+    // Phase E : provider hors liste autorisée → 404 (pas d'énumération,
+    // même règle que GET /catalog/:id).
+    const limits = platform.workspace.forUser(c.get('userId')).userLimits();
+    if (
+      limits?.allowedProviders &&
+      !limits.allowedProviders.includes(provider.id)
+    )
+      return c.json({ error: 'Unknown provider.' }, 404);
+    if (!provider.apiKey)
       return c.json({ models: [], voices: [], reason: 'no-key' });
     const catalog = await fetchJson(
       `${provider.baseUrl.replace(/\/$/, '')}/models`,
@@ -153,10 +181,29 @@ export function ttsRoutes(platform: Platform) {
     if (!parsed.success) return c.json({ error: 'Invalid TTS request.' }, 400);
     const registry = platform.config.providerRegistry;
     const { text, voice, model, provider: providerId, speed } = parsed.data;
-    const provider =
-      (providerId ? registry?.get(providerId) : undefined) ??
-      registry?.list().find((p) => !!p.apiKey);
-    if (!provider || !provider.apiKey)
+    // Provider explicite exigé ici aussi : aucun repli silencieux.
+    const provider = providerId ? registry?.get(providerId) : undefined;
+    if (!provider) return c.json({ error: 'Unknown provider.' }, 404);
+    // Phase E : enforcement compte (mêmes règles que le chat) —
+    // provider autorisé, plafond mensuel, modèle autorisé, traçabilité.
+    // Provider hors liste → 404 (pas d'énumération, comme /catalog/:id).
+    const userWorkspace = platform.workspace.forUser(c.get('userId'));
+    const ttsLimits = userWorkspace.userLimits();
+    if (
+      ttsLimits?.allowedProviders &&
+      !ttsLimits.allowedProviders.includes(provider.id)
+    )
+      return c.json({ error: 'Unknown provider.' }, 404);
+    const userStore = c.get('store');
+    if (
+      ttsLimits?.monthlyLimitUsd != null &&
+      userStore.monthCostUsd() >= ttsLimits.monthlyLimitUsd
+    )
+      return c.json(
+        { error: 'Monthly usage limit reached for this account.' },
+        403,
+      );
+    if (!provider.apiKey)
       return c.json(
         {
           error:
@@ -177,6 +224,11 @@ export function ttsRoutes(platform: Platform) {
           error: `Aucun modèle TTS pour ${provider.label}. Listez-en un via Réglages → Voix (catalogue live du provider), puis réessayez.`,
         },
         400,
+      );
+    if (ttsLimits?.allowedModels && !ttsLimits.allowedModels.includes(ttsModel))
+      return c.json(
+        { error: `Model "${ttsModel}" is not allowed for this account.` },
+        403,
       );
     // Voix : choix explicite, sinon 'auto' (le endpoint tranche — cf.
     // certains providers qui refusent les noms inconnus).
@@ -224,6 +276,21 @@ export function ttsRoutes(platform: Platform) {
       const audio = await response.arrayBuffer();
       if (!audio.byteLength)
         return c.json({ error: 'Réponse audio vide du provider.' }, 502);
+      // Traçabilité Phase E : la synthèse compte comme un appel (coût
+      // réel inconnu → tokens et coût null, mais run tracé).
+      try {
+        userStore.recordUsage({
+          ts: Date.now(),
+          dotId: null,
+          model: ttsModel,
+          promptTokens: null,
+          completionTokens: null,
+          cachedTokens: null,
+          costUsd: null,
+        });
+      } catch {
+        // Usage best-effort : ne jamais casser la synthèse.
+      }
       return new Response(audio, {
         status: 200,
         headers: {
