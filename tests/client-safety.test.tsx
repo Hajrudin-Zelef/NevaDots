@@ -112,6 +112,9 @@ describe('ChatTranscript', () => {
     expect(html).toContain(`/api/attachments/${id}/content?download=1`);
     expect(html).toContain('download');
     expect(html).toContain('dames.html');
+    // Même onglet : target _blank ouvrirait le text/plain au lieu de
+    // télécharger sur Chrome mobile (« ça vient sous forme de texte »).
+    expect(html).not.toContain('target="_blank"');
   });
 
   it('rend les blocs de code en carte sombre avec langage et copie', () => {

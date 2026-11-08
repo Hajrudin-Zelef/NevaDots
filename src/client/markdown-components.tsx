@@ -16,6 +16,9 @@ export const markdownComponents = {
     const safe = safeHref(href);
     if (safe === null) return <span>{children}</span>;
     const internal = safe.startsWith('/#/spaces/');
+    // Pièce jointe : même onglet + download — avec target _blank, Chrome
+    // mobile ouvre un nouvel onglet qui affiche le text/plain au lieu de
+    // télécharger (feedback F1 : « ça vient sous forme de texte »).
     const attachment = safe.startsWith('/api/attachments/');
     return (
       <a
@@ -26,7 +29,7 @@ export const markdownComponents = {
           }
         }}
         href={safe}
-        target={internal ? undefined : '_blank'}
+        target={internal || attachment ? undefined : '_blank'}
         rel="noreferrer"
         {...(attachment ? { download: '' } : {})}
       >
