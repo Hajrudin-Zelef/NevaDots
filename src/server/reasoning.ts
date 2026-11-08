@@ -173,10 +173,14 @@ export function createReasoningFetch(
     const finish = () => {
       if (ended) return;
       ended = true;
+      // Modèle capturé sans bloc usage (providers sans
+      // `stream_options.include_usage`) : le signaler quand même, sinon
+      // modèle servi, coût et traçabilité sont perdus (H-B).
       if (
         promptTokens !== null ||
         completionTokens !== null ||
-        cachedTokens !== null
+        cachedTokens !== null ||
+        resolvedModel !== null
       )
         hooks.onUsage?.({
           promptTokens,

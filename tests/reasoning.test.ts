@@ -132,6 +132,33 @@ it('capture le modèle résolu du premier chunk (routeurs type openrouter/auto)'
   });
 });
 
+it('émet onUsage quand le modèle est capturé sans bloc usage (H-B)', async () => {
+  const chunks = [
+    'data: {"model":"openai/gpt-6-luna","choices":[{"delta":{"content":"Hi"}}]}',
+    'data: [DONE]',
+  ];
+  const baseFetch = vi.fn(async () => sseResponse(chunks));
+  const hooks = {
+    onStart: vi.fn(),
+    onDelta: vi.fn(),
+    onUsage: vi.fn(),
+    onEnd: vi.fn(),
+  };
+  const wrapped = createReasoningFetch(
+    baseFetch as unknown as typeof fetch,
+    (url) => url.startsWith(CHAT_URL),
+    hooks,
+  );
+  await (await wrapped(CHAT_URL)).text();
+  expect(hooks.onUsage).toHaveBeenCalledWith({
+    promptTokens: null,
+    completionTokens: null,
+    cachedTokens: null,
+    resolvedModel: 'openai/gpt-6-luna',
+  });
+  expect(hooks.onEnd).not.toHaveBeenCalled();
+});
+
 it('passes non-chat-completions requests through untouched', async () => {
   const sentinel = new Response('ok');
   const baseFetch = vi.fn(async () => sentinel);
