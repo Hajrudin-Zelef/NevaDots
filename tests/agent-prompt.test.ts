@@ -67,7 +67,8 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).toContain('Marexsoft Corporation');
     expect(prompt).toContain('Never disclose infrastructure details');
     // Date seule (pas de timestamp) : préfixe stable pour le cache provider.
-    expect(prompt).toMatch(/Date: \d{4}-\d{2}-\d{2} —/);
+    // Jour en toutes lettres + ISO : le Dot sait en permanence quel jour on est.
+    expect(prompt).toMatch(/Date: .+ \(\d{4}-\d{2}-\d{2}\) —/);
     expect(prompt).not.toContain('Time:');
     // Style + langue de réponse (défauts) injectés.
     expect(prompt).toContain('STYLE');

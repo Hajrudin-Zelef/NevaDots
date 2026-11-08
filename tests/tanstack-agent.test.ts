@@ -362,7 +362,9 @@ it('tells the model the current date so scheduled runs do not invent one', async
     const system = request.messages.find(
       (message: { role: string }) => message.role === 'system',
     );
-    expect(system.content).toContain('Date: 2026-10-04 —');
+    expect(system.content).toContain(
+      'Date: dimanche 4 octobre 2026 (2026-10-04) —',
+    );
   } finally {
     vi.useRealTimers();
   }
