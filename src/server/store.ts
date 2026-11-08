@@ -874,7 +874,10 @@ export class Store {
                   COALESCE(SUM(promptTokens), 0) AS promptTokens,
                   COALESCE(SUM(cachedTokens), 0) AS cachedTokens,
                   COALESCE(SUM(completionTokens), 0) AS completionTokens,
-                  COALESCE(SUM(costUsd), 0) AS costUsd
+                  COALESCE(SUM(costUsd), 0) AS costUsd,
+                  MAX(CASE WHEN costUsd IS NULL
+                    AND (COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)) > 0
+                    THEN 1 ELSE 0 END) AS unknownCost
              FROM usage WHERE ts >= ? AND user_id=?`,
         )
         .get(since, this.userId) as {
@@ -883,6 +886,7 @@ export class Store {
         cachedTokens: number;
         completionTokens: number;
         costUsd: number;
+        unknownCost: number;
       };
       return {
         runs: row.runs,
@@ -890,6 +894,7 @@ export class Store {
         cachedTokens: row.cachedTokens,
         completionTokens: row.completionTokens,
         costUsd: row.costUsd,
+        unknownCost: row.unknownCost === 1,
       };
     };
     const byDot = this.db
@@ -899,15 +904,24 @@ export class Store {
                 COALESCE(SUM(promptTokens), 0) AS promptTokens,
                 COALESCE(SUM(cachedTokens), 0) AS cachedTokens,
                 COALESCE(SUM(completionTokens), 0) AS completionTokens,
-                COALESCE(SUM(costUsd), 0) AS costUsd
+                COALESCE(SUM(costUsd), 0) AS costUsd,
+                MAX(CASE WHEN costUsd IS NULL
+                  AND (COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)) > 0
+                  THEN 1 ELSE 0 END) AS unknownCost
            FROM usage WHERE ts >= ? AND dotId IS NOT NULL AND user_id=?
           GROUP BY dotId ORDER BY costUsd DESC`,
       )
-      .all(weekStart, this.userId) as unknown as DotUsage[];
+      .all(weekStart, this.userId) as Array<
+      Omit<DotUsage, 'unknownCost'> & { unknownCost: number }
+    >;
+    const byDotKnown = byDot.map((row) => ({
+      ...row,
+      unknownCost: row.unknownCost === 1,
+    }));
     return {
       today: aggregate(startOfDay.getTime()),
       week: aggregate(weekStart),
-      byDot,
+      byDot: byDotKnown,
     };
   }
 }

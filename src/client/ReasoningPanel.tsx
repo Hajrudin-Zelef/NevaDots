@@ -124,7 +124,11 @@ export function ReasoningPanel({
           <div>
             <dt>Coût (estim.)</dt>
             <dd>
-              {stats?.costUsd != null ? `$${stats.costUsd.toFixed(4)}` : '—'}
+              {stats?.costUsd != null ? (
+                `$${stats.costUsd.toFixed(4)}`
+              ) : (
+                <span title="Modèle non tarifé : coût réel inconnu">~</span>
+              )}
             </dd>
           </div>
         </dl>

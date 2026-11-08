@@ -801,12 +801,17 @@ export function Chat({
           `/reasoning-stats?messageId=${encodeURIComponent(id)}`,
         );
         if (!stats?.model) continue;
+        // Coût inconnu = tokens présents mais non tarifés (pas une
+        // absence d'usage : tokens null → rien à facturer, F7).
+        const hasTokens =
+          (stats.promptTokens ?? 0) + (stats.completionTokens ?? 0) > 0;
         setSession((previous) => ({
           in: previous.in + (stats.promptTokens ?? 0),
           out: previous.out + (stats.completionTokens ?? 0),
           cost: previous.cost + (stats.costUsd ?? 0),
           cached: previous.cached + (stats.cachedTokens ?? 0),
-          unknownCost: previous.unknownCost || stats.costUsd == null,
+          unknownCost:
+            previous.unknownCost || (hasTokens && stats.costUsd == null),
         }));
         return;
       }

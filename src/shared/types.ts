@@ -45,6 +45,9 @@ export interface UsageSummary {
   cachedTokens: number;
   completionTokens: number;
   runs: number;
+  /** Vrai si au moins un appel a des tokens mais un coût inconnu
+   *  (modèle non tarifé — le total est partiel, F7). */
+  unknownCost: boolean;
 }
 /** Usage attributed to one Dot over the reporting window. */
 export interface DotUsage extends UsageSummary {

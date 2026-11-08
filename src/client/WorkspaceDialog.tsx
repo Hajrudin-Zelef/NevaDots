@@ -102,6 +102,14 @@ function cacheLabel(s: UsageSummary): string {
   return ` · ${Math.round((s.cachedTokens / s.promptTokens) * 100)} % en cache`;
 }
 
+/** Coût estimé : `~` quand le total est inconnu (modèle non tarifé),
+ *  `~` en suffixe quand il est partiel (F7 — même symbole que le chat). */
+function formatCost(s: UsageSummary): string {
+  if (s.unknownCost && s.costUsd === 0) return '~';
+  const base = `$${s.costUsd.toFixed(3)}`;
+  return s.unknownCost ? `${base} (~)` : base;
+}
+
 export function WorkspaceDialog({
   dialog,
   state,
@@ -785,8 +793,15 @@ export function WorkspaceDialog({
                           </span>
                         </div>
                         <div className="prefs-kpi">
-                          <span className="prefs-kpi-val">
-                            {usage ? `$${usage.today.costUsd.toFixed(3)}` : '—'}
+                          <span
+                            className="prefs-kpi-val"
+                            title={
+                              usage?.today.unknownCost
+                                ? 'Modèle non tarifé : coût réel inconnu'
+                                : undefined
+                            }
+                          >
+                            {usage ? formatCost(usage.today) : '—'}
                           </span>
                           <span className="prefs-kpi-label">
                             Coût aujourd’hui
@@ -955,8 +970,14 @@ export function WorkspaceDialog({
                       <div className="usage-card">
                         <div className="usage-row">
                           <span>Aujourd’hui</span>
-                          <strong>
-                            {usage ? `$${usage.today.costUsd.toFixed(3)}` : '—'}
+                          <strong
+                            title={
+                              usage?.today.unknownCost
+                                ? 'Modèle non tarifé : coût réel inconnu'
+                                : undefined
+                            }
+                          >
+                            {usage ? formatCost(usage.today) : '—'}
                           </strong>
                           <span>
                             {usage
@@ -966,8 +987,14 @@ export function WorkspaceDialog({
                         </div>
                         <div className="usage-row">
                           <span>7 derniers jours</span>
-                          <strong>
-                            {usage ? `$${usage.week.costUsd.toFixed(3)}` : '—'}
+                          <strong
+                            title={
+                              usage?.week.unknownCost
+                                ? 'Modèle non tarifé : coût réel inconnu'
+                                : undefined
+                            }
+                          >
+                            {usage ? formatCost(usage.week) : '—'}
                           </strong>
                           <span>
                             {usage
@@ -1072,8 +1099,14 @@ export function WorkspaceDialog({
                                 {conversations > 1 ? 's' : ''}
                               </span>
                               {spend && spend.runs > 0 && (
-                                <span title="Coût estimé sur 7 jours">
-                                  ${spend.costUsd.toFixed(3)} / 7 j
+                                <span
+                                  title={
+                                    spend.unknownCost
+                                      ? 'Coût partiel : modèle non tarifé (coût réel inconnu)'
+                                      : 'Coût estimé sur 7 jours'
+                                  }
+                                >
+                                  {formatCost(spend)} / 7 j
                                   {spend.cachedTokens > 0 && (
                                     <em className="muted">
                                       {' '}

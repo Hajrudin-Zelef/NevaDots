@@ -295,3 +295,33 @@ it('bindUsageMessages relie les appels aux messages servis dans l’ordre (F9)',
   expect(store.resolvedModelForMessage('inconnu', 'd1')).toBe('srv');
   expect(store.resolvedModelForMessage('inconnu', 'autre-dot')).toBeNull();
 });
+
+it('signale un coût inconnu quand un modèle non tarifé a des tokens (F7)', () => {
+  const { store } = fixture();
+  const now = Date.now();
+  const usage = (
+    costUsd: number | null,
+    promptTokens: number | null,
+    completionTokens: number | null,
+  ) =>
+    store.recordUsage({
+      ts: now,
+      dotId: 'dot-a',
+      model: 'mystery/model',
+      promptTokens,
+      completionTokens,
+      costUsd,
+    });
+  usage(null, null, null);
+  expect(store.usageSummary(now).today.unknownCost).toBe(false);
+  usage(null, 10, 5);
+  const summary = store.usageSummary(now);
+  expect(summary.today.unknownCost).toBe(true);
+  // Le total reste la somme des coûts connus (NULL ignorés).
+  expect(summary.today.costUsd).toBe(0);
+  usage(0.5, 10, 5);
+  const mixed = store.usageSummary(now);
+  expect(mixed.today.unknownCost).toBe(true);
+  expect(mixed.today.costUsd).toBeCloseTo(0.5);
+  expect(mixed.byDot[0].unknownCost).toBe(true);
+});
