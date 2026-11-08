@@ -18,7 +18,7 @@ import {
   parseUserMessageWithAttachments,
 } from './attachments';
 import { markdownComponents } from './markdown-components';
-import { MessageActions } from './MessageActions';
+import { MessageActions, type SpeechTtsSettings } from './MessageActions';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt';
 import { isScheduledTaskMessage } from '../shared/scheduled-message';
 
@@ -230,6 +230,7 @@ export function ChatTranscript({
   threadId,
   dotId,
   model,
+  tts,
   onQuote,
 }: {
   messages: Message[];
@@ -246,6 +247,8 @@ export function ChatTranscript({
   threadId?: string;
   dotId?: string;
   model?: string;
+  /** Réglages voix pour la lecture (Réglages globaux). */
+  tts?: SpeechTtsSettings;
   /** Cite la sélection (« Répondre ») comme contexte du prochain message. */
   onQuote?: (text: string) => void;
 }) {
@@ -404,6 +407,7 @@ export function ChatTranscript({
                     threadId={threadId}
                     dotId={dotId}
                     model={model}
+                    tts={tts}
                   />
                 )}
             </div>

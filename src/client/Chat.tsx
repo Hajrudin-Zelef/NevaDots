@@ -55,6 +55,7 @@ import type {
 } from '../shared/types';
 import { Mascot } from './Mascot';
 import { Composer } from './Composer';
+import { stopAllSpeech } from './MessageActions';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
 import { useAgentSteps } from './useAgentSteps';
@@ -551,13 +552,13 @@ export function Chat({
       if (message.role === 'user') lastUser = index;
     });
     if (lastUser < 0) return;
-    window.speechSynthesis?.cancel();
+    stopAllSpeech();
     agent.setMessages(msgs.slice(0, lastUser + 1));
     void executeTurn();
   };
   const send = (text: string) => {
     if (!text.trim() || !loaded || !contextReady || paused) return;
-    window.speechSynthesis?.cancel();
+    stopAllSpeech();
     // While a turn runs, hold the message and start it as soon as the turn ends.
     if (running) {
       setQueued((current) => [...current, text.trim()]);
@@ -876,6 +877,15 @@ export function Chat({
           threadId={thread.id}
           dotId={dot.id}
           model={modelControls.selectedModelLabel ?? undefined}
+          tts={{
+            mode: settings?.ttsMode ?? 'browser',
+            voice: settings?.ttsVoice ?? '',
+            rate: settings?.ttsRate ?? 1,
+            pauseSentenceMs: settings?.ttsPauseSentenceMs ?? 300,
+            pauseParagraphMs: settings?.ttsPauseParagraphMs ?? 600,
+            provider: settings?.ttsProvider ?? null,
+            model: settings?.ttsModel ?? null,
+          }}
         />
         {queued.map((text, index) => (
           <div className="chat-bubble user pending" key={`queued-${index}`}>

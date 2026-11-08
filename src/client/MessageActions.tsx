@@ -1,14 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Check,
   Copy,
+  Pause,
+  Play,
   RotateCcw,
+  Square,
   ThumbsDown,
   ThumbsUp,
   Volume2,
-  VolumeX,
 } from 'lucide-react';
 import { api } from './api';
+import {
+  groupBlocksForApi,
+  pickFrenchVoice,
+  playAudioQueue,
+  prepareSpeechBlocks,
+  speakBrowser,
+  type PlaybackControl,
+} from './speech-engine';
+import type { Settings } from '../shared/types';
 
 /** Avis stockés côté navigateur (pas de backend) : messageId → 1 | -1. */
 const VOTES_KEY = 'nevadots-votes';
@@ -26,18 +37,26 @@ function readVotes(): Record<string, 1 | -1> {
   }
 }
 
-/** Texte brut approximatif pour la lecture vocale (sans symboles Markdown). */
-function stripForSpeech(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, ' bloc de code ')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^[>\s-]+/gm, '')
-    .replace(/[*_~|]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+/** Une seule lecture à la fois dans tout le transcript. */
+let activeStop: (() => void) | null = null;
+
+/** Coupe toute lecture en cours (envoi, régénération, démontage). */
+export function stopAllSpeech(): void {
+  activeStop?.();
+  activeStop = null;
+}
+
+export type SpeechPhase = 'idle' | 'loading' | 'speaking' | 'paused';
+
+/** Réglages voix consommés par la lecture (issus des Réglages globaux). */
+export interface SpeechTtsSettings {
+  mode: Settings['ttsMode'];
+  voice: string;
+  rate: number;
+  pauseSentenceMs: number;
+  pauseParagraphMs: number;
+  provider: string | null;
+  model: string | null;
 }
 
 async function copyText(text: string): Promise<void> {
@@ -56,8 +75,8 @@ async function copyText(text: string): Promise<void> {
 /**
  * Barre d'actions sous une réponse de l'assistant : copier, régénérer
  * (dernière réponse uniquement), avis (persisté serveur pour correction),
- * lecture vocale via la synthèse du navigateur (`speechSynthesis`, voix FR
- * si disponible). Un « je n'aime pas » ouvre un formulaire : le commentaire
+ * lecture vocale structurée (pauses calibrées, voix triées, neuronal si
+ * configuré). Un « je n'aime pas » ouvre un formulaire : le commentaire
  * explique quoi corriger.
  */
 export function MessageActions({
@@ -69,6 +88,7 @@ export function MessageActions({
   threadId,
   dotId,
   model,
+  tts,
 }: {
   messageId: string;
   text: string;
@@ -78,9 +98,23 @@ export function MessageActions({
   threadId?: string;
   dotId?: string;
   model?: string;
+  /** Réglages voix (Réglages globaux) ; absents = valeurs sûres navigateur. */
+  tts?: SpeechTtsSettings;
 }) {
   const [copied, setCopied] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
+  const [phase, setPhase] = useState<SpeechPhase>('idle');
+  const [speechError, setSpeechError] = useState('');
+  const controlRef = useRef<PlaybackControl | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const ttsSettings: SpeechTtsSettings = tts ?? {
+    mode: 'browser',
+    voice: '',
+    rate: 1,
+    pauseSentenceMs: 300,
+    pauseParagraphMs: 600,
+    provider: null,
+    model: null,
+  };
   const [vote, setVote] = useState<1 | -1 | 0>(() => {
     try {
       return readVotes()[messageId] ?? 0;
@@ -95,7 +129,9 @@ export function MessageActions({
 
   useEffect(
     () => () => {
-      window.speechSynthesis?.cancel();
+      abortRef.current?.abort();
+      controlRef.current?.stop();
+      activeStop = null;
     },
     [],
   );
@@ -106,25 +142,107 @@ export function MessageActions({
     window.setTimeout(() => setCopied(false), 1500);
   };
 
-  const toggleSpeech = () => {
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-    if (speaking) {
-      synth.cancel();
-      setSpeaking(false);
+  const finishSpeech = () => {
+    controlRef.current = null;
+    abortRef.current = null;
+    setPhase('idle');
+  };
+
+  const failSpeech = (error: Error) => {
+    controlRef.current = null;
+    abortRef.current = null;
+    setPhase('idle');
+    setSpeechError(error.message);
+  };
+
+  const speak = async () => {
+    if (phase === 'speaking' || phase === 'loading') return;
+    setSpeechError('');
+    activeStop?.();
+    const blocks = prepareSpeechBlocks(text, {
+      sentenceMs: ttsSettings.pauseSentenceMs,
+      paragraphMs: ttsSettings.pauseParagraphMs,
+    });
+    if (!blocks.length) {
+      setSpeechError('Rien à lire.');
       return;
     }
-    synth.cancel();
-    const utter = new SpeechSynthesisUtterance(stripForSpeech(text));
-    utter.lang = 'fr-FR';
-    const voice = synth
-      .getVoices()
-      .find((entry) => entry.lang.toLowerCase().startsWith('fr'));
-    if (voice) utter.voice = voice;
-    utter.onend = () => setSpeaking(false);
-    utter.onerror = () => setSpeaking(false);
-    synth.speak(utter);
-    setSpeaking(true);
+    const useModel =
+      ttsSettings.mode === 'model' && ttsSettings.provider && ttsSettings.model;
+    if (!useModel) {
+      const synth = window.speechSynthesis;
+      if (!synth) {
+        setSpeechError('Synthèse vocale indisponible dans ce navigateur.');
+        return;
+      }
+      const voiceUri = pickFrenchVoice(synth.getVoices(), ttsSettings.voice);
+      const voice =
+        synth.getVoices().find((v) => v.voiceURI === voiceUri) ?? undefined;
+      if (!voice) {
+        setSpeechError(
+          'Aucune voix française installée. Installez une voix FR pour écouter.',
+        );
+        return;
+      }
+      const control = speakBrowser(blocks, {
+        synth,
+        voice,
+        rate: ttsSettings.rate,
+        onend: finishSpeech,
+        onerror: failSpeech,
+      });
+      controlRef.current = control;
+      activeStop = () => control.stop();
+      setPhase('speaking');
+      return;
+    }
+    // Neuronal : découpe en requêtes ≤3000 car., lecture enchaînée.
+    setPhase('loading');
+    const abort = new AbortController();
+    abortRef.current = abort;
+    try {
+      const groups = groupBlocksForApi(blocks);
+      const blobs: Blob[] = [];
+      for (const group of groups) {
+        if (abort.signal.aborted) return;
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: group,
+            voice: ttsSettings.voice || undefined,
+            model: ttsSettings.model,
+            provider: ttsSettings.provider,
+            speed: ttsSettings.rate,
+          }),
+          signal: abort.signal,
+        });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(
+            body.error ?? `Voix neuronale indisponible (${response.status}).`,
+          );
+        }
+        blobs.push(await response.blob());
+      }
+      if (abort.signal.aborted || !blobs.length) return;
+      const control = playAudioQueue(blobs, {
+        rate: ttsSettings.rate,
+        onend: finishSpeech,
+        onerror: failSpeech,
+      });
+      controlRef.current = control;
+      activeStop = () => control.stop();
+      setPhase('speaking');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      failSpeech(
+        error instanceof Error ? error : new Error('Lecture impossible.'),
+      );
+    }
   };
 
   const persistLocal = (next: 1 | -1 | 0) => {
@@ -242,15 +360,70 @@ export function MessageActions({
       >
         <ThumbsDown size={14} />
       </button>
-      <button
-        type="button"
-        className={`icon-button ${speaking ? 'active' : ''}`}
-        aria-label={speaking ? 'Arrêter la lecture' : 'Lire à voix haute'}
-        title={speaking ? 'Arrêter' : 'Lire à voix haute'}
-        onClick={toggleSpeech}
-      >
-        {speaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
-      </button>
+      {phase === 'idle' && (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Lire à voix haute"
+          title="Lire à voix haute"
+          onClick={() => void speak()}
+        >
+          <Volume2 size={14} />
+        </button>
+      )}
+      {phase === 'loading' && (
+        <span className="muted" role="status">
+          Préparation…
+        </span>
+      )}
+      {phase === 'speaking' && (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Mettre la lecture en pause"
+          title="Pause"
+          onClick={() => {
+            controlRef.current?.pause();
+            setPhase('paused');
+          }}
+        >
+          <Pause size={14} />
+        </button>
+      )}
+      {phase === 'paused' && (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Reprendre la lecture"
+          title="Reprendre"
+          onClick={() => {
+            controlRef.current?.resume();
+            setPhase('speaking');
+          }}
+        >
+          <Play size={14} />
+        </button>
+      )}
+      {(phase === 'speaking' || phase === 'paused') && (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Arrêter la lecture"
+          title="Arrêter"
+          onClick={() => {
+            abortRef.current?.abort();
+            controlRef.current?.stop();
+            finishSpeech();
+          }}
+        >
+          <Square size={14} />
+        </button>
+      )}
+      {speechError && (
+        <p className="feedback-error" role="alert">
+          {speechError}
+        </p>
+      )}
       {formOpen && (
         <form
           className="feedback-form"
