@@ -119,7 +119,12 @@ export const PROVIDER_DEFS: readonly ProviderDef[] = [
     envKey: 'CETAS_API_KEY',
     envBaseUrl: 'CETAS_BASE_URL',
     envModels: 'CETAS_MODELS',
-    fallback: ['deepseek-chat', 'free/deepseek-v4.1-flash', 'glm-5.3-flash'],
+    fallback: [
+      'auto',
+      'deepseek-chat',
+      'free/deepseek-v4.1-flash',
+      'glm-5.3-flash',
+    ],
   },
 ];
 

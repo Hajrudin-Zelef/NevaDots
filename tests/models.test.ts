@@ -102,6 +102,7 @@ describe('provider registry (buildProviders)', () => {
       'https://nevallm.neva-ci.pro/v1',
     );
     expect(findProvider(providers, 'cetas')?.models).toEqual([
+      'auto',
       'deepseek-chat',
       'free/deepseek-v4.1-flash',
       'glm-5.3-flash',
