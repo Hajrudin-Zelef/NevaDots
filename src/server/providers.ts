@@ -108,6 +108,19 @@ export const PROVIDER_DEFS: readonly ProviderDef[] = [
     envModels: 'FREELLMAPI_MODELS',
     fallback: [],
   },
+  {
+    // App-scoped key on the FreeLLMAPI host: the key carries its own policy
+    // (scope, budget, limits, web search) while the API stays OpenAI-compatible.
+    // The dashboard prints a trailing dot in the host; use the canonical host.
+    id: 'cetas',
+    label: 'Cetas Gateway',
+    baseUrl: 'https://nevallm.neva-ci.pro/v1',
+    keyUrl: 'https://nevallm.neva-ci.pro/',
+    envKey: 'CETAS_API_KEY',
+    envBaseUrl: 'CETAS_BASE_URL',
+    envModels: 'CETAS_MODELS',
+    fallback: ['deepseek-chat', 'free/deepseek-v4.1-flash', 'glm-5.3-flash'],
+  },
 ];
 
 function splitList(value: string | undefined): string[] {

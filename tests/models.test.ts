@@ -48,6 +48,8 @@ describe('provider registry (buildProviders)', () => {
       DEEPSEEK_API_KEY: 'ds',
       FREELLMAPI_API_KEY: 'fl',
       FREELLMAPI_MODELS: 'glm-5.2,kimi-k3',
+      CETAS_API_KEY: 'ct',
+      CETAS_MODELS: 'auto',
     });
     expect(providers.map((provider) => provider.id)).toEqual([
       'opencode',
@@ -55,6 +57,7 @@ describe('provider registry (buildProviders)', () => {
       'openrouter',
       'deepseek',
       'freellmapi',
+      'cetas',
     ]);
     const opencode = findProvider(providers, 'opencode');
     expect(opencode?.baseUrl).toBe('http://127.0.0.1:4000/v1');
@@ -66,6 +69,10 @@ describe('provider registry (buildProviders)', () => {
       'glm-5.2',
       'kimi-k3',
     ]);
+    const cetas = findProvider(providers, 'cetas');
+    expect(cetas?.baseUrl).toBe('https://nevallm.neva-ci.pro/v1');
+    expect(cetas?.apiKey).toBe('ct');
+    expect(cetas?.models).toEqual(['auto']);
     expect(defaultProvider(providers)?.id).toBe('opencode');
   });
 
@@ -91,6 +98,14 @@ describe('provider registry (buildProviders)', () => {
     expect(findProvider(providers, 'freellmapi')?.baseUrl).toBe(
       'https://nevallm.neva-ci.pro/v1',
     );
+    expect(findProvider(providers, 'cetas')?.baseUrl).toBe(
+      'https://nevallm.neva-ci.pro/v1',
+    );
+    expect(findProvider(providers, 'cetas')?.models).toEqual([
+      'deepseek-chat',
+      'free/deepseek-v4.1-flash',
+      'glm-5.3-flash',
+    ]);
     expect(defaultProvider(providers)?.id).toBe('opencode');
   });
 
