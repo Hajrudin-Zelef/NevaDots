@@ -111,7 +111,11 @@ describe('provider registry (buildProviders)', () => {
 
   it('exposes configured status without leaking API keys', () => {
     const view = providersView(
-      buildProviders({ OPENAI_API_KEY: 'secret', DEEPSEEK_API_KEY: 'secret2' }),
+      buildProviders({
+        OPENAI_API_KEY: 'secret',
+        DEEPSEEK_API_KEY: 'secret2',
+        CETAS_API_KEY: 'cetas-secret',
+      }),
     );
     expect(
       view.find((provider) => provider.id === 'opencode')?.configured,
@@ -119,6 +123,9 @@ describe('provider registry (buildProviders)', () => {
     expect(
       view.find((provider) => provider.id === 'openrouter')?.configured,
     ).toBe(false);
+    expect(view.find((provider) => provider.id === 'cetas')?.configured).toBe(
+      true,
+    );
     expect(JSON.stringify(view)).not.toContain('secret');
   });
 });
