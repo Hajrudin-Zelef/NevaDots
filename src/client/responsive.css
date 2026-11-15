@@ -442,13 +442,6 @@
       height: var(--nd-dvh);
     }
   }
-  @media (max-width: 767px) {
-    /* Tiroir bas : `85dvh` dépasserait l'écran au-delà de 100 %. */
-    .template-app.app .sidebar,
-    .template-app.app.nav-collapsed .sidebar {
-      max-height: calc(85dvh / var(--nd-ui-scale));
-    }
-  }
   @media (max-width: 700px) {
     /* Rail plein écran : `100vw` débordait horizontalement. */
     .muse-overlay {
@@ -712,4 +705,38 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+/* ===========================================================================
+   Téléphone : la sidebar est une VRAIE sidebar (panneau latéral gauche),
+   pas un tiroir bas. Même contenu et même hiérarchie que sur ordinateur
+   (modules, nouvelle conversation, dots, spaces, sessions, pied) ; elle
+   glisse depuis la gauche et se ferme au clic sur le voile. Le tiroir bas
+   (poignée + navigation basse, qui dupliquait le pied) est retiré.
+   =========================================================================== */
+@media (max-width: 767px) {
+  .template-app.app .sidebar,
+  .template-app.app.nav-collapsed .sidebar {
+    inset: 0 auto 0 0;
+    width: min(86vw, 300px);
+    max-width: none;
+    height: var(--nd-dvh);
+    max-height: none;
+    padding: 12px 12px 10px;
+    border-right: 1px solid var(--nd-border);
+    border-top: 0;
+    border-radius: 0 16px 16px 0;
+    box-shadow: 8px 0 30px color-mix(in srgb, #000 18%, transparent);
+    transform: translateX(-102%);
+    visibility: hidden;
+  }
+  .template-app.app .sidebar.open,
+  .template-app.app.nav-collapsed .sidebar.open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+  .sidebar-sheet-handle,
+  .sidebar-sheet-nav {
+    display: none;
+  }
 }
