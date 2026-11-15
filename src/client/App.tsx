@@ -76,6 +76,7 @@ import {
   saveSeen,
   type SeenMap,
 } from './read-state';
+import { readSidebarWidth } from './sidebar-width';
 
 function describeFailure(error: unknown, fallback: string) {
   return {
@@ -318,10 +319,9 @@ export function App() {
       // Appliqué pour cette visite seulement.
     }
   }, []);
-  const readSidebarWidth = () => {
-    const raw = Number(localStorage.getItem('nevadots-sidebar-w'));
-    return Number.isFinite(raw) ? Math.min(640, Math.max(136, raw)) : 240;
-  };
+  // Largeur lue depuis localStorage (240 px par défaut sur un profil
+  // frais — voir `sidebar-width.ts` : la chaîne brute est testée d'abord,
+  // `Number(null)` valant 0 donnait 136 px avant ce correctif).
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   useEffect(() => {
     document.documentElement.style.setProperty(
