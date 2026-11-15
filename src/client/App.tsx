@@ -62,6 +62,12 @@ import { TaskRow } from './TaskPresentation';
 import { TaskActions } from './TaskActions';
 import { initialsOf } from './initials';
 import { createSubmitGuard } from './submit-guard';
+import {
+  conversationHash,
+  isRestoreClosedTabKey,
+  parseConversationHash,
+  useTabs,
+} from './useTabs';
 import { WorkspaceDialog, type Dialog } from './WorkspaceDialog';
 
 function describeFailure(error: unknown, fallback: string) {
@@ -116,10 +122,25 @@ export function App() {
   const [state, setState] = useState<State>();
   const [workspace, setWorkspace] = useState<WorkspaceState>();
   const [selectedDot, setSelectedDot] = useState('');
-  const [selectedThread, setSelectedThread] = useState<string>();
+  // Onglets persistés (Lot 1) : l'onglet actif EST la conversation
+  // sélectionnée — plus de `useState` séparé, sinon les deux divergent.
+  const tabs = useTabs({
+    validThreadIds: workspace?.conversations.map((item) => item.id),
+    initialActiveThreadId: parseConversationHash(location.hash),
+  });
+  const selectedThread = tabs.activeThreadId;
+  // Dernière valeur pour les écouteurs montés une fois (hashchange, clavier).
+  const tabsRef = useRef(tabs);
+  useEffect(() => {
+    tabsRef.current = tabs;
+  });
   const [view, rawSetView] = useState<'chat' | 'tasks' | 'memories' | 'space'>(
     'chat',
   );
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  });
   const dirtyPage = useRef(false);
   const [spaceId, setSpaceId] = useState('');
   const [pageId, setPageId] = useState<string>();
@@ -137,9 +158,42 @@ export function App() {
   useEffect(() => {
     let acceptedHash = location.hash;
     const navigate = () => {
-      const match = location.hash.match(
-        /^#\/spaces\/([^/]+)(?:\/pages\/([^/]+))?$/,
-      );
+      const hash = location.hash;
+      // Route conversation : activation d'onglet, sans la garde dirty-page
+      // (les conversations n'ont pas de brouillon sale ; seuls les Spaces
+      // en ont). La garde reste appliquée quand on QUITTE une page sale.
+      const conversationId = parseConversationHash(hash);
+      if (conversationId) {
+        if (dirtyPage.current && hash === acceptedHash) return;
+        if (
+          dirtyPage.current &&
+          !window.confirm('Leave your unsaved page draft?')
+        ) {
+          history.replaceState(null, '', acceptedHash || location.pathname);
+          return;
+        }
+        acceptedHash = hash;
+        dirtyPage.current = false;
+        tabsRef.current.openTab(conversationId);
+        rawSetView('chat');
+        setMobile(false);
+        return;
+      }
+      if (hash === '') {
+        // Retour navigateur vers l'URL sans hash : page vierge, mais
+        // seulement si on venait d'une route conversation en vue chat.
+        if (
+          acceptedHash.startsWith('#/conversations/') &&
+          viewRef.current === 'chat'
+        ) {
+          acceptedHash = '';
+          tabsRef.current.deactivate();
+          rawSetView('chat');
+          setMobile(false);
+        }
+        return;
+      }
+      const match = hash.match(/^#\/spaces\/([^/]+)(?:\/pages\/([^/]+))?$/);
       if (!match) return;
       if (dirtyPage.current && location.hash === acceptedHash) return;
       if (
@@ -159,6 +213,41 @@ export function App() {
     navigate();
     window.addEventListener('hashchange', navigate);
     return () => window.removeEventListener('hashchange', navigate);
+  }, []);
+  // Route <-> onglet : l'onglet actif s'écrit dans le hash (replaceState, pas
+  // d'événement hashchange, pas d'entrée d'historique supplémentaire) ; les
+  // autres vues ont déjà effacé le hash via `setView` / `openPage`.
+  useEffect(() => {
+    if (view !== 'chat') return;
+    if (selectedThread) {
+      const hash = conversationHash(selectedThread);
+      if (location.hash !== hash) history.replaceState(null, '', hash);
+    } else if (parseConversationHash(location.hash)) {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  }, [selectedThread, view]);
+  // L'onglet actif peut appartenir à un autre Dot que celui sélectionné
+  // (restauration après rechargement, ouverture depuis un Space) : le Dot
+  // suit l'onglet, sinon `thread` est introuvable et l'écran reste vierge.
+  useEffect(() => {
+    if (!workspace || !selectedThread) return;
+    const conversation = workspace.conversations.find(
+      (item) => item.id === selectedThread,
+    );
+    if (conversation && conversation.dotId !== selectedDot)
+      setSelectedDot(conversation.dotId);
+  }, [workspace, selectedThread, selectedDot]);
+  // mod+shift+t : rouvrir le dernier onglet fermé. (mod+t / mod+w restent
+  // au navigateur : dans une app web, ils ne sont pas interceptables de
+  // façon fiable — cf. analyse domaine 1, risque 9.)
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (!isRestoreClosedTabKey(event)) return;
+      event.preventDefault();
+      tabsRef.current.restoreClosedTab();
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
   }, []);
   const openPage = (space: string, page?: string) => {
     openPageLink(`#/spaces/${space}${page ? `/pages/${page}` : ''}`);
@@ -365,9 +454,11 @@ export function App() {
   }, [setupStep]);
   const chooseDot = (next: Dot) => {
     setSelectedDot(next.id);
-    setSelectedThread(
-      workspace?.conversations.find((item) => item.dotId === next.id)?.id,
+    const first = workspace?.conversations.find(
+      (item) => item.dotId === next.id,
     );
+    if (first) tabs.openTab(first.id);
+    else tabs.deactivate();
     setView('chat');
     setMobile(false);
     setPendingPrompt(undefined);
@@ -375,7 +466,7 @@ export function App() {
   };
   const newConversation = async (text?: string) => {
     if (text === undefined) {
-      setSelectedThread(undefined);
+      tabs.deactivate();
       setPendingPrompt(undefined);
       setPendingVoice(false);
       setPrompt('');
@@ -399,7 +490,7 @@ export function App() {
         title: text.trim().slice(0, 80) || 'Conversation vocale',
       });
       await refresh();
-      setSelectedThread(next.id);
+      tabs.openTab(next.id);
       setPendingPrompt(text.trim() ? text : undefined);
       setPendingVoice(text === '');
       setPrompt('');
@@ -430,8 +521,10 @@ export function App() {
           }
         : current,
     );
+    // La conversation supprimée n'est pas restaurable (mod+shift+t) :
+    // son onglet est fermé sans passer par la pile des fermés.
+    tabs.closeTab(id, { keepClosed: false });
     if (selectedThread === id) {
-      setSelectedThread(undefined);
       setPendingPrompt(undefined);
     }
     try {
@@ -450,7 +543,7 @@ export function App() {
     setWorkspace((current) =>
       current ? { ...current, conversations: [] } : current,
     );
-    setSelectedThread(undefined);
+    tabs.closeAllTabs();
     setPendingPrompt(undefined);
     try {
       await api('/conversations', 'DELETE');
@@ -500,7 +593,7 @@ export function App() {
             className="wordmark"
             onClick={() => {
               setView('chat');
-              setSelectedThread(undefined);
+              tabs.deactivate();
               setMobile(false);
             }}
           >
@@ -690,7 +783,7 @@ export function App() {
                   (item) => item.id === id,
                 );
                 if (conversation) setSelectedDot(conversation.dotId);
-                setSelectedThread(id);
+                tabs.openTab(id);
                 setPendingVoice(false);
                 setView('chat');
                 setMobile(false);
@@ -907,7 +1000,7 @@ export function App() {
               if (target) {
                 setView('chat');
                 setSelectedDot(target.dotId);
-                setSelectedThread(id);
+                tabs.openTab(id);
                 setPendingVoice(false);
               }
             }}
@@ -949,7 +1042,7 @@ export function App() {
                   settings={state.settings}
                   onOpenConversation={(id) => {
                     setPane(false);
-                    setSelectedThread(id);
+                    tabs.openTab(id);
                   }}
                   onOpenSettings={() => setDialog({ type: 'settings' })}
                   onOpenTasks={() => setView('tasks')}
