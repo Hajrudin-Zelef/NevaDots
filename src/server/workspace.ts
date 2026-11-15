@@ -167,7 +167,19 @@ export class WorkspaceStore {
   userLimits(): UserLimits | undefined {
     if (this.userId === null || !this.options.getUserRecord) return undefined;
     const record = this.options.getUserRecord(this.userId);
-    if (!record || record.role === 'admin') return undefined;
+    if (!record) return undefined;
+    if (record.role === 'admin') {
+      // Admin = pas de restriction providers/modèles/Dots, mais un budget
+      // mensuel explicite s'applique quand même (garde-fou coût).
+      return record.monthlyLimitUsd == null
+        ? undefined
+        : {
+            ...record,
+            allowedProviders: null,
+            allowedModels: null,
+            maxDots: null,
+          };
+    }
     return record;
   }
   /** Écriture sans utilisateur = erreur (jamais de ligne orpheline neuve). */

@@ -22,6 +22,10 @@ export interface PlatformConfig extends WebConfig {
   /** Wall-clock ceiling for one chat turn in milliseconds. Default
    * 60 min, env AGENT_TURN_TIMEOUT_MS. */
   turnTimeLimitMs?: number;
+  /** Hard ceiling on the estimated cost of one chat turn in USD.
+   * Default 1.00, env AGENT_MAX_TURN_COST_USD. Unknown-price models
+   * cannot be cost-guarded. */
+  maxTurnCostUsd?: number;
   /** Bibliothèque de skills locale (host). Défaut `data/skills`. */
   skillsDir?: string;
   /** URL de l'app vue depuis le conteneur (bridge Docker) pour les bundles

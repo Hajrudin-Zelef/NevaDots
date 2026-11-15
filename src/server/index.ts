@@ -74,6 +74,11 @@ const positiveInt = (value: string | undefined): number | undefined => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
 };
+const positiveNumber = (value: string | undefined): number | undefined => {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
 const config: PlatformConfig = {
   databasePath: database,
   apiKey: process.env.OPENAI_API_KEY,
@@ -98,6 +103,7 @@ const config: PlatformConfig = {
     : undefined,
   maxAgentIterations: positiveInt(process.env.AGENT_MAX_ITERATIONS),
   turnTimeLimitMs: positiveInt(process.env.AGENT_TURN_TIMEOUT_MS),
+  maxTurnCostUsd: positiveNumber(process.env.AGENT_MAX_TURN_COST_USD),
   skillsDir: process.env.SKILLS_DIR,
   computerHostUrl: process.env.COMPUTER_HOST_URL ?? `http://172.17.0.1:${port}`,
   webSearchProvider: webSearchProvider(process.env.WEB_SEARCH_PROVIDER),

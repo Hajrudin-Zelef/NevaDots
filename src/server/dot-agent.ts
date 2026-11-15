@@ -92,6 +92,8 @@ const DEFAULT_TURN_TIME_LIMIT_MS = 60 * 60_000;
  * returns a final answer (no tool call); this only guards runaway loops.
  */
 const DEFAULT_MAX_AGENT_ITERATIONS = 200;
+/** Hard ceiling on the estimated cost of one turn (env AGENT_MAX_TURN_COST_USD). */
+const DEFAULT_MAX_TURN_COST_USD = 1;
 function formatDuration(ms: number): string {
   if (ms >= 60_000) return `${Math.round(ms / 60_000)} min`;
   return `${Math.round(ms / 1000)} s`;
@@ -145,6 +147,7 @@ export class DotAgent extends AbstractAgent {
       let subscription: { unsubscribe(): void } | undefined;
       let watcher: ReturnType<typeof setInterval> | undefined;
       let timedOut = false;
+      let costExceeded = false;
       let finished = false;
       let configurationFailure = false;
       let sessionNotesBefore: string | undefined;
@@ -176,6 +179,12 @@ export class DotAgent extends AbstractAgent {
       const timeLimitError = () => ({
         type: EventType.RUN_ERROR,
         message: `Ce tour a atteint la limite de temps (${formatDuration(turnTimeLimitMs)}) et a été arrêté. Découpe la demande ou réessaie.`,
+      });
+      const maxTurnCostUsd =
+        this.config.maxTurnCostUsd ?? DEFAULT_MAX_TURN_COST_USD;
+      const costLimitError = () => ({
+        type: EventType.RUN_ERROR,
+        message: `Ce tour a dépassé la limite de coût (${maxTurnCostUsd.toFixed(2)} $) et a été arrêté. Découpe la demande ou réessaie.`,
       });
       // Reasoning capture teardown hooks (assigned inside try when used).
       let closeReasoning: () => void = () => {};
@@ -640,6 +649,24 @@ export class DotAgent extends AbstractAgent {
               });
             } catch {
               // Usage is best-effort; never break a run on a metrics write.
+            }
+            const turnCostUsd = estimateCostUsd(
+              servedModel,
+              turnUsage.promptTokens,
+              turnUsage.completionTokens,
+              turnUsage.cachedTokens,
+            );
+            if (
+              !costExceeded &&
+              turnCostUsd != null &&
+              turnCostUsd > maxTurnCostUsd
+            ) {
+              costExceeded = true;
+              console.warn(
+                `[agent] turn cost limit reached ($${turnCostUsd.toFixed(4)} > $${maxTurnCostUsd}) for dot ${dot.id}`,
+              );
+              observe({ type: EventType.RUN_ERROR });
+              this.abortRun();
             }
           },
           onEnd: (info: {
@@ -1191,6 +1218,9 @@ export class DotAgent extends AbstractAgent {
               } else if (timedOut && !finished) {
                 subscriber.next(timeLimitError());
                 subscriber.complete();
+              } else if (costExceeded && !finished) {
+                subscriber.next(costLimitError());
+                subscriber.complete();
               } else subscriber.error(error);
             },
             complete: () => {
@@ -1200,6 +1230,11 @@ export class DotAgent extends AbstractAgent {
                 observe({ type: EventType.RUN_ERROR });
                 subscriber.next(
                   this.channel ? channelError() : timeLimitError(),
+                );
+              } else if (costExceeded && !finished) {
+                observe({ type: EventType.RUN_ERROR });
+                subscriber.next(
+                  this.channel ? channelError() : costLimitError(),
                 );
               }
               subscriber.complete();

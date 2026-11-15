@@ -509,6 +509,36 @@ it('reports a turn that hits the time limit as a RUN_ERROR instead of ending sil
   }
 });
 
+it('arrête un tour qui dépasse la limite de coût configurée', async () => {
+  const f = fixture(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { model: 'deepseek-chat', maxTurnCostUsd: 0.000001 },
+  );
+  const body = [
+    'data: {"model":"deepseek-chat","choices":[{"delta":{"content":"ok"}}]}',
+    'data: {"model":"deepseek-chat","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":1000}}',
+    'data: [DONE]',
+    '',
+  ].join('\n\n');
+  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    new Response(body, { headers: { 'Content-Type': 'text/event-stream' } }),
+  );
+  const events = await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
+  expect(events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: EventType.RUN_ERROR,
+        message: expect.stringMatching(/limite de coût/i),
+      }),
+    ]),
+  );
+});
+
 it('retire les outils skills du schéma quand le flag du Dot est OFF', async () => {
   const root = mkdtempSync(join(tmpdir(), 'skills-agent-'));
   try {

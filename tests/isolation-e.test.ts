@@ -326,6 +326,28 @@ describe('WorkspaceStore — enforcement (Phase E)', () => {
       db2.close();
     }
   });
+  it('un Admin avec monthlyLimitUsd explicite est budgété sans restrictions providers/modèles', () => {
+    const db = new DatabaseSync(':memory:');
+    const ws = new WorkspaceStore(db, ADMIN, {
+      getUserRecord: () => ({
+        role: 'admin',
+        allowedProviders: ['openai'],
+        allowedModels: ['gpt-5'],
+        monthlyLimitUsd: 20,
+        maxDots: 1,
+      }),
+    });
+    try {
+      expect(ws.userLimits()).toMatchObject({
+        monthlyLimitUsd: 20,
+        allowedProviders: null,
+        allowedModels: null,
+        maxDots: null,
+      });
+    } finally {
+      db.close();
+    }
+  });
   it('deleteUserData efface le monde du compte, pas celui des autres', () => {
     const { db, ws, wsUser, wsOther, close } = fixture();
     try {
