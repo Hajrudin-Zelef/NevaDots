@@ -5,10 +5,10 @@
 // the theme-color meta — all before the first CSS/JS.
 // Also applies the interface scale (two A−/A+ buttons, `src/client/
 // ui-scale.ts`) so the UI never paints at 100 % then jumps: same storage key,
-// same 80–130 bounds, same `--nd-ui-scale` property.
+// same 50–130 bounds, same `--nd-ui-scale` property.
 (function () {
   var UI_SCALE_KEY = 'nevadots-ui-scale';
-  var UI_SCALE_MIN = 80;
+  var UI_SCALE_MIN = 50;
   var UI_SCALE_MAX = 130;
   var UI_SCALE_STEP = 5;
   function applyScale() {

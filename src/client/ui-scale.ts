@@ -8,13 +8,13 @@
 // `--nd-dvh` dans responsive.css), sinon le shell laisse une bande vide en
 // dessous (échelle < 1) ou déborde (échelle > 1).
 //
-// La valeur est un pourcentage entier (80–130, pas de 5) : pas d'erreur
+// La valeur est un pourcentage entier (50–130, pas de 5) : pas d'erreur
 // d'arrondi flottant, et `localStorage` reste lisible à la main.
 // `public/theme.js` applique la même valeur avant le premier rendu (même
 // schéma que le thème) pour éviter un redimensionnement visible.
 
-/** Borne basse : 80 % (plus de contenu à l'écran). */
-export const UI_SCALE_MIN_PERCENT = 80;
+/** Borne basse : 50 % (beaucoup plus de contenu à l'écran). */
+export const UI_SCALE_MIN_PERCENT = 50;
 /** Borne haute : 130 % (confort de lecture, cibles tactiles plus grandes). */
 export const UI_SCALE_MAX_PERCENT = 130;
 /** Pas des deux boutons. */

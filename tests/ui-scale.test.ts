@@ -46,13 +46,13 @@ function stubStorage(initial?: Record<string, string>) {
   return { store, writes };
 }
 
-it('borne l’échelle à 80–130 % par pas de 5, sans arrondi flottant', () => {
-  expect(UI_SCALE_MIN_PERCENT).toBe(80);
+it('borne l’échelle à 50–130 % par pas de 5, sans arrondi flottant', () => {
+  expect(UI_SCALE_MIN_PERCENT).toBe(50);
   expect(UI_SCALE_MAX_PERCENT).toBe(130);
   expect(UI_SCALE_STEP_PERCENT).toBe(5);
   expect(UI_SCALE_DEFAULT_PERCENT).toBe(100);
-  expect(clampUiScalePercent(79)).toBe(80);
-  expect(clampUiScalePercent(0)).toBe(80);
+  expect(clampUiScalePercent(49)).toBe(50);
+  expect(clampUiScalePercent(0)).toBe(50);
   expect(clampUiScalePercent(131)).toBe(130);
   expect(clampUiScalePercent(500)).toBe(130);
   expect(clampUiScalePercent(102)).toBe(100);
@@ -76,7 +76,7 @@ it('les deux boutons montent et descendent de 5 % et s’arrêtent aux bornes', 
   expect(stepUiScalePercent(100, 1)).toBe(105);
   expect(stepUiScalePercent(100, -1)).toBe(95);
   expect(stepUiScalePercent(130, 1)).toBe(130);
-  expect(stepUiScalePercent(80, -1)).toBe(80);
+  expect(stepUiScalePercent(50, -1)).toBe(50);
   expect(uiScaleLabel(105)).toBe('105 %');
   expect(uiScaleFactor(85)).toBe(0.85);
   expect(uiScaleFactor(100)).toBe(1);
