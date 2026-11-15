@@ -4799,127 +4799,138 @@ textarea::placeholder {
   color: var(--nd-accent, #2563eb);
   background: var(--nd-bg-hover);
 }
-/* Phase 3 : carte de progression des étapes de l'agent. */
-.step-card {
-  margin: 8px 0;
-  border: 1px solid var(--nd-border);
-  border-radius: 10px;
-  background: var(--nd-bg-secondary, transparent);
-  overflow: hidden;
+/* Appels d'outils d'un tour — rendu façon OpenCode (retour 2026-11-15) :
+   en-tête « N outils utilisés » sans cadre ni fond, une ligne par appel,
+   pastille collante pendant l'exécution. Remplace la carte encadrée et
+   l'agrégat par verbe (« Exploré 3 fichiers · Exécuté 2 commandes »). */
+.tool-run {
+  margin: 6px 0 2px;
 }
-.step-card-header {
-  display: flex;
+.tool-run-header {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  background: none;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 2px;
   border: 0;
-  cursor: pointer;
-  color: var(--nd-text);
-  font-size: 13px;
-}
-.step-card-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
+  border-radius: 6px;
+  background: none;
   color: var(--nd-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease;
 }
-.step-card.live .step-card-icon {
-  color: var(--nd-accent, #2563eb);
+.tool-run-header:hover {
+  color: var(--nd-text);
 }
-.step-card-title {
-  flex: 1;
-  text-align: left;
-  font-weight: 600;
+.tool-run-header:focus-visible {
+  outline: 2px solid var(--nd-accent);
+  outline-offset: 2px;
+}
+.tool-run-title {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.step-card-count {
+.tool-run-chevron {
   flex: none;
-  font-size: 12px;
-  color: var(--nd-text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.step-card-chevron {
-  flex: none;
-  color: var(--nd-text-secondary);
   transition: transform 0.15s ease;
 }
-.step-card-chevron.open {
-  transform: rotate(180deg);
+.tool-run-chevron.open {
+  transform: rotate(90deg);
 }
-.step-card-list {
-  margin: 0;
-  padding: 4px 12px 10px;
+.tool-run-list {
+  position: relative;
+  margin: 6px 0 2px;
+  padding: 4px;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  background: var(--nd-bg-hover);
+  border-radius: 12px;
 }
-.step-card-step {
+.tool-run-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: 8px;
   font-size: 13px;
-  color: var(--nd-text-secondary);
 }
-.step-card-step.done {
-  color: var(--nd-text);
+.tool-run-row:hover {
+  background: color-mix(in srgb, var(--nd-text) 4%, transparent);
 }
-.step-card-step.done .step-card-step-icon {
-  color: var(--nd-success, #16a34a);
-}
-.step-card-step.running .step-card-step-icon {
-  color: var(--nd-accent, #2563eb);
-}
-.step-card-step-icon {
+.tool-run-icon {
   display: grid;
   place-items: center;
   flex: none;
-}
-.step-card-step-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* Lot 4 : lignes groupées (label + sous-titre typé), erreur hors groupe
-   (carte rouge), interruption distincte, bouton copier. */
-.step-card-step-text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1;
-}
-.step-card-step-subtitle {
-  font-size: 12px;
   color: var(--nd-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.step-card-step.error {
-  color: var(--nd-danger);
-  background: color-mix(in srgb, var(--nd-danger) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--nd-danger) 35%, transparent);
-  border-radius: 8px;
-  padding: 6px 8px;
-  margin: 0 -8px;
-}
-.step-card-step.error .step-card-step-label {
-  color: var(--nd-danger);
+.tool-run-name {
+  flex: none;
   font-weight: 600;
+  color: var(--nd-text);
+  white-space: nowrap;
 }
-.step-card-step.error .step-card-step-subtitle {
+.tool-run-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--nd-text-secondary);
+  font-family: var(--nd-font-mono);
+  font-size: 12px;
 }
-.step-card-step.error .step-card-step-icon {
+.tool-run-diff {
+  flex: none;
+  color: var(--nd-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.tool-run-row.error {
+  background: color-mix(in srgb, var(--nd-danger) 8%, transparent);
+}
+.tool-run-row.error .tool-run-name,
+.tool-run-row.error .tool-run-icon {
   color: var(--nd-danger);
 }
-.step-card-step.stopped .step-card-step-icon {
+.tool-run-row.stopped {
+  opacity: 0.72;
+}
+/* Pastille live : collée en bas de la liste tant qu'un appel tourne. */
+.tool-run-pill {
+  position: sticky;
+  bottom: 0;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0 2px;
+  padding: 3px 10px 3px 4px;
+  border: 1px solid var(--nd-border);
+  border-radius: 999px;
+  background: var(--nd-bg);
   color: var(--nd-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 560px) {
+  .tool-run-row {
+    min-height: 32px;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .tool-run-preview {
+    font-size: 11px;
+  }
+  .tool-run-pill {
+    padding: 2px 9px 2px 3px;
+    font-size: 11px;
+  }
 }
 .copy-button {
   flex: none;

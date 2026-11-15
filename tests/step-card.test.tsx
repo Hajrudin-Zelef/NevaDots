@@ -5,7 +5,7 @@ import {
   stripAnsiCodes,
   summarizeToolCall,
 } from '../src/shared/activity';
-import { StepCard, groupSteps, stepCardTitle } from '../src/client/StepCard';
+import { StepCard } from '../src/client/StepCard';
 import type { AgentStep } from '../src/client/useAgentSteps';
 
 function step(partial: Partial<AgentStep> & { id: string }): AgentStep {
@@ -71,218 +71,123 @@ it('stripAnsiCodes retire les couleurs terminal, firstSentence résume', () => {
   expect(firstSentence('')).toBe('Échec');
 });
 
-it('regroupe les lectures consécutives en une ligne, pas les edits', () => {
-  const steps = [
-    step({
-      id: 'r1',
-      label: 'Lit un fichier',
-      verb: 'Exploré',
-      kind: 'file',
-      subtitle: '/a.md',
-    }),
-    step({
-      id: 'r2',
-      label: 'Lit un fichier',
-      verb: 'Exploré',
-      kind: 'file',
-      subtitle: '/b.md',
-    }),
-    step({
-      id: 'r3',
-      label: 'Lit un fichier',
-      verb: 'Exploré',
-      kind: 'file',
-      subtitle: '/c.md',
-    }),
-    step({
-      id: 'e1',
-      label: 'Modifie une page',
-      verb: 'Modifié',
-      kind: 'file',
-      // Sous-titre réaliste : `summarizeToolCall` y a déjà mis le diff.
-      subtitle: 'page-a.md · +12 −3',
-      addedLines: 12,
-      removedLines: 3,
-    }),
-    step({
-      id: 'e2',
-      label: 'Modifie une page',
-      verb: 'Modifié',
-      kind: 'file',
-      subtitle: 'page-b.md · +2 −0',
-      addedLines: 2,
-      removedLines: 0,
-    }),
-  ];
-  const groups = groupSteps(steps);
-  expect(groups).toHaveLength(3);
-  expect(groups[0].label).toBe('Exploré');
-  expect(groups[0].subtitle).toBe('3 fichiers');
-  expect(groups[0].steps).toHaveLength(3);
-  expect(groups[1].subtitle).toContain('+12 −3');
-  // Le diff n'apparaît qu'une seule fois par ligne d'edit (fix round 1).
-  expect((groups[1].subtitle ?? '').split('+12 −3').length - 1).toBe(1);
-  expect(groups[2].subtitle).toContain('+2 −0');
-  expect((groups[2].subtitle ?? '').split('+2 −0').length - 1).toBe(1);
-});
+// --- Rendu « N outils utilisés » (façon OpenCode) -------------------------
 
-it('ne regroupe jamais une erreur avec ses voisines', () => {
-  const groups = groupSteps([
-    step({
-      id: 'r1',
-      label: 'Lit un fichier',
-      verb: 'Exploré',
-      kind: 'file',
-    }),
-    step({
-      id: 'bad',
-      label: 'Recherche web',
-      verb: 'Exploré',
-      kind: 'search',
-      status: 'error',
-      error: 'Timeout. Détail.',
-    }),
-    step({
-      id: 'r2',
-      label: 'Lit un fichier',
-      verb: 'Exploré',
-      kind: 'file',
-    }),
-  ]);
-  expect(groups).toHaveLength(3);
-  expect(groups[1].status).toBe('error');
-});
-
-it('titre : verbes dédupliqués + détail fichiers/commandes', () => {
-  const steps = [
-    step({ id: 'a', verb: 'Exploré', kind: 'file' }),
-    step({ id: 'b', verb: 'Exploré', kind: 'file' }),
-    step({ id: 'c', verb: 'Exploré', kind: 'file' }),
-    step({ id: 'd', verb: 'Exécuté', kind: 'command' }),
-    step({ id: 'e', verb: 'Exécuté', kind: 'command' }),
-  ];
-  expect(stepCardTitle(steps)).toBe('Exploré 3 fichiers · Exécuté 2 commandes');
-  expect(stepCardTitle([step({ id: 'x' }), step({ id: 'y' })])).toBe(
-    '2 outils',
+it('en-tête : « N outils utilisés » au pluriel, « 1 outil utilisé » au singulier', () => {
+  const three = renderToStaticMarkup(
+    <StepCard
+      live={false}
+      steps={[
+        step({ id: 'a', toolName: 'computer_exec' }),
+        step({ id: 'b', toolName: 'computer_exec' }),
+        step({ id: 'c', toolName: 'computer_exec' }),
+      ]}
+    />,
   );
+  expect(three).toContain('3 outils utilisés');
+  const one = renderToStaticMarkup(
+    <StepCard live={false} steps={[step({ id: 'a' })]} />,
+  );
+  expect(one).toContain('1 outil utilisé');
 });
 
-it('rend une ligne d’edit avec +N −N une seule fois', () => {
+it('replié une fois terminé : en-tête seul, aucune ligne rendue', () => {
+  const html = renderToStaticMarkup(
+    <StepCard
+      live={false}
+      steps={[step({ id: 'a', toolName: 'computer_exec', subtitle: 'ls -la' })]}
+    />,
+  );
+  expect(html).toContain('aria-expanded="false"');
+  expect(html).not.toContain('tool-run-list');
+  expect(html).not.toContain('ls -la');
+});
+
+it('déplié pendant le run : une ligne par appel, jamais regroupées', () => {
   const html = renderToStaticMarkup(
     <StepCard
       live
       steps={[
         step({
-          id: 'e1',
-          label: 'Modifie une page',
-          verb: 'Modifié',
+          id: 'r1',
+          toolName: 'computer_files_read',
           kind: 'file',
-          subtitle: 'page-a.md · +12 −3',
+          subtitle: '/a.md',
+        }),
+        step({
+          id: 'r2',
+          toolName: 'computer_files_read',
+          kind: 'file',
+          subtitle: '/b.md',
+        }),
+        step({
+          id: 'e1',
+          toolName: 'computer_files_write',
+          kind: 'file',
+          verb: 'Modifié',
+          subtitle: 'auto-scroll.ts · +12 −3',
           addedLines: 12,
           removedLines: 3,
         }),
       ]}
     />,
   );
-  expect(html).toContain('page-a.md · +12 −3');
+  expect(html).toContain('aria-expanded="true"');
+  expect(html).toContain('tool-run-list');
+  // Trois appels = trois lignes (l'ancien rendu fusionnait les lectures).
+  expect(html.split('tool-run-row').length - 1).toBe(3);
+  expect(html).toContain('Lecture');
+  expect(html).toContain('/a.md');
+  expect(html).toContain('/b.md');
+  expect(html).toContain('Édition');
+  expect(html).toContain('auto-scroll.ts');
+  // Le diff est rendu une seule fois, à part de l'aperçu.
   expect(html.split('+12 −3').length - 1).toBe(1);
 });
 
-it('titre : recherches et pages web ne sont pas des fichiers', () => {
-  const searches = [
-    step({ id: 's1', verb: 'Exploré', kind: 'search' }),
-    step({ id: 's2', verb: 'Exploré', kind: 'search' }),
-    step({ id: 's3', verb: 'Exploré', kind: 'search' }),
-  ];
-  expect(stepCardTitle(searches)).toBe('Exploré 3 recherches');
-  const pages = [
-    step({ id: 'w1', verb: 'Exploré', kind: 'web' }),
-    step({ id: 'w2', verb: 'Exploré', kind: 'web' }),
-  ];
-  expect(stepCardTitle(pages)).toBe('Exploré 2 pages');
-  const mixed = [
-    step({ id: 'f1', verb: 'Exploré', kind: 'file' }),
-    step({ id: 'f2', verb: 'Exploré', kind: 'file' }),
-    step({ id: 's1', verb: 'Exploré', kind: 'search' }),
-    step({ id: 'w1', verb: 'Exploré', kind: 'web' }),
-  ];
-  expect(stepCardTitle(mixed)).toBe(
-    'Exploré 2 fichiers · 1 recherche · 1 page',
-  );
-});
-
-it('regroupe les recherches entre elles, les pages web entre elles, jamais les kinds mélangés', () => {
-  const searches = groupSteps([
-    step({ id: 's1', label: 'Recherche web', verb: 'Exploré', kind: 'search' }),
-    step({ id: 's2', label: 'Recherche web', verb: 'Exploré', kind: 'search' }),
-    step({ id: 's3', label: 'Recherche web', verb: 'Exploré', kind: 'search' }),
-  ]);
-  expect(searches).toHaveLength(1);
-  expect(searches[0].subtitle).toBe('3 recherches');
-  const pages = groupSteps([
-    step({ id: 'w1', label: 'Lit une page web', verb: 'Exploré', kind: 'web' }),
-    step({ id: 'w2', label: 'Lit une page web', verb: 'Exploré', kind: 'web' }),
-  ]);
-  expect(pages).toHaveLength(1);
-  expect(pages[0].subtitle).toBe('2 pages');
-  const mixed = groupSteps([
-    step({ id: 'f1', label: 'Lit un fichier', verb: 'Exploré', kind: 'file' }),
-    step({ id: 's1', label: 'Recherche web', verb: 'Exploré', kind: 'search' }),
-    step({ id: 'f2', label: 'Lit un fichier', verb: 'Exploré', kind: 'file' }),
-  ]);
-  expect(mixed).toHaveLength(3);
-});
-
-it('rend le titre verbe + lignes groupées une fois terminée', () => {
+it('aperçu de commande affiché sur la ligne Shell', () => {
   const html = renderToStaticMarkup(
     <StepCard
       live
       steps={[
-        step({ id: 'a', verb: 'Exploré', kind: 'file' }),
-        step({ id: 'b', verb: 'Exploré', kind: 'file' }),
         step({
-          id: 'c',
-          verb: 'Exécuté',
+          id: 'c1',
+          toolName: 'computer_exec',
           kind: 'command',
-          label: 'Commande terminal',
-          subtitle: 'ls',
+          verb: 'Exécuté',
+          subtitle: 'grep -n "turn-status" src/client/Chat.tsx',
         }),
       ]}
     />,
   );
-  expect(html).toContain('Exploré 2 fichiers · Exécuté 1 commande');
-  expect(html).toContain('2 fichiers');
-  expect(html).toContain('ls');
-  expect(html).toContain('3/3');
+  expect(html).toContain('Shell');
+  expect(html).toContain('grep -n &quot;turn-status&quot;');
 });
 
-it('sort l’erreur du groupe : carte rouge, 1re phrase, bouton copier', () => {
+it('erreur : ligne rouge, 1re phrase, bouton copier', () => {
   const html = renderToStaticMarkup(
     <StepCard
       live
       steps={[
         step({
           id: 'bad',
-          label: 'Recherche web',
+          toolName: 'search_web',
           status: 'error',
           error: 'Le service a refusé. Réessaie plus tard.',
         }),
       ]}
     />,
   );
-  expect(html).toContain('Recherche web');
+  expect(html).toContain('tool-run-row error');
+  expect(html).toContain('Recherche');
   expect(html).toContain('Le service a refusé.');
   expect(html).not.toContain('Réessaie plus tard.');
   expect(html).toContain('Copier');
-  expect(html).toContain('step-card-step error');
 });
 
 it('affiche « Échec » quand le message d’erreur est vide', () => {
   const html = renderToStaticMarkup(
-    <StepCard
-      live
-      steps={[step({ id: 'bad', label: 'Outil', status: 'error', error: '' })]}
-    />,
+    <StepCard live steps={[step({ id: 'bad', status: 'error', error: '' })]} />,
   );
   expect(html).toContain('Échec');
 });
@@ -291,24 +196,30 @@ it('distingue l’interruption de l’erreur', () => {
   const html = renderToStaticMarkup(
     <StepCard
       live
-      steps={[step({ id: 's', label: 'Commande terminal', status: 'stopped' })]}
+      steps={[step({ id: 's', toolName: 'computer_exec', status: 'stopped' })]}
     />,
   );
   expect(html).toContain('Interrompu');
-  expect(html).not.toContain('step-card-step error');
+  expect(html).not.toContain('tool-run-row error');
 });
 
-it('reste dépliée pendant le run et montre l’étape en cours', () => {
-  const html = renderToStaticMarkup(
+it('pastille live : « 1 Shell » pendant le run, absente une fois terminé', () => {
+  const running = renderToStaticMarkup(
     <StepCard
       live
       steps={[
-        step({ id: 'a', label: 'Recherche web', status: 'done' }),
-        step({ id: 'b', label: 'Commande terminal', status: 'running' }),
+        step({ id: 'a', toolName: 'computer_exec', status: 'done' }),
+        step({ id: 'b', toolName: 'computer_exec', status: 'running' }),
       ]}
     />,
   );
-  expect(html).toContain('Commande terminal…');
-  expect(html).toContain('Recherche web');
-  expect(html).toContain('1/2');
+  expect(running).toContain('tool-run-pill');
+  expect(running).toContain('1 Shell');
+  const done = renderToStaticMarkup(
+    <StepCard
+      live={false}
+      steps={[step({ id: 'a', toolName: 'computer_exec', status: 'done' })]}
+    />,
+  );
+  expect(done).not.toContain('tool-run-pill');
 });

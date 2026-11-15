@@ -236,8 +236,11 @@ it('ancre la carte live au tour en cours : avant le texte du dernier message ass
       thinkingLabel="Dot is thinking"
     />,
   );
-  expect(html).toContain('Lecture…');
-  expect(html.indexOf('Lecture…')).toBeLessThan(
+  // La carte live (en-tête « N outils utilisés » + lignes par appel) est
+  // ancrée avant le texte du message assistant en cours.
+  expect(html).toContain('tool-run live');
+  expect(html).toContain('Lecture');
+  expect(html.indexOf('tool-run live')).toBeLessThan(
     html.indexOf('Réponse en cours'),
   );
 });
@@ -252,7 +255,7 @@ it('ancre le live après la bulle user quand le tour n’a pas encore de message
       thinkingLabel="Dot is thinking"
     />,
   );
-  expect(html.indexOf('Question')).toBeLessThan(html.indexOf('Lecture…'));
+  expect(html.indexOf('Question')).toBeLessThan(html.indexOf('tool-run live'));
 });
 
 it('n’ancre jamais le live au tour précédent : un message user plus récent le reprend', () => {
@@ -272,7 +275,7 @@ it('n’ancre jamais le live au tour précédent : un message user plus récent 
     html.indexOf('Nouvelle question'),
   );
   expect(html.indexOf('Nouvelle question')).toBeLessThan(
-    html.indexOf('Lecture…'),
+    html.indexOf('tool-run live'),
   );
 });
 
