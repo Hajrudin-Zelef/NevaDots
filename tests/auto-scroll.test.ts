@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   FOLLOW_END_EPSILON_PX,
   FOLLOW_ZOOM_SLACK_PX,
+  HOLD_DETACH_MS,
+  HOLD_MOVE_TOLERANCE_PX,
   distanceToEnd,
   hasOverflow,
   isAtEnd,
@@ -101,5 +103,29 @@ describe('machine à 4 états', () => {
     expect(grew('anchored', 400)).toBe('following');
     expect(grew('detached', 400)).toBe('detached');
     expect(grew('returning', 400)).toBe('returning');
+  });
+});
+
+describe('appui maintenu (lecture pendant le streaming)', () => {
+  const held = (state: FollowState, overflow: boolean) =>
+    nextFollowState(state, { type: 'hold', overflow });
+
+  it('détache la vue suivie : le relâchement ne ramène pas en bas', () => {
+    expect(held('following', true)).toBe('detached');
+    // Une reprise en cours est annulée : l’utilisateur a repris la main.
+    expect(held('returning', true)).toBe('detached');
+    expect(held('anchored', true)).toBe('detached');
+    expect(held('detached', true)).toBe('detached');
+  });
+
+  it('ne change rien quand il n’y a rien à lire (pas de débordement)', () => {
+    expect(held('following', false)).toBe('following');
+    expect(held('anchored', false)).toBe('anchored');
+    expect(held('detached', false)).toBe('detached');
+  });
+
+  it('un appui court ne détache pas : seuil de 250 ms, 8 px de glissement', () => {
+    expect(HOLD_DETACH_MS).toBe(250);
+    expect(HOLD_MOVE_TOLERANCE_PX).toBe(8);
   });
 });

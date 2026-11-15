@@ -68,6 +68,8 @@ import {
 import {
   distanceToEnd,
   hasOverflow,
+  HOLD_DETACH_MS,
+  HOLD_MOVE_TOLERANCE_PX,
   nextFollowState,
   type FollowState,
 } from './auto-scroll';
@@ -529,6 +531,10 @@ export function Chat({
     setFollowState(next);
   }, []);
   const touching = useRef(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const holdStartY = useRef(0);
   const prevScrollTop = useRef(0);
   const resumeAttempt = useRef(0);
   /** Descente en bas, sans jamais détacher (mouvement vers le bas). */
@@ -576,19 +582,55 @@ export function Chat({
         }),
       );
     };
-    const onTouchStart = () => {
+    const clearHold = () => {
+      if (holdTimer.current !== undefined) {
+        clearTimeout(holdTimer.current);
+        holdTimer.current = undefined;
+      }
+    };
+    const onTouchStart = (event: TouchEvent) => {
       touching.current = true;
+      holdStartY.current = event.touches[0]?.clientY ?? 0;
+      clearHold();
+      // Appui maintenu sans glisser = l'utilisateur s'arrête pour lire :
+      // on détache après HOLD_DETACH_MS pour que le relâchement ne ramène
+      // pas la vue en bas. Un simple tap (moins de 250 ms) ne détache pas.
+      holdTimer.current = setTimeout(() => {
+        holdTimer.current = undefined;
+        if (!touching.current) return;
+        setFollow(
+          nextFollowState(followStateRef.current, {
+            type: 'hold',
+            overflow: hasOverflow({
+              scrollHeight: element.scrollHeight,
+              scrollTop: element.scrollTop,
+              clientHeight: element.clientHeight,
+            }),
+          }),
+        );
+      }, HOLD_DETACH_MS);
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      // Glissement = défilement : c'est l'événement `scroll` qui décide,
+      // pas l'appui maintenu.
+      const y = event.touches[0]?.clientY ?? 0;
+      if (Math.abs(y - holdStartY.current) > HOLD_MOVE_TOLERANCE_PX)
+        clearHold();
     };
     const onTouchEnd = () => {
       touching.current = false;
+      clearHold();
     };
     element.addEventListener('scroll', onScroll, { passive: true });
     element.addEventListener('touchstart', onTouchStart, { passive: true });
+    element.addEventListener('touchmove', onTouchMove, { passive: true });
     element.addEventListener('touchend', onTouchEnd, { passive: true });
     element.addEventListener('touchcancel', onTouchEnd, { passive: true });
     return () => {
+      clearHold();
       element.removeEventListener('scroll', onScroll);
       element.removeEventListener('touchstart', onTouchStart);
+      element.removeEventListener('touchmove', onTouchMove);
       element.removeEventListener('touchend', onTouchEnd);
       element.removeEventListener('touchcancel', onTouchEnd);
     };

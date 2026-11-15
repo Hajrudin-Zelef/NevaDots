@@ -31,6 +31,12 @@
 export const FOLLOW_END_EPSILON_PX = 0.5;
 /** Tolérance zoom : en deçà, la vue est épinglée à la fin (`anchored`). */
 export const FOLLOW_ZOOM_SLACK_PX = 4;
+/** Durée d'un appui maintenu avant de considérer que l'utilisateur lit
+ *  (doigt posé sans glisser). Un simple tap ne détache pas. */
+export const HOLD_DETACH_MS = 250;
+/** Glissement toléré pendant l'appui : au-delà, c'est un défilement (c'est
+ *  alors l'événement `scroll` qui décide). */
+export const HOLD_MOVE_TOLERANCE_PX = 8;
 
 export type FollowState = 'following' | 'detached' | 'returning' | 'anchored';
 
@@ -74,6 +80,12 @@ export type FollowEvent =
       type: 'content-grew';
       /** Distance jusqu'en bas après la croissance du contenu. */
       distance: number;
+    }
+  | {
+      /** Doigt maintenu sur le transcript sans glisser : l'utilisateur
+       *  s'arrête pour lire pendant le streaming. */
+      type: 'hold';
+      overflow: boolean;
     };
 
 export function nextFollowState(
@@ -113,6 +125,14 @@ export function nextFollowState(
       if (state === 'following') return 'following';
       if (state === 'anchored') return 'following';
       return state;
+    }
+    case 'hold': {
+      // Doigt maintenu sur le transcript : c'est une lecture, pas un
+      // arrêt du suivi. On détache pour que le relâchement ne ramène pas
+      // la vue en bas. Sans débordement il n'y a rien à lire : l'état ne
+      // change pas.
+      if (!event.overflow) return state;
+      return 'detached';
     }
   }
 }
