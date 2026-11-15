@@ -129,3 +129,22 @@ describe('appui maintenu (lecture pendant le streaming)', () => {
     expect(HOLD_MOVE_TOLERANCE_PX).toBe(8);
   });
 });
+
+describe('démarrage de tour', () => {
+  const started = (state: FollowState, keepDetached?: boolean) =>
+    nextFollowState(state, { type: 'turn-started', keepDetached });
+
+  it('repart collé au point de génération à chaque tour', () => {
+    expect(started('detached')).toBe('following');
+    expect(started('anchored')).toBe('following');
+    expect(started('returning')).toBe('following');
+    expect(started('following')).toBe('following');
+  });
+
+  it('respecte un lecteur détaché pendant le tour précédent', () => {
+    expect(started('detached', true)).toBe('detached');
+    // Un état non détaché n’a rien à préserver.
+    expect(started('following', true)).toBe('following');
+    expect(started('anchored', true)).toBe('following');
+  });
+});

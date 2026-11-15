@@ -12,7 +12,9 @@ import { connectionActionTool } from '../shared/connection-types';
  * - un appel d'outil HITL sans résultat (`role: 'tool'` manquant pour son
  *   `toolCallId`) bloque le tour en attendant l'utilisateur ;
  * - un `computer_exec` sans résultat bloque le tour sur le shell ;
- * - sinon, pendant un run : le tour travaille.
+ * - sinon, pendant un run : « Génération… » dès que le modèle écrit du
+ *   texte (le point de génération est là où arrive le texte), sinon
+ *   « Travail en cours » (outils, réflexion, attente du provider).
  *
  * Mapping des deux outils HITL (les deux attendent l'utilisateur, mais
  * pas de la même façon) :
@@ -25,10 +27,12 @@ import { connectionActionTool } from '../shared/connection-types';
  * « En attente de votre réponse ».
  */
 
-export type TurnStatus = 'working' | 'approval' | 'answer' | 'shell';
+export type TurnStatus =
+  'working' | 'generating' | 'approval' | 'answer' | 'shell';
 
 export const TURN_STATUS_LABELS: Record<TurnStatus, string> = {
   working: 'Travail en cours',
+  generating: 'Génération…',
   approval: 'En attente d’approbation',
   answer: 'En attente de votre réponse',
   shell: 'En attente du shell',
@@ -80,5 +84,15 @@ export function deriveTurnStatus(
     if (answerPending) return 'answer';
     if (shellPending) return 'shell';
   }
+  // Le modèle écrit du texte : le point de génération est visible, la
+  // ligne le dit et porte le spinner (au lieu du libellé générique).
+  const last = messages[messages.length - 1];
+  if (
+    last?.role === 'assistant' &&
+    typeof last.content === 'string' &&
+    last.content.trim() !== '' &&
+    !(last.toolCalls?.length ?? 0)
+  )
+    return 'generating';
   return 'working';
 }

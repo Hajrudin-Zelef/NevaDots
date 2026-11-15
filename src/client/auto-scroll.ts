@@ -86,6 +86,13 @@ export type FollowEvent =
        *  s'arrête pour lire pendant le streaming. */
       type: 'hold';
       overflow: boolean;
+    }
+  | {
+      /** Un tour démarre : on se replace sur le point de génération, sauf
+       *  si l'utilisateur a choisi de lire (détaché pendant CE tour). */
+      type: 'turn-started';
+      /** L'utilisateur a-t-il remonté pendant le tour précédent ? */
+      keepDetached?: boolean;
     };
 
 export function nextFollowState(
@@ -133,6 +140,13 @@ export function nextFollowState(
       // change pas.
       if (!event.overflow) return state;
       return 'detached';
+    }
+    case 'turn-started': {
+      // Chaque tour repart collé au point de génération : c'est ce qui
+      // garantit qu'on voit le texte arriver sans avoir à défiler. Un
+      // lecteur détaché qui a explicitement remonté pendant le tour
+      // précédent garde sa position (`keepDetached`).
+      return event.keepDetached && state === 'detached' ? state : 'following';
     }
   }
 }

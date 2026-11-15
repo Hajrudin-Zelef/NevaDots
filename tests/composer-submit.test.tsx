@@ -66,8 +66,11 @@ it('bouton libellé quand submitLabel est fourni (écran d’accueil)', () => {
     className: 'send-button send-labeled',
   });
   expect(labeled.type).toBe('button');
+  // Le libellé vit dans un `<span>` : sur téléphone il est masqué (pastille
+  // seule) sans retirer le texte du bouton ni son `aria-label`.
+  const label = renderer.root.findByProps({ className: 'send-label' });
   expect(
-    labeled.children.some(
+    label.children.some(
       (child: unknown) =>
         typeof child === 'string' && child.includes('Démarrer'),
     ),

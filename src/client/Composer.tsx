@@ -508,7 +508,7 @@ export function Composer(props: ComposerProps) {
               title={submitTitle}
               disabled={submitDisabled}
             >
-              {submitLabel}
+              <span className="send-label">{submitLabel}</span>
               <ArrowUp size={16} />
             </button>
           ) : (

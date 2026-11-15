@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
 import {
   ChatTranscript,
   isInternalVoiceReceipt,
@@ -294,6 +295,57 @@ it('affiche la ligne de statut sous le tour en cours, jamais à l’arrêt', () 
     />,
   );
   expect(idle).not.toContain('turn-status');
+});
+
+it('dit « Génération… » dès que le modèle écrit, avec le spinner', () => {
+  const messages = [
+    { id: 'request', role: 'user', content: 'Écris un paragraphe' },
+    { id: 'reply', role: 'assistant', content: 'Les volcans sont' },
+  ] as unknown as Message[];
+  expect(deriveTurnStatus(messages, true)).toBe('generating');
+  // À l'arrêt la ligne disparaît, comme les autres statuts.
+  expect(deriveTurnStatus(messages, false)).toBeNull();
+  // Un appel d'outil en attente garde la priorité sur « Génération… ».
+  const withCall = [
+    ...messages.slice(0, 1),
+    {
+      id: 'reply',
+      role: 'assistant',
+      content: 'Je regarde',
+      toolCalls: [
+        {
+          id: 'c1',
+          type: 'function',
+          function: { name: 'computer_exec', arguments: '{}' },
+        },
+      ],
+    },
+  ] as unknown as Message[];
+  expect(deriveTurnStatus(withCall, true)).toBe('shell');
+  const html = renderToStaticMarkup(
+    <ChatTranscript
+      messages={messages}
+      calls={[]}
+      running
+      statusLabel="Génération…"
+      statusKind="generating"
+    />,
+  );
+  expect(html).toContain('turn-status generating');
+  expect(html).toContain('Génération…');
+});
+
+it('le défilement vise la div qui défile, pas le wrapper', () => {
+  // Régression : deux `.chat-transcript` imbriqués faisaient écrire
+  // `scrollTop` sur le wrapper (qui ne défile pas) — il fallait défiler à
+  // la main pour voir le texte arriver. La div défilante porte la ref, le
+  // wrapper a son propre nom et ne fait que dimensionner.
+  const chat = readFileSync('src/client/Chat.tsx', 'utf8');
+  const transcript = readFileSync('src/client/ChatTranscript.tsx', 'utf8');
+  expect(chat).toContain('className="chat-transcript-shell"');
+  expect(chat).toContain('scrollRef={transcript}');
+  expect(chat).not.toContain('className="chat-transcript" ref={transcript}');
+  expect(transcript).toContain('className="chat-transcript" ref={scrollRef}');
 });
 
 it('dérive la ligne de statut des appels en attente (approbation, réponse, shell)', () => {

@@ -571,3 +571,145 @@
     flex-shrink: 0;
   }
 }
+
+/* ===========================================================================
+   Composer mince sur téléphone (≤ 560 px).
+
+   Avant : la rangée d'outils passait à la ligne (cibles 44 px) puis la barre
+   d'envoi sur 56 px, d'où trois rangées et une note — ~230 px de haut.
+   Maintenant : le textarea et l'envoi partagent la première rangée, la
+   rangée d'outils tient sur une seule ligne (cibles 36 px) et défile
+   horizontalement si l'écran est plus étroit que 320 px. Aucun contrôle
+   n'est retiré : `+`, globe/recherche, micro, chip modèle, cerveau,
+   variante de raisonnement et envoi restent tous présents.
+   =========================================================================== */
+@media (max-width: 560px) {
+  .template-app .chat-compose-row,
+  .chat-compose-row {
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 2px 6px;
+    padding: 4px 6px;
+    border-radius: 20px;
+  }
+  /* Rangée 1 : textarea + envoi. */
+  .template-app .chat-compose-row textarea,
+  .chat-compose-row textarea {
+    order: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 26px;
+    padding: 4px 6px 2px;
+  }
+  .template-app .chat-compose-row .composer-touch-bar,
+  .chat-compose-row .composer-touch-bar {
+    order: 2;
+    flex: 0 0 auto;
+    min-height: 0;
+    margin-left: 0;
+  }
+  /* Rangée 2 : tous les outils, une seule ligne. */
+  .template-app .chat-compose-tools,
+  .chat-compose-tools {
+    order: 3;
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .chat-compose-tools::-webkit-scrollbar {
+    display: none;
+  }
+  /* Cibles 34 px : les six contrôles tiennent sur une ligne à 390 px. */
+  .template-app .chat-compose-row .chat-compose-tools .icon-button,
+  .chat-compose-row .chat-compose-tools .icon-button {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+  }
+  /* Chip modèle : elle se rétrécit (ellipse) au lieu de pousser la rangée. */
+  .template-app .chat-compose-tools .model-selector-trigger,
+  .chat-compose-tools .model-selector-trigger {
+    min-height: 34px;
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .template-app .chat-compose-tools .reasoning-select,
+  .chat-compose-tools .reasoning-select {
+    height: 34px;
+    max-width: 84px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  /* Envoi 40 px, posé à droite du textarea. */
+  .template-app .chat-compose-row .composer-touch-bar .send-button,
+  .chat-compose-row .composer-touch-bar .send-button {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+  .template-app .chat-compose-row .composer-touch-bar .send-button.send-labeled,
+  .chat-compose-row .composer-touch-bar .send-button.send-labeled {
+    width: auto;
+    height: 40px;
+    padding: 0 14px;
+  }
+  /* Envoi : la pastille suffit (le libellé « Démarrer » reste dans
+     `aria-label`) — la rangée gagne 70 px pour le textarea. */
+  .chat-compose-row .composer-touch-bar .send-label {
+    display: none;
+  }
+  /* Note de pied : une ligne discrète (le Dot reste lisible). */
+  .template-app .chat-compose-note,
+  .chat-compose-note {
+    padding-top: 2px;
+    font-size: 11px;
+  }
+}
+
+/* ===========================================================================
+   Ligne de statut du tour : pendant que le modèle écrit, le point devient
+   un spinner (retour du 2026-11-15 : « je veux l'affichage sur le spinner
+   de génération »). Les autres états (outils, approbation, shell) gardent
+   le point qui pulse : ce ne sont pas des générations de texte.
+   =========================================================================== */
+.turn-status.generating .turn-status-dot {
+  width: 12px;
+  height: 12px;
+  background: transparent;
+  border: 2px solid color-mix(in srgb, var(--nd-accent) 28%, transparent);
+  border-top-color: var(--nd-accent);
+  animation: nd-turn-status-spin 0.8s linear infinite;
+}
+@keyframes nd-turn-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ===========================================================================
+   Conteneur du transcript.
+
+   `ChatTranscript` rend lui-même `.chat-transcript` (la div qui défile) ;
+   `Chat.tsx` l'enveloppe pour y poser l'accueil. Le wrapper portait la même
+   classe, donc le `ref` de l'auto-scroll visait un conteneur qui NE défile
+   PAS (deux `.chat-transcript` imbriqués : le `scrollTop` s'écrivait sur le
+   mauvais élément et il fallait défiler à la main pour voir le texte
+   arriver). Le wrapper a maintenant son propre nom : il ne fait que
+   dimensionner, la div interne défile.
+   =========================================================================== */
+.chat-transcript-shell {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}

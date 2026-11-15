@@ -527,6 +527,7 @@ export function Chat({
   const [followState, setFollowState] = useState<FollowState>('following');
   const followStateRef = useRef<FollowState>('following');
   const setFollow = useCallback((next: FollowState) => {
+    if (next === 'detached' && runningRef.current) readDuringRun.current = true;
     followStateRef.current = next;
     setFollowState(next);
   }, []);
@@ -535,6 +536,12 @@ export function Chat({
     undefined,
   );
   const holdStartY = useRef(0);
+  /** Tour en cours, lu par `setFollow` sans passer par le rendu. */
+  const runningRef = useRef(false);
+  runningRef.current = running;
+  /** L'utilisateur a remonté (ou maintenu) pendant CE tour : on ne le
+   *  ramène pas de force, mais le tour suivant repart collé. */
+  const readDuringRun = useRef(false);
   const prevScrollTop = useRef(0);
   const resumeAttempt = useRef(0);
   /** Descente en bas, sans jamais détacher (mouvement vers le bas). */
@@ -1080,6 +1087,26 @@ export function Chat({
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
   }, [running, scrollToEnd]);
+  // Chaque tour repart collé au point de génération : le texte arrive sous
+  // les yeux sans avoir à défiler (retour du 2026-11-15 : « je dois
+  // scroller pour voir la dernière génération »). Seul un lecteur qui a
+  // remonté pendant le tour précédent garde sa position ; le tour d'après
+  // le ramène.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (running && !wasRunning.current) {
+      const keepDetached = readDuringRun.current;
+      readDuringRun.current = false;
+      setFollow(
+        nextFollowState(followStateRef.current, {
+          type: 'turn-started',
+          keepDetached,
+        }),
+      );
+      if (!keepDetached) scrollToEnd();
+    }
+    wasRunning.current = running;
+  }, [running, scrollToEnd, setFollow]);
   // Un message ajouté (le message user, le texte assistant, un appel
   // d'outil) ne ré-attache plus : la machine décide — `following` /
   // `anchored` restent en bas, `detached` / `returning` ne bougent pas.
@@ -1373,7 +1400,7 @@ export function Chat({
           </a>
         </div>
       )}
-      <div className="chat-transcript" ref={transcript}>
+      <div className="chat-transcript-shell">
         {!visible.length && (
           <div className="chat-welcome">
             <Mascot avatar={dot.avatar} name={dot.name} state={mascotState} />
@@ -1384,6 +1411,7 @@ export function Chat({
         <ChatTranscript
           messages={visible}
           calls={calls}
+          scrollRef={transcript}
           renderTools={(message) => {
             // Phase 3 : la carte de progression remplace le rendu brut
             // pour les tours qui ont des étapes enregistrées.
@@ -1435,6 +1463,7 @@ export function Chat({
           agentName={dot.name}
           interruptedIds={interruptedIds}
           statusLabel={turnStatus ? TURN_STATUS_LABELS[turnStatus] : null}
+          statusKind={turnStatus}
           tts={{
             mode: settings?.ttsMode ?? 'browser',
             voice: settings?.ttsVoice ?? '',

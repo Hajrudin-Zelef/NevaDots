@@ -304,6 +304,8 @@ export function ChatTranscript({
   agentName,
   interruptedIds,
   statusLabel,
+  statusKind,
+  scrollRef,
 }: {
   messages: Message[];
   calls: CallReceipt[];
@@ -335,6 +337,13 @@ export function ChatTranscript({
   interruptedIds?: ReadonlySet<string>;
   /** Libellé de la ligne de statut sous le tour en cours (null = pas de tour). */
   statusLabel?: string | null;
+  /** Nature du statut : `generating` affiche un spinner (texte en cours). */
+  statusKind?:
+    'working' | 'generating' | 'approval' | 'answer' | 'shell' | null;
+  /** Élément réellement défilant (c'est CETTE div, pas le wrapper de
+   *  `Chat.tsx`) : l'auto-scroll et la détection de remontée doivent la
+   *  viser, sinon `scrollTop` s'écrit sur un conteneur qui ne défile pas. */
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const ids = new Set(messages.map((message) => message.id));
   const lastAssistantId = [...messages]
@@ -448,7 +457,7 @@ export function ChatTranscript({
     });
   };
   return (
-    <div className="chat-transcript" onMouseUp={onSelect}>
+    <div className="chat-transcript" ref={scrollRef} onMouseUp={onSelect}>
       {quote && (
         <div
           ref={toolbarRef}
@@ -563,7 +572,10 @@ export function ChatTranscript({
         </Fragment>
       ))}
       {statusLabel && (
-        <div className="turn-status" role="status">
+        <div
+          className={`turn-status${statusKind === 'generating' ? ' generating' : ''}`}
+          role="status"
+        >
           <span className="turn-status-dot" aria-hidden="true" />
           {statusLabel}
         </div>
