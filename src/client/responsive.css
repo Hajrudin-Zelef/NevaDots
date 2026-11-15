@@ -347,16 +347,54 @@
 }
 
 /* --- Étape 2 : barre tactile, appareils sans survol. ---
-   La rangée d'outils est masquée ; la barre d'envoi (56 px, boutons
+   Fix round 1/5 — la rangée d'outils N'EST PLUS masquée : elle porte
+   la chip modèle, le globe recherche web, le menu `+`, le micro voix
+   et le réglage de raisonnement, tous listés « Garder » par le plan ;
+   la masquer retirait ces contrôles sans contournement côté mobile
+   (le `+` est le seul accès tactile à l'upload, le raisonnement n'a
+   aucun autre réglage). La rangée reste donc visible, passe en retour
+   à la ligne (`flex-wrap`) pour ne pas déborder sur petit écran, et
+   ses cibles passent à 44 px. Seule la chip agent est masquée : changer
+   de Dot existe déjà dans le menu `+` (« Changer de Dot ») et dans la
+   liste des Dots de la sidebar. La barre d'envoi (56 px, boutons
    44 px) porte l'envoi — et le Stop, toujours visible pendant un run
    (rouge `--nd-danger*`, hors scope `.template-app` depuis le Lot 5).
    Entrée tactile = nouvelle ligne : rien à changer, `routeComposerKeyDown`
    ne soumet que sur Ctrl/⌘+Entrée, une Entrée sans modificateur reste le
    saut de ligne natif du textarea (bureau comme tactile). */
 @media (hover: none) {
+  /* Rangée d'outils conservée, en retour à la ligne : tous les
+     contrôles gardés tiennent sans débordement horizontal, même à
+     320 px (la rangée fait 2 lignes, la barre d'envoi reste en bas
+     à droite grâce à `align-items: flex-end` de la rangée). */
   .template-app .chat-compose-tools,
   .chat-compose-tools {
+    flex-wrap: wrap;
+  }
+  /* Chip agent masquée : sa fonction (changer de Dot, `cycleDot`) est
+     déjà dans le menu `+` et dans la liste des Dots de la sidebar. */
+  .template-app .chat-compose-tools .agent-chip,
+  .chat-compose-tools .agent-chip {
     display: none;
+  }
+  /* Cibles tactiles 44 px : boutons d'outils (+, globe, micro, Brain). */
+  .template-app .chat-compose-row .chat-compose-tools .icon-button,
+  .chat-compose-row .chat-compose-tools .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Chip modèle 44 px de haut (déclencheur + état de chargement) pour
+     rester une vraie cible tactile. */
+  .template-app .chat-compose-tools .model-selector-trigger,
+  .chat-compose-tools .model-selector-trigger,
+  .template-app .chat-compose-tools .model-selector-loading,
+  .chat-compose-tools .model-selector-loading {
+    min-height: 44px;
+  }
+  /* Select de raisonnement 44 px de haut (même gabarit que la chip). */
+  .template-app .chat-compose-tools .reasoning-select,
+  .chat-compose-tools .reasoning-select {
+    height: 44px;
   }
   .template-app .chat-compose-row .composer-touch-bar,
   .chat-compose-row .composer-touch-bar {

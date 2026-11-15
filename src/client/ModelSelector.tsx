@@ -102,6 +102,14 @@ export function ModelSelector({
 
   useEffect(() => {
     if (!open) return;
+    // Hors navigateur (tests node / SSR) : pas de `window`/`document` —
+    // l'ouverture reste une simple bascule d'état (le portail du menu
+    // est déjà gardé par `typeof document !== 'undefined'` plus bas).
+    // Fix round 1/5 (Lot 6) : sans cette garde, le clic sur le
+    // déclencheur levait `ReferenceError: window is not defined` en
+    // environnement node ; au navigateur, rien ne change.
+    if (typeof window === 'undefined' || typeof document === 'undefined')
+      return;
     setFilter('');
     const timer = window.setTimeout(() => filterRef.current?.focus(), 30);
     const handler = (e: MouseEvent) => {
