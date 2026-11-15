@@ -64,6 +64,7 @@ import { TaskActions } from './TaskActions';
 import { initialsOf } from './initials';
 import { createSubmitGuard } from './submit-guard';
 import { UiScaleControl } from './UiScaleControl';
+import { panelsMayAutoOpen } from './viewport';
 import { usePromptDraft } from './prompt-draft';
 import { loadPromptHistory, pushPromptHistory } from './prompt-history';
 import {
@@ -404,9 +405,12 @@ export function App() {
   const [computerInitialTab, setComputerInitialTab] =
     useState<ComputerPanelTab>('Browser');
   // Muse-style activity rail: docked, open by default, persisted. It collapses
-  // into the pop-pop avatar bubble while the browser pane is open.
+  // into the pop-pop avatar bubble while the browser pane is open. Sur
+  // téléphone il est plein écran : fermé au départ, ouvert à la demande
+  // (le choix persisté reste appliqué sur tablette/bureau).
   const [rail, setRail] = useState(
-    () => localStorage.getItem('nevadots-rail') !== 'closed',
+    () =>
+      panelsMayAutoOpen() && localStorage.getItem('nevadots-rail') !== 'closed',
   );
   const railBeforePane = useRef(rail);
   useEffect(() => {
@@ -551,6 +555,9 @@ export function App() {
   const onAgentTerminalStart = useCallback(() => {
     setComputerInitialTab('Terminal');
     setComputerTerminalSignal((n) => n + 1);
+    // Mobile : on prépare l'onglet Terminal mais on n'ouvre pas le panneau
+    // plein écran par-dessus la conversation.
+    if (!panelsMayAutoOpen()) return;
     setPane(true);
   }, []);
   const setupStep = workspace

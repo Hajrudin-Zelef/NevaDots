@@ -74,6 +74,7 @@ import {
   type FollowState,
 } from './auto-scroll';
 import { deriveTurnStatus, TURN_STATUS_LABELS } from './turn-status';
+import { panelsMayAutoOpen } from './viewport';
 import { fetchResponseStatsForMessage } from './response-stats';
 import { useDotModelControls } from './useDotModelControls';
 import { StepCard } from './StepCard';
@@ -380,11 +381,14 @@ export function Chat({
   );
   useEffect(() => {
     for (const message of reasoningMessages) {
-      if (!seenReasoning.current.has(message.id)) {
-        seenReasoning.current.add(message.id);
-        setReasonPanel({ id: message.id, live: true });
-        break;
-      }
+      if (seenReasoning.current.has(message.id)) continue;
+      seenReasoning.current.add(message.id);
+      // Mobile : ouverture manuelle uniquement — le panneau est plein
+      // écran, l'ouvrir tout seul recouvre la réponse en cours. Le texte
+      // reste accessible par la carte de raisonnement du message.
+      if (!panelsMayAutoOpen()) break;
+      setReasonPanel({ id: message.id, live: true });
+      break;
     }
   }, [reasoningMessages]);
   useEffect(() => {
@@ -1243,6 +1247,9 @@ export function Chat({
     }
     if (browserOpenedForRun.current || !latestBrowserCall) return;
     browserOpenedForRun.current = true;
+    // Mobile : le panneau ordinateur est plein écran — on ne l'ouvre pas
+    // par-dessus la réponse, l'utilisateur l'ouvre quand il veut.
+    if (!panelsMayAutoOpen()) return;
     onComputer?.();
   }, [running, latestBrowserCall, onComputer]);
   // Cumulative session tokens for the cetas-style token bar.
