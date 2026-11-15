@@ -56,6 +56,7 @@ import {
   setMotionPreference,
   type MotionPreference,
 } from './motion-pref';
+import { UiScaleControl } from './UiScaleControl';
 export type Dialog =
   | { type: 'space'; space?: Space }
   | { type: 'dot'; dot?: Dot; spaceId: string }
@@ -755,6 +756,16 @@ export function WorkspaceDialog({
                       ))}
                     </div>
                     <p className="muted">Couleur d’accent.</p>
+                    <div className="appearance-scale">
+                      <span className="appearance-scale-label">
+                        Taille de l’interface
+                      </span>
+                      <UiScaleControl />
+                    </div>
+                    <p className="muted">
+                      Agrandit ou réduit toute l’interface — texte, espacements
+                      et boutons · Mémorisé dans ce navigateur.
+                    </p>
                   </fieldset>
                 )}
                 {dialog.type === 'settings' && settingsTab === 'avatar' && (

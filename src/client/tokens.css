@@ -38,6 +38,11 @@
   --nd-font-size-base: 14px;
   --nd-font-size-lg: 16px;
   --nd-font-size-xl: 20px;
+  /* Échelle de l'interface (boutons A− / A+). Facteur appliqué en `zoom`
+     au shell : 0.8–1.3. Les unités de viewport ne suivent pas le zoom,
+     d'où `--nd-dvh` (responsive.css) pour les hauteurs plein écran. */
+  --nd-ui-scale: 1;
+  --nd-dvh: calc(100dvh / var(--nd-ui-scale));
   /* Poids variables Inter (pas 400/500/700). */
   --nd-font-weight-regular: 440;
   --nd-font-weight-medium: 530;

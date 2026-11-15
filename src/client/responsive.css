@@ -415,3 +415,159 @@
     padding: 0 16px;
   }
 }
+
+/* ===========================================================================
+   Taille de l'interface — deux boutons A− / A+ (barre du haut et
+   Réglages → Apparence).
+
+   `zoom` sur le shell reproduit le zoom du navigateur : texte, espacements
+   et cibles tactiles grandissent ensemble, sans toucher aux 2 600 valeurs en
+   px du projet. Les unités de viewport NE suivent PAS le zoom : chaque
+   hauteur/largeur plein écran du sous-arbre est donc divisée par
+   `--nd-ui-scale` (`--nd-dvh`, défini dans tokens.css), sinon le shell
+   laisse une bande vide sous le composer (échelle < 1) ou déborde
+   (échelle > 1). Tout est sous `@supports (zoom: 1)` : sans `zoom`, la
+   compensation ne doit pas s'appliquer.
+   =========================================================================== */
+@supports (zoom: 1) {
+  .template-app.app {
+    zoom: var(--nd-ui-scale);
+    min-height: var(--nd-dvh);
+  }
+  .template-app.app .workspace {
+    height: var(--nd-dvh);
+  }
+  @media (min-width: 768px) {
+    .template-app.app .sidebar {
+      height: var(--nd-dvh);
+    }
+  }
+  @media (max-width: 767px) {
+    /* Tiroir bas : `85dvh` dépasserait l'écran au-delà de 100 %. */
+    .template-app.app .sidebar,
+    .template-app.app.nav-collapsed .sidebar {
+      max-height: calc(85dvh / var(--nd-ui-scale));
+    }
+  }
+  @media (max-width: 700px) {
+    /* Rail plein écran : `100vw` débordait horizontalement. */
+    .muse-overlay {
+      width: calc(100vw / var(--nd-ui-scale));
+    }
+  }
+  @media (max-width: 760px) {
+    /* Paramètres plein écran : mêmes hauteurs que le shell. */
+    .modal,
+    .modal.settings-modal {
+      height: var(--nd-dvh);
+      max-height: var(--nd-dvh);
+    }
+  }
+}
+
+/* --- Les deux boutons + le libellé. --- */
+.ui-scale-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.ui-scale-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--nd-border);
+  border-radius: 10px;
+  background: var(--nd-bg-input);
+  color: var(--nd-text);
+  cursor: pointer;
+}
+.ui-scale-button:hover:not(:disabled) {
+  background: var(--nd-bg-hover);
+}
+.ui-scale-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ui-scale-button:focus-visible {
+  outline: 2px solid var(--nd-accent);
+  outline-offset: 2px;
+}
+.ui-scale-value {
+  min-width: 48px;
+  text-align: center;
+  font-size: var(--nd-font-size-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--nd-text-secondary);
+}
+/* Variante barre du haut : 30 px (36 px sur écran tactile). */
+.ui-scale-control.compact .ui-scale-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.ui-scale-control.compact .ui-scale-value {
+  min-width: 40px;
+  font-size: 11px;
+}
+@media (pointer: coarse) {
+  .ui-scale-control.compact .ui-scale-button {
+    width: 36px;
+    height: 36px;
+  }
+}
+.template-app .topbar .ui-scale-control {
+  margin-left: 8px;
+}
+/* Réglages → Apparence : libellé à gauche, boutons à droite. */
+.appearance-scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+.appearance-scale-label {
+  font-size: var(--nd-font-size-base);
+  color: var(--nd-text);
+}
+
+/* ===========================================================================
+   Mobile — plus d'air. L'interface était trop tassée sur téléphone (retour
+   du 2026-11-15) : marges verticales du transcript, gouttière entre messages,
+   padding des bulles, du composer et du tiroir bas. Les cibles tactiles
+   restent à 44 px (règles `pointer: coarse` ci-dessus).
+   =========================================================================== */
+@media (max-width: 560px) {
+  .template-app .live-chat {
+    padding: 12px 20px 14px;
+  }
+  .template-app .chat-transcript {
+    gap: 18px;
+    padding: 20px 0 14px;
+  }
+  .template-app .chat-transcript .chat-bubble.user {
+    padding: 10px 14px;
+  }
+  .template-app .chat-transcript .chat-bubble.assistant {
+    padding: 4px 2px;
+    line-height: 1.75;
+  }
+  .template-app .chat-compose-row {
+    padding: 8px 10px;
+  }
+  .template-app .chat-compose-note {
+    padding-top: 6px;
+  }
+  .template-app.app .sidebar,
+  .template-app.app.nav-collapsed .sidebar {
+    padding: 12px 14px 14px;
+  }
+  /* À forte échelle, le tiroir ne comprime pas l'en-tête (le sous-titre
+     chevauchait les modules) : la liste absorbe la place restante. */
+  .template-app.app .sidebar .sidebar-brand {
+    flex-shrink: 0;
+  }
+}

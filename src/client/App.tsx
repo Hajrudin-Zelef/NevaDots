@@ -63,6 +63,7 @@ import { TaskRow } from './TaskPresentation';
 import { TaskActions } from './TaskActions';
 import { initialsOf } from './initials';
 import { createSubmitGuard } from './submit-guard';
+import { UiScaleControl } from './UiScaleControl';
 import { usePromptDraft } from './prompt-draft';
 import { loadPromptHistory, pushPromptHistory } from './prompt-history';
 import {
@@ -1376,6 +1377,7 @@ export function App() {
           >
             {mobile ? <X size={17} /> : <PanelLeft size={17} />}
           </button>
+          <UiScaleControl compact />
         </header>
         {error && (
           <div className="error-banner" role="alert">
