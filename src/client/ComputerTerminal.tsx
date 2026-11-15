@@ -1,5 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Copy, ExternalLink } from 'lucide-react';
+import {
+  Camera,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  FileText,
+  GitBranch,
+  Globe,
+  Keyboard,
+  MousePointerClick,
+  Play,
+  ScrollText,
+  Shield,
+  Square,
+} from 'lucide-react';
 import { ThinkingOrb } from './ThinkingOrb';
 import type { TerminalRun } from './computer-activity';
 import type { ComputerActivitySnapshot } from './useComputerActivity';
@@ -34,6 +49,44 @@ function readLastAutoOpened(key: string): string | null {
   }
 }
 
+/** Libellés français des actions de l'ordinateur (le code reste en anglais). */
+const ACTION_LABELS: Record<string, string> = {
+  navigate: 'Navigation',
+  read: 'Lecture page',
+  snapshot: 'Capture d’écran',
+  screenshot: 'Capture d’écran',
+  click: 'Clic',
+  type: 'Frappe',
+  key: 'Touche',
+  scroll: 'Défilement',
+  files_list: 'Liste fichiers',
+  files_read: 'Lecture fichier',
+  files_search: 'Recherche fichiers',
+  files_edit: 'Édition fichier',
+  files_write: 'Écriture fichier',
+  files_delete: 'Suppression fichier',
+  preview_file: 'Aperçu fichier',
+  git: 'Git',
+  permissions: 'Permissions',
+  start: 'Démarrage',
+  stop: 'Arrêt',
+  release: 'Libération',
+};
+
+/** Icône par famille d'action (nom brut inconnu → fichier). */
+function actionIcon(name: string) {
+  if (name === 'navigate' || name === 'read') return Globe;
+  if (name === 'click') return MousePointerClick;
+  if (name === 'type' || name === 'key') return Keyboard;
+  if (name === 'scroll') return ScrollText;
+  if (name === 'snapshot' || name === 'screenshot') return Camera;
+  if (name === 'git') return GitBranch;
+  if (name === 'permissions') return Shield;
+  if (name === 'start') return Play;
+  if (name === 'stop' || name === 'release') return Square;
+  return FileText;
+}
+
 function runFailed(run: TerminalRun): boolean {
   return (
     !!run.error ||
@@ -62,6 +115,36 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/** Ligne du journal pour une action terminée (navigation, fichier…). */
+function ComputerActionRow({ run }: { run: TerminalRun }) {
+  const Icon = actionIcon(run.command);
+  const label = ACTION_LABELS[run.command] ?? run.command;
+  const failed = run.outcome === 'failed';
+  return (
+    <div
+      className={`computer-action-row ${failed ? 'failed' : ''}`}
+      title={run.command}
+    >
+      <span className="computer-action-icon" aria-hidden="true">
+        <Icon size={14} />
+      </span>
+      <span className="computer-action-label">{label}</span>
+      <span className={`computer-terminal-actor ${run.actor}`}>
+        {run.actor === 'agent' ? 'Dot' : 'Vous'}
+      </span>
+      <time
+        className="computer-action-time"
+        dateTime={new Date(run.startedAt).toISOString()}
+      >
+        {new Date(run.startedAt).toLocaleTimeString()}
+      </time>
+      <span className={`computer-action-outcome ${failed ? 'failed' : 'ok'}`}>
+        {failed ? '✕' : '✓'}
+      </span>
+    </div>
+  );
+}
+
 export function ComputerTerminalRun({
   run,
   forceOpen = false,
@@ -71,6 +154,7 @@ export function ComputerTerminalRun({
   forceOpen?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  if (run.kind === 'action') return <ComputerActionRow run={run} />;
   const failed = runFailed(run);
   const output = [run.stdout, run.stderr].filter(Boolean).join('\n');
   const shortOutput = output.length <= 600 && output.split('\n').length <= 8;
@@ -153,7 +237,7 @@ export function ComputerTerminalRun({
 
 export function ComputerTerminalRunList({
   runs,
-  empty = 'Aucune commande pour l’instant.',
+  empty = 'Rien pour l’instant : les commandes shell et les actions du Dot apparaîtront ici.',
   compact = false,
   transcript = false,
 }: {

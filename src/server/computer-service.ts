@@ -595,11 +595,35 @@ export class ComputerService {
     try {
       const result = await fn();
       this.workspace.computers.finish(receipt, 'succeeded');
+      this.emitAction(id, action, actor, 'succeeded');
       return result;
     } catch (error) {
       this.workspace.computers.finish(receipt, 'failed');
+      this.emitAction(id, action, actor, 'failed');
       throw error;
     }
+  }
+  /**
+   * Une ligne du journal par action terminée (navigation, fichier, capture,
+   * git…). `exec` est exclu : il a son propre flux `start`/`chunk`/`end` qui
+   * défile — sans cette exclusion il apparaîtrait deux fois.
+   */
+  private emitAction(
+    id: string,
+    action: string,
+    actor: 'owner' | 'agent',
+    outcome: 'succeeded' | 'failed',
+  ): void {
+    if (action === 'exec') return;
+    this.emitActivity({
+      dotId: id,
+      action: 'action',
+      phase: 'action',
+      at: Date.now(),
+      actor,
+      name: action,
+      outcome,
+    });
   }
   async permissions(id: string, input: unknown) {
     const patch = computerPermissionsSchema.partial().parse(input);

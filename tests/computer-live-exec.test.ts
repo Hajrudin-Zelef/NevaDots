@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { WorkspaceStore } from '../src/server/workspace.js';
 import { ComputerService, utf8Split } from '../src/server/computer-service.js';
-import type { ComputerActivityEvent } from '../src/shared/computer-types.js';
+import type {
+  ComputerActivityEvent,
+  ComputerExecEvent,
+} from '../src/shared/computer-types.js';
 
 const stores: WorkspaceStore[] = [];
 afterEach(() => {
@@ -139,9 +142,11 @@ describe('exec live (défilement)', () => {
     )) as Record<string, unknown>;
     stop();
     expect(seen[0]).toMatchObject({ phase: 'start' });
-    const chunks = seen.filter((e) => e.phase === 'chunk');
+    const chunks = seen.filter(
+      (e): e is ComputerExecEvent => e.phase === 'chunk',
+    );
     expect(chunks.map((e) => e.chunk).join('')).toBe('hello\nworld\n');
-    const end = seen.find((e) => e.phase === 'end');
+    const end = seen.find((e): e is ComputerExecEvent => e.phase === 'end');
     expect(end).toMatchObject({ exitCode: 0 });
     expect(end?.stdout).toContain('world');
     // Sortie courte : pas de troncature (le bloc de fin a bien été lu).
@@ -182,7 +187,9 @@ describe('exec live (défilement)', () => {
     );
     stop2();
     expect(seen.length).toBeGreaterThanOrEqual(2);
-    expect(seen.find((e) => e.phase === 'start')?.command).toBe('echo late');
+    expect(
+      seen.find((e): e is ComputerExecEvent => e.phase === 'start')?.command,
+    ).toBe('echo late');
     expect(seen.find((e) => e.phase === 'end')).toBeTruthy();
   });
 
@@ -237,7 +244,7 @@ describe('exec live (défilement)', () => {
     await expect(run).rejects.toThrow();
     stop();
     expect(f.calls.some((c) => c.startsWith('kill -9 4242'))).toBe(true);
-    const end = seen.find((e) => e.phase === 'end');
+    const end = seen.find((e): e is ComputerExecEvent => e.phase === 'end');
     expect(end?.error).toBeTruthy();
   });
 });

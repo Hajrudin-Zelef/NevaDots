@@ -297,6 +297,12 @@ export function ComputerPanel({
   const browser = !!running && !!status?.permissions.browser;
   // Journal live du terminal (commandes owner + agent) quand l'onglet est ouvert.
   const terminal = useComputerActivity(dot.id, tab === 'Terminal');
+  /** Filtre du journal : tout, ou seulement les commandes shell. */
+  const [terminalFilter, setTerminalFilter] = useState<'all' | 'shell'>('all');
+  const terminalRuns =
+    terminalFilter === 'shell'
+      ? terminal.runs.filter((run) => run.kind === 'exec')
+      : terminal.runs;
 
   useEffect(() => {
     if (tab === 'Terminal') {
@@ -772,10 +778,32 @@ export function ComputerPanel({
               >
                 <summary>Terminal</summary>
                 <p>
-                  S’exécute dans l’ordinateur de ce Dot. Les commandes
-                  s’arrêtent après 30 secondes. Le journal ci-dessous suit en
-                  direct vos commandes et celles du Dot.
+                  Tout ce que fait l’ordinateur de ce Dot : commandes shell
+                  (avec leur sortie en direct, arrêtées après 30 secondes) et
+                  actions — navigation, fichiers, captures. Vous pouvez aussi
+                  taper une commande.
                 </p>
+                <div
+                  className="terminal-filter"
+                  role="group"
+                  aria-label="Filtrer le journal"
+                >
+                  {(
+                    [
+                      ['all', 'Tout'],
+                      ['shell', 'Shell'],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      type="button"
+                      key={id}
+                      aria-pressed={terminalFilter === id}
+                      onClick={() => setTerminalFilter(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <div
                   className="terminal-window"
                   role="group"
@@ -805,7 +833,7 @@ export function ComputerPanel({
                         {terminal.error}
                       </p>
                     )}
-                    <ComputerTerminalRunList runs={terminal.runs} transcript />
+                    <ComputerTerminalRunList runs={terminalRuns} transcript />
                   </div>
                   <form
                     className="terminal-prompt"

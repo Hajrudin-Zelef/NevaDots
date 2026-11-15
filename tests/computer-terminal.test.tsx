@@ -27,6 +27,7 @@ function snapshot(
     runs: [
       {
         key: 'run-1',
+        kind: 'exec',
         actor,
         command: 'npm test',
         startedAt: 1,
@@ -154,4 +155,40 @@ it('transcript plein : sorties longues visibles sans repli', () => {
   const json = JSON.stringify(renderer!.toJSON());
   expect(json).toContain('ligne 19');
   expect(json).not.toContain('Cliquer pour développer');
+});
+
+it('affiche une action terminée en une ligne, sans sortie dépliable', () => {
+  const runs = [
+    {
+      key: 'a1',
+      kind: 'action' as const,
+      actor: 'agent' as const,
+      command: 'files_edit',
+      outcome: 'succeeded' as const,
+      startedAt: Date.now(),
+      running: false,
+      stdout: '',
+      stderr: '',
+    },
+  ];
+  let renderer: ReactTestRenderer;
+  act(() => {
+    renderer = create(
+      createElement(ComputerTerminalRunList, { runs, transcript: true }),
+    );
+  });
+  const json = JSON.stringify(renderer!.toJSON());
+  // Libellé français, acteur, issue — et aucune zone de sortie.
+  expect(json).toContain('Édition fichier');
+  expect(json).toContain('Dot');
+  expect(json).toContain('✓');
+  expect(renderer!.root.findAllByType('details')).toHaveLength(0);
+});
+
+it('état vide : explique que les actions du Dot arrivent ici', () => {
+  let renderer: ReactTestRenderer;
+  act(() => {
+    renderer = create(createElement(ComputerTerminalRunList, { runs: [] }));
+  });
+  expect(JSON.stringify(renderer!.toJSON())).toContain('actions du Dot');
 });

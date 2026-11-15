@@ -3,7 +3,10 @@ import { WorkspaceStore } from '../src/server/workspace.js';
 import { ComputerService } from '../src/server/computer-service.js';
 import { computerRoutes } from '../src/server/computer-routes.js';
 import { mountScoped } from './scoped-mount.js';
-import type { ComputerActivityEvent } from '../src/shared/computer-types.js';
+import type {
+  ComputerActivityEvent,
+  ComputerExecEvent,
+} from '../src/shared/computer-types.js';
 import {
   appendActivityRun,
   parseActivityChunk,
@@ -99,9 +102,10 @@ it('émet start puis end borné pour un exec agent', async () => {
     exitCode: 0,
     elapsedMs: 12,
   });
-  expect(seen[1].stdout).toContain('hi');
-  expect(seen[1].stdout!.length).toBeLessThan(LONG.length);
-  expect(seen[1].stdout).toContain('[tronqué]');
+  const endEvent = seen[1] as ComputerExecEvent;
+  expect(endEvent.stdout).toContain('hi');
+  expect(endEvent.stdout!.length).toBeLessThan(LONG.length);
+  expect(endEvent.stdout).toContain('[tronqué]');
   // Un autre Dot ne reçoit rien.
   const other: ComputerActivityEvent[] = [];
   const stopOther = f.service.subscribeActivity('nope', (event) =>
@@ -112,7 +116,7 @@ it('émet start puis end borné pour un exec agent', async () => {
   expect(other).toHaveLength(0);
 });
 
-it('n’émet rien pour les actions non-exec et isole les abonnés', async () => {
+it('émet une ligne par action non-exec et isole les abonnés', async () => {
   const f = fixture();
   const seen: ComputerActivityEvent[] = [];
   f.service.subscribeActivity(f.id, () => {
@@ -122,7 +126,16 @@ it('n’émet rien pour les actions non-exec et isole les abonnés', async () =>
   // L'abonné cassé ne fait pas échouer l'action.
   await f.service.action(f.id, 'files_list', { path: '' }, 'owner');
   stop();
-  expect(seen).toHaveLength(0);
+  // Le panneau montre TOUT ce que fait l'ordinateur : une action terminée
+  // produit une ligne (le shell, lui, a son flux start/chunk/end).
+  expect(seen).toHaveLength(1);
+  expect(seen[0]).toMatchObject({
+    action: 'action',
+    phase: 'action',
+    name: 'files_list',
+    actor: 'owner',
+    outcome: 'succeeded',
+  });
 });
 
 it('émet end avec erreur quand la commande est refusée', async () => {
@@ -138,11 +151,11 @@ it('émet end avec erreur quand la commande est refusée', async () => {
   ).rejects.toThrow('permission');
   stopDenied();
   expect(denied.map((event) => event.phase)).toEqual(['start', 'end']);
-  expect(denied[1].error).toContain('permission');
+  expect((denied[1] as ComputerExecEvent).error).toContain('permission');
 });
 
 it('le helper fusionne start/end et borne le journal', () => {
-  const start: ComputerActivityEvent = {
+  const start: ComputerExecEvent = {
     dotId: 'd',
     action: 'exec',
     actor: 'agent',
@@ -174,12 +187,12 @@ it('le helper fusionne start/end et borne le journal', () => {
     `: padding\n\n${JSON.stringify(start)}\n{incomplet`,
   );
   expect(parsed.events).toHaveLength(1);
-  expect(parsed.events[0].command).toBe('sleep 30');
+  expect((parsed.events[0] as ComputerExecEvent).command).toBe('sleep 30');
   expect(parsed.carry).toBe('{incomplet');
 });
 
 it('le helper fait défiler les chunk live sur le run en cours', () => {
-  const start: ComputerActivityEvent = {
+  const start: ComputerExecEvent = {
     dotId: 'd',
     action: 'exec',
     actor: 'owner',
@@ -188,7 +201,7 @@ it('le helper fait défiler les chunk live sur le run en cours', () => {
     command: 'npm run build',
   };
   let runs = appendActivityRun([], start);
-  const chunk = (at: number, text: string): ComputerActivityEvent => ({
+  const chunk = (at: number, text: string): ComputerExecEvent => ({
     ...start,
     phase: 'chunk',
     at,
@@ -247,4 +260,60 @@ it('la route /activity diffuse les événements en NDJSON', async () => {
   expect(events[0]).toMatchObject({ phase: 'start', command: 'echo hi' });
   expect(events[1]).toMatchObject({ phase: 'end', exitCode: 0 });
   await reader.cancel();
+});
+
+it('journal : une action terminée devient une ligne, le shell reste streamé', () => {
+  const action: ComputerActivityEvent = {
+    dotId: 'd',
+    action: 'action',
+    phase: 'action',
+    at: 10,
+    actor: 'agent',
+    name: 'files_edit',
+    outcome: 'succeeded',
+  };
+  const runs = appendActivityRun([], action);
+  expect(runs).toHaveLength(1);
+  expect(runs[0]).toMatchObject({
+    kind: 'action',
+    command: 'files_edit',
+    outcome: 'succeeded',
+    running: false,
+    stdout: '',
+  });
+  // Le parse accepte la ligne d'action et rejette une action sans nom.
+  const parsed = parseActivityChunk(
+    '',
+    `${JSON.stringify(action)}\n${JSON.stringify({ ...action, name: undefined })}\n`,
+  );
+  expect(parsed.events).toHaveLength(1);
+  expect(parsed.events[0]).toMatchObject({
+    action: 'action',
+    name: 'files_edit',
+  });
+});
+
+it('journal : un exec reste dépliable avec sa sortie, une action non', () => {
+  const start: ComputerExecEvent = {
+    dotId: 'd',
+    action: 'exec',
+    actor: 'owner',
+    phase: 'start',
+    at: 1,
+    command: 'ls',
+  };
+  const runs = appendActivityRun(appendActivityRun([], start), {
+    ...start,
+    phase: 'end',
+    at: 2,
+    exitCode: 0,
+    stdout: 'a.txt',
+    stderr: '',
+  } as ComputerExecEvent);
+  expect(runs[0]).toMatchObject({
+    kind: 'exec',
+    command: 'ls',
+    running: false,
+  });
+  expect(runs[0].stdout).toBe('a.txt');
 });

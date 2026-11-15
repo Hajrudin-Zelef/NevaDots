@@ -1,10 +1,16 @@
 import type { ComputerActivityEvent } from '../shared/computer-types.js';
 
-/** One shell run shown in the live terminal journal (start + end merged). */
+/** One journal line: a shell run (streamed, expandable) or a finished
+ * computer action (navigation, file write, screenshot… — one line). */
 export interface TerminalRun {
   key: string;
+  /** `exec` défile (sortie dépliable) ; `action` est une ligne d'action. */
+  kind: 'exec' | 'action';
   actor: 'owner' | 'agent';
+  /** Commande (exec) ou nom d'action (`files_edit`, `navigate`…). */
   command: string;
+  /** Issue d'une action terminée (jamais sur un exec). */
+  outcome?: 'succeeded' | 'failed';
   startedAt: number;
   running: boolean;
   exitCode?: number;
@@ -35,14 +41,18 @@ export function parseActivityChunk(
     if (!trimmed || trimmed.startsWith(':')) continue;
     try {
       const parsed = JSON.parse(trimmed) as Partial<ComputerActivityEvent>;
-      if (
-        parsed &&
+      const actorOk = parsed.actor === 'owner' || parsed.actor === 'agent';
+      const execOk =
+        parsed.action === 'exec' &&
         (parsed.phase === 'start' ||
           parsed.phase === 'chunk' ||
           parsed.phase === 'end') &&
-        typeof parsed.command === 'string' &&
-        (parsed.actor === 'owner' || parsed.actor === 'agent')
-      )
+        typeof (parsed as { command?: unknown }).command === 'string';
+      const actionOk =
+        parsed.action === 'action' &&
+        parsed.phase === 'action' &&
+        typeof (parsed as { name?: unknown }).name === 'string';
+      if (parsed && actorOk && (execOk || actionOk))
         events.push(parsed as ComputerActivityEvent);
     } catch {
       // Ligne incomplète ou étrangère : ignorée (la suivante complètera).
@@ -56,9 +66,25 @@ export function appendActivityRun(
   runs: TerminalRun[],
   event: ComputerActivityEvent,
 ): TerminalRun[] {
+  if (event.action === 'action') {
+    // Action terminée : une ligne, sans sortie (le shell a son propre flux).
+    const run: TerminalRun = {
+      key: `${event.at}-${event.actor}-${runs.length}`,
+      kind: 'action',
+      actor: event.actor,
+      command: event.name,
+      outcome: event.outcome,
+      startedAt: event.at,
+      running: false,
+      stdout: '',
+      stderr: '',
+    };
+    return [...runs, run].slice(-TERMINAL_RUN_CAP);
+  }
   if (event.phase === 'start') {
     const run: TerminalRun = {
       key: `${event.at}-${event.actor}-${runs.length}`,
+      kind: 'exec',
       actor: event.actor,
       command: event.command,
       startedAt: event.at,
@@ -98,6 +124,7 @@ export function appendActivityRun(
   }
   const closed: TerminalRun = {
     key: `${event.at}-${event.actor}-${runs.length}`,
+    kind: 'exec',
     actor: event.actor,
     command: event.command,
     startedAt: event.at,

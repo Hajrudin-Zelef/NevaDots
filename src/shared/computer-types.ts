@@ -214,13 +214,17 @@ export type ComputerAction = keyof typeof computerInputs;
  * output arrives (live exec streams the run in the background), and `end`
  * with bounded output when it returns. Emitted in-process only (single
  * server process). */
-export interface ComputerActivityEvent {
+export interface ComputerActivityBase {
   dotId: string;
-  action: 'exec';
   actor: 'owner' | 'agent';
-  phase: 'start' | 'chunk' | 'end';
   /** Unix epoch ms when the event was emitted. */
   at: number;
+}
+
+/** Exécution shell : `start` au lancement, `chunk` en cours, `end` au retour. */
+export interface ComputerExecEvent extends ComputerActivityBase {
+  action: 'exec';
+  phase: 'start' | 'chunk' | 'end';
   /** The shell command (bounded server-side). */
   command: string;
   exitCode?: number;
@@ -235,3 +239,19 @@ export interface ComputerActivityEvent {
   chunk?: string;
   chunkStderr?: string;
 }
+
+/**
+ * Action de l'ordinateur terminée (navigation, fichier, capture, git…) :
+ * une ligne du journal, émise au retour de l'action. Le shell a son propre
+ * flux (`ComputerExecEvent`) parce qu'il défile ; tout le reste arrive ici
+ * pour que le panneau montre TOUT ce que fait le Dot, pas seulement `exec`.
+ */
+export interface ComputerActionEvent extends ComputerActivityBase {
+  action: 'action';
+  phase: 'action';
+  /** Nom de l'action (`navigate`, `files_edit`, `screenshot`…). */
+  name: string;
+  outcome: 'succeeded' | 'failed';
+}
+
+export type ComputerActivityEvent = ComputerExecEvent | ComputerActionEvent;
