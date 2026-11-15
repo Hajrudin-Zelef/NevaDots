@@ -188,45 +188,6 @@ samp,
   --nd-danger-dark: #b91c1c;
 }
 
-/* --- Palettes d'accent (data-palette) — reprises de cetas-lite.
-   La palette « bleu » vaut désormais le bleu OpenCode (#3b5cf6) et c'est
-   le défaut (DEFAULT_PALETTE dans theme.ts). Les autres palettes gardent
-   leurs valeurs claires en sombre (pas de flip : l'accent est dans
-   EXPLICIT_DARK_TOKENS) — le flip donnait un vert #00721e inutilisable. --- */
-:root[data-palette='bleu'] {
-  --nd-accent: #3b5cf6;
-  --nd-accent-dark: #0b34f4;
-}
-:root[data-palette='violet'] {
-  --nd-accent: #8b5cf6;
-  --nd-accent-dark: #6d28d9;
-}
-:root[data-palette='vert'] {
-  --nd-accent: #22c55e;
-  --nd-accent-dark: #15803d;
-}
-:root[data-palette='vert_pur'] {
-  --nd-accent: #00e676;
-  --nd-accent-dark: #00b35c;
-}
-:root[data-palette='bleu_ocean'] {
-  --nd-accent: #0ea5e9;
-  --nd-accent-dark: #0369a1;
-}
-:root[data-palette='jaune_or'] {
-  --nd-accent: #d4a017;
-  --nd-accent-dark: #a97c0f;
-}
-:root[data-palette='rouge'] {
-  --nd-accent: #ef4444;
-  --nd-accent-dark: #b91c1c;
-}
-/* Palette « ocean » de NevaDots (accent historique du thème cetas-lite). */
-:root[data-palette='ocean'] {
-  --nd-accent: #2196f3;
-  --nd-accent-dark: #1976d2;
-}
-
 /* --- Mappings : variables NevaDots -> primitives.
    Déclarés sur :root ET .template-app (style.css redéclare certains tokens
    sur .template-app ; à spécificité égale, ce fichier chargé en dernier gagne). */
@@ -364,6 +325,48 @@ samp,
   --nd-tooltip-text: #e8e8e8;
   --nd-disabled-bg: #1e1e1e;
   --nd-disabled-ink: #5f5f5f;
+}
+
+/* --- Palettes d'accent (data-palette) — reprises de cetas-lite.
+   La palette « bleu » vaut désormais le bleu OpenCode (#3b5cf6) et c'est
+   le défaut (DEFAULT_PALETTE dans theme.ts). Ces règles sont déclarées
+   APRÈS les blocs sombre et hard_dark : à spécificité égale (0,2,0), la
+   palette gagne par ordre de source dans les deux thèmes — en sombre, une
+   palette autre que « bleu » garde donc sa valeur claire (pas de flip :
+   l'accent est dans EXPLICIT_DARK_TOKENS) ; le flip donnait un vert
+   #00721e inutilisable. --- */
+:root[data-palette='bleu'] {
+  --nd-accent: #3b5cf6;
+  --nd-accent-dark: #0b34f4;
+}
+:root[data-palette='violet'] {
+  --nd-accent: #8b5cf6;
+  --nd-accent-dark: #6d28d9;
+}
+:root[data-palette='vert'] {
+  --nd-accent: #22c55e;
+  --nd-accent-dark: #15803d;
+}
+:root[data-palette='vert_pur'] {
+  --nd-accent: #00e676;
+  --nd-accent-dark: #00b35c;
+}
+:root[data-palette='bleu_ocean'] {
+  --nd-accent: #0ea5e9;
+  --nd-accent-dark: #0369a1;
+}
+:root[data-palette='jaune_or'] {
+  --nd-accent: #d4a017;
+  --nd-accent-dark: #a97c0f;
+}
+:root[data-palette='rouge'] {
+  --nd-accent: #ef4444;
+  --nd-accent-dark: #b91c1c;
+}
+/* Palette « ocean » de NevaDots (accent historique du thème cetas-lite). */
+:root[data-palette='ocean'] {
+  --nd-accent: #2196f3;
+  --nd-accent-dark: #1976d2;
 }
 
 /* --- Base : la racine suit le thème --- */

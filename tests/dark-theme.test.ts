@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import postcss from 'postcss';
 import {
   contrast,
@@ -146,6 +147,7 @@ it("keeps a rule's own text and background pair at AA", () => {
 });
 it('applies the chosen theme even when storage is unavailable', async () => {
   const dataset: Record<string, string> = {};
+  const style: Record<string, string> = {};
   const listeners: (() => void)[] = [];
   const failing = () => {
     throw new Error('SecurityError');
@@ -163,7 +165,7 @@ it('applies the chosen theme even when storage is unavailable', async () => {
     }),
   });
   vi.stubGlobal('document', {
-    documentElement: { dataset },
+    documentElement: { dataset, style },
     querySelector: () => null,
   });
   try {
@@ -171,8 +173,12 @@ it('applies the chosen theme even when storage is unavailable', async () => {
     const theme = await import('../src/client/theme');
     theme.watchSystemTheme();
     expect(dataset.theme).toBe('light');
+    expect(style.backgroundColor).toBe('#ffffff');
     theme.setThemePreference('dark');
     expect(dataset.theme).toBe('dark');
+    // The inline <html> background set by the preload stays in sync with
+    // runtime theme changes (it used to stay stuck at its preload value).
+    expect(style.backgroundColor).toBe('#161616');
     expect(theme.themePreference()).toBe('dark');
     // A system change does not undo the choice for this page.
     listeners.forEach((listener) => listener());
@@ -226,6 +232,42 @@ it('never flips tokens with an explicit dark value', () => {
   expect(css).not.toMatch(/data-theme='dark'\]\[data-palette/);
   // Non-explicit tokens still get their flip twin.
   expect(css).toMatch(/:root\[data-theme='dark'\] \{\s*--nd-bg: #1b1b1b;\s*\}/);
+});
+it('keeps the chosen palette accent in dark mode', () => {
+  // Regression: the dark block used to beat the palette rules by source
+  // order (same specificity 0,2,0), so every palette became blue in dark
+  // mode. The palette block now comes after the dark blocks, so a non-bleu
+  // palette keeps its own accent in dark mode.
+  const tokensCss = readFileSync(
+    new URL('../src/client/tokens.css', import.meta.url),
+    'utf8',
+  );
+  const built = postcss.parse(run(tokensCss));
+  // Simulate the cascade for <html data-theme='dark' data-palette='vert'>:
+  // among the :root rules that match, the most specific wins, ties broken
+  // by source order.
+  const resolved = (prop: string) => {
+    let best: { spec: number; value: string } | undefined;
+    built.walkRules((rule) => {
+      for (const selector of rule.selector.split(',')) {
+        const sel = selector.trim();
+        if (!/^:root(\[[^\]]+\])*$/.test(sel)) continue;
+        const theme = sel.match(/data-theme='([^']+)'/)?.[1];
+        const palette = sel.match(/data-palette='([^']+)'/)?.[1];
+        const dark = sel.match(/data-dark='([^']+)'/)?.[1];
+        if (theme && theme !== 'dark') continue;
+        if (palette && palette !== 'vert') continue;
+        if (dark) continue; // no data-dark on the element
+        const spec = (sel.match(/\[/g) ?? []).length;
+        rule.walkDecls(prop, (decl) => {
+          if (!best || spec >= best.spec) best = { spec, value: decl.value };
+        });
+      }
+    });
+    return best?.value;
+  };
+  expect(resolved('--nd-accent')).toBe('#22c55e');
+  expect(resolved('--nd-accent-dark')).toBe('#15803d');
 });
 it('explicit dark token set covers the semantic layer', () => {
   for (const token of [

@@ -82,6 +82,10 @@ function apply() {
   if (theme === 'hard_dark') root.dataset.dark = 'hard';
   else delete root.dataset.dark;
   root.dataset.palette = palettePreference();
+  // Garder le fond inline posé par le preload (public/theme.js) synchronisé
+  // avec le thème courant : sinon il reste figé à sa valeur de chargement
+  // (visible en overscroll et sur les pages courtes).
+  root.style.backgroundColor = themeColor(theme);
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute('content', themeColor(theme));
