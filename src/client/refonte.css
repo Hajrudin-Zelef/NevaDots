@@ -55,15 +55,17 @@
   background: var(--nd-bg-hover);
   color: var(--nd-text);
 }
+/* Actif : teinte d'accent très discrète (7 %) + libellé au contraste
+   normal ; l'accent ne porte que l'icône et la barre de sélection. */
 .nav-item.active {
-  background: var(--accent-light);
-  color: var(--nd-accent);
+  background: color-mix(in srgb, var(--nd-accent) 7%, transparent);
+  color: var(--nd-text);
 }
 .nav-item.active svg {
   color: var(--nd-accent);
 }
 .nav-item.active small {
-  background: color-mix(in srgb, var(--nd-accent) 16%, transparent);
+  background: color-mix(in srgb, var(--nd-accent) 14%, transparent);
   color: var(--nd-accent);
 }
 
@@ -90,8 +92,8 @@
   color: var(--nd-text);
 }
 .dot-nav.active {
-  background: var(--accent-light);
-  color: var(--nd-accent);
+  background: color-mix(in srgb, var(--nd-accent) 7%, transparent);
+  color: var(--nd-text);
 }
 .dot-nav-mark {
   background: color-mix(in srgb, var(--nd-accent) 55%, transparent);
@@ -1296,12 +1298,16 @@ textarea::placeholder {
   color: var(--nd-text);
 }
 .template-app .module-button.active {
-  background: var(--accent-light);
-  color: var(--nd-accent);
+  background: color-mix(in srgb, var(--nd-accent) 7%, transparent);
+  color: var(--nd-text);
 }
 .template-app .module-button.active svg {
   color: var(--nd-accent);
 }
+/* Nouvelle conversation : surface neutre, accent réservé à l'icône (et au
+   survol). Le remplissage accent plein était le point le plus criard de la
+   sidebar, et il ignorait la palette choisie quand premium.css forçait le
+   vert. */
 .template-app .new-chat-button {
   flex: 0 0 auto;
   width: 100%;
@@ -1309,17 +1315,21 @@ textarea::placeholder {
   justify-content: center;
   gap: 8px;
   padding: 7px 10px;
-  border: 1px solid var(--nd-accent);
+  border: 1px solid var(--nd-border);
   border-radius: 7px;
-  background: var(--nd-accent);
-  color: white;
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
   font-size: 13px;
-  font-weight: 600;
-  box-shadow: 0 2px 7px color-mix(in srgb, var(--nd-accent) 18%, transparent);
+  font-weight: 500;
+  box-shadow: none;
+}
+.template-app .new-chat-button svg {
+  color: var(--nd-accent);
 }
 .template-app .new-chat-button:hover:not(:disabled) {
-  background: var(--nd-accent-dark);
-  color: white;
+  background: color-mix(in srgb, var(--nd-accent) 8%, var(--nd-bg));
+  border-color: color-mix(in srgb, var(--nd-accent) 30%, var(--nd-border));
+  color: var(--nd-text);
 }
 .template-app .conversation-filters {
   display: flex;
