@@ -147,13 +147,19 @@ export function App() {
   const setDirtyPage = useCallback((value: boolean) => {
     dirtyPage.current = value;
   }, []);
-  const setView = (next: typeof view) => {
+  // Retourne `false` si la navigation est annulée par la garde page-sale :
+  // les appelants qui mutent les onglets doivent s'arrêter là — sinon
+  // l'onglet bascule (et persiste) alors que la vue reste sur la page sale.
+  // Un simple réordonnancement ne suffit pas : `setView` retournait `void`,
+  // donc le code après l'appel continuait de tourner malgré l'annulation.
+  const setView = (next: typeof view): boolean => {
     if (dirtyPage.current && !window.confirm('Leave your unsaved page draft?'))
-      return;
+      return false;
     dirtyPage.current = false;
     if (next !== 'space')
       history.replaceState(null, '', location.pathname + location.search);
     rawSetView(next);
+    return true;
   };
   useEffect(() => {
     let acceptedHash = location.hash;
@@ -453,19 +459,24 @@ export function App() {
     return trackSetupStep(setupStep);
   }, [setupStep]);
   const chooseDot = (next: Dot) => {
+    // Garde page-sale D'ABORD : si l'utilisateur annule, rien ne bouge
+    // (ni le Dot, ni l'onglet actif).
+    if (!setView('chat')) return;
     setSelectedDot(next.id);
     const first = workspace?.conversations.find(
       (item) => item.dotId === next.id,
     );
     if (first) tabs.openTab(first.id);
     else tabs.deactivate();
-    setView('chat');
     setMobile(false);
     setPendingPrompt(undefined);
     setPendingVoice(false);
   };
   const newConversation = async (text?: string) => {
     if (text === undefined) {
+      // Garde page-sale D'ABORD : si l'utilisateur annule, la page vierge
+      // n'est pas ouverte et l'onglet actif ne bouge pas.
+      if (!setView('chat')) return;
       tabs.deactivate();
       setPendingPrompt(undefined);
       setPendingVoice(false);
@@ -473,7 +484,6 @@ export function App() {
       setPromptSource('');
       setSourceOpen(false);
       setComposerToolsOpen(false);
-      setView('chat');
       setPane(false);
       setMobile(false);
       return;
@@ -592,7 +602,7 @@ export function App() {
           <button
             className="wordmark"
             onClick={() => {
-              setView('chat');
+              if (!setView('chat')) return;
               tabs.deactivate();
               setMobile(false);
             }}
@@ -779,13 +789,15 @@ export function App() {
               category={conversationCategory}
               search={conversationSearch}
               onSelect={(id) => {
+                // Garde page-sale D'ABORD : si l'utilisateur annule,
+                // l'onglet actif ne bascule pas (et ne persiste pas).
+                if (!setView('chat')) return;
                 const conversation = workspace.conversations.find(
                   (item) => item.id === id,
                 );
                 if (conversation) setSelectedDot(conversation.dotId);
                 tabs.openTab(id);
                 setPendingVoice(false);
-                setView('chat');
                 setMobile(false);
               }}
               onDelete={(id) => void deleteConversation(id)}
@@ -998,7 +1010,7 @@ export function App() {
             onThread={(id) => {
               const target = workspace.conversations.find((t) => t.id === id);
               if (target) {
-                setView('chat');
+                if (!setView('chat')) return;
                 setSelectedDot(target.dotId);
                 tabs.openTab(id);
                 setPendingVoice(false);

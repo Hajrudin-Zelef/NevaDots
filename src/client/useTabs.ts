@@ -437,7 +437,11 @@ export function useTabs({
   // Resynchronisation avec le polling : `validThreadIds` change à chaque
   // `refresh()` (nouveau tableau) ; la clé jointe ne change que si le
   // contenu change, et le réducteur ne fait rien si rien n'a disparu.
-  const validKey = validThreadIds ? validThreadIds.join('\n') : '';
+  // `null` (non chargé) ≠ `''` (chargé vide) : sinon l'effet ne se
+  // relancerait jamais quand le workspace charge avec zéro conversation,
+  // et les onglets persistés obsolètes survivraient indéfiniment.
+  const validKey =
+    validThreadIds === undefined ? null : validThreadIds.join('\n');
   useEffect(() => {
     if (!validThreadIds) return;
     dispatch({ type: 'prune', validIds: new Set(validThreadIds) });

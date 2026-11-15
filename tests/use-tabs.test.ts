@@ -381,3 +381,23 @@ it('aucun élagage tant que le workspace n’est pas chargé', async () => {
   expect(tabs.tabs).toEqual([{ threadId: 'a' }, { threadId: 'b' }]);
   expect(tabs.activeThreadId).toBe('b');
 });
+
+it('workspace chargé vide : les onglets persistés obsolètes sont élagués', async () => {
+  (localStorage as Storage).setItem(
+    TABS_STORAGE_KEY,
+    JSON.stringify([{ threadId: 'a' }, { threadId: 'b' }]),
+  );
+  (localStorage as Storage).setItem(TABS_RECENT_KEY, JSON.stringify('b'));
+  const tabs = await mount({});
+  expect(tabs.tabs).toEqual([{ threadId: 'a' }, { threadId: 'b' }]);
+  expect(tabs.activeThreadId).toBe('b');
+  // Le workspace charge ensuite avec zéro conversation : la clé d'effet
+  // passe de `null` (non chargé) à `''` (chargé vide), l'effet se relance
+  // et `prune` élague tout. Sans cette distinction, la clé resterait `''`
+  // et les onglets obsolètes survivraient indéfiniment.
+  const mounted = roots[roots.length - 1];
+  await update(mounted, { validThreadIds: [] });
+  expect(latest!.tabs).toEqual([]);
+  expect(latest!.activeThreadId).toBeUndefined();
+  expect(localStorage.getItem(TABS_STORAGE_KEY)).toBe('[]');
+});
