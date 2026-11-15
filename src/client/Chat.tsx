@@ -11,7 +11,6 @@ import type { Page } from '../server/pages';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CopilotChatToolCallsView,
-  useRenderTool,
   useHumanInTheLoop,
   useAgent,
   useCopilotKit,
@@ -28,10 +27,6 @@ import {
   Square,
   X,
 } from 'lucide-react';
-import {
-  ComputerToolCard,
-  type ComputerToolRenderProps,
-} from './ComputerToolCard';
 import {
   ChatTranscript,
   isInternalVoiceReceipt,
@@ -1164,9 +1159,6 @@ export function Chat({
       'scroll',
     ].some((action) => call.function.name === `computer_${action}`),
   );
-  const latestExecCall = computerCalls.findLast(
-    (call) => call.function.name === 'computer_exec',
-  );
   // MVC-Statut (lot 2.2) : le statut du run et le flux d'activité sont
   // dérivés en un seul point, dans le modèle (`deriveRawRunStatus` garde
   // la priorité voix > flash > pause > recherche > écriture > raisonnement
@@ -1183,33 +1175,6 @@ export function Chat({
     });
   }, [agent.messages, voice.status, flash, paused, running, reasonPanel?.live]);
   const mascotState = useRunMascotState();
-  useRenderTool(
-    {
-      name: '*',
-      render: (props: ComputerToolRenderProps) =>
-        props.name.startsWith('computer_') ? (
-          <ComputerToolCard
-            {...props}
-            dotId={dot.id}
-            dotName={dot.name}
-            running={running}
-            showScreen={props.toolCallId === latestBrowserCall?.id}
-            showTerminal={props.toolCallId === latestExecCall?.id}
-            onExpand={onComputer}
-            onExpandTerminal={onOpenTerminal}
-          />
-        ) : null,
-    },
-    [
-      dot.id,
-      dot.name,
-      running,
-      latestBrowserCall?.id,
-      latestExecCall?.id,
-      onComputer,
-      onOpenTerminal,
-    ],
-  );
   const visible = agent.messages.filter(
     (message) =>
       !isInternalVoiceReceipt(message) &&
@@ -1389,7 +1354,6 @@ export function Chat({
         stepsFromTranscriptMessage(message, agent.messages).filter(
           (step) =>
             step.toolName &&
-            !step.toolName.startsWith('computer_') &&
             step.toolName !== pageReviewTool.name &&
             step.toolName !== connectionActionTool.name,
         ),

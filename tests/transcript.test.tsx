@@ -474,3 +474,14 @@ it('sans DOM (rendu serveur), le texte user ne se replie pas — pas de « Voir 
   expect(html).not.toContain('Voir plus');
   expect(html).toContain('user-text');
 });
+
+it('aucune carte ordinateur dans le chat : tout passe par le groupe d’outils', () => {
+  // Régression (2026-11-15) : chaque `computer_*` rendait une grosse carte
+  // « Terminal · Ouvrir le terminal » à la place d'une ligne du groupe
+  // « N outils utilisés ». Le chat ne doit plus enregistrer de rendu dédié,
+  // et le repli transcript ne doit plus exclure les outils computer.
+  const chat = readFileSync('src/client/Chat.tsx', 'utf8');
+  expect(chat).not.toContain('useRenderTool');
+  expect(chat).not.toContain('ComputerToolCard');
+  expect(chat).not.toContain("step.toolName.startsWith('computer_')");
+});
