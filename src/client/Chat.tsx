@@ -67,6 +67,7 @@ import {
   type FollowState,
 } from './auto-scroll';
 import { deriveTurnStatus, TURN_STATUS_LABELS } from './turn-status';
+import { fetchResponseStatsForMessage } from './response-stats';
 import { useDotModelControls } from './useDotModelControls';
 import { StepCard } from './StepCard';
 import { ComposerMenu } from './ComposerMenu';
@@ -543,34 +544,33 @@ export function Chat({
   // Le serveur les range sous l'id du message assistant (tours avec
   // usage) ou du message de raisonnement (tours avec reasoning) : on
   // essaie les deux, dans cet ordre — comme l'effet des totaux de
-  // session ci-dessous. `requested` évite de re-demander un id à chaque
-  // rendu pendant le streaming.
+  // session ci-dessous. `requested` ne retient qu'un id dont les stats
+  // ont été obtenues (succès avec `model`) : un id vide ou en échec est
+  // retenté au passage suivant de l'effet.
   const [responseStats, setResponseStats] = useState<
     Record<string, ReasoningRunStats>
   >({});
   const responseStatsRequested = useRef(new Set<string>());
   const fetchResponseStats = useCallback(
     async (assistantId: string) => {
-      if (responseStatsRequested.current.has(assistantId)) return;
-      responseStatsRequested.current.add(assistantId);
-      const reasoningId = reasoningForMessage({ id: assistantId });
-      for (const id of [assistantId, reasoningId]) {
-        if (!id) continue;
-        try {
-          const stats = await api<ReasoningRunStats>(
+      // `requested` n'est marqué que sur succès avec `model` (voir
+      // `fetchResponseStatsForMessage`) : un fetch vide ou en échec
+      // laisse l'id retentable par un passage ultérieur de l'effet.
+      const stats = await fetchResponseStatsForMessage(
+        responseStatsRequested.current,
+        assistantId,
+        reasoningForMessage({ id: assistantId }),
+        (id) =>
+          api<ReasoningRunStats>(
             `/reasoning-stats?messageId=${encodeURIComponent(id)}`,
-          );
-          if (stats?.model) {
-            setResponseStats((previous) =>
-              previous[assistantId]
-                ? previous
-                : { ...previous, [assistantId]: stats },
-            );
-            return;
-          }
-        } catch {
-          // Stats best-effort : le pied reste simplement absent.
-        }
+          ),
+      );
+      if (stats) {
+        setResponseStats((previous) =>
+          previous[assistantId]
+            ? previous
+            : { ...previous, [assistantId]: stats },
+        );
       }
     },
     [reasoningForMessage],

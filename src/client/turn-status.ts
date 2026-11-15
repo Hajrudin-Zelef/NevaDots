@@ -64,13 +64,20 @@ export function deriveTurnStatus(
     );
   if (lastAssistant?.toolCalls) {
     // Priorité : approbation > réponse > shell (un seul libellé affiché).
+    // Les trois cas sont collectés en une passe, la décision est prise
+    // APRÈS la boucle — sinon l'ordre des appels déciderait du libellé.
+    let approvalPending = false;
+    let answerPending = false;
     let shellPending = false;
     for (const call of lastAssistant.toolCalls) {
       if (answered.has(call.id)) continue;
-      if (call.function.name === pageReviewTool.name) return 'approval';
-      if (call.function.name === connectionActionTool.name) return 'answer';
-      if (call.function.name === 'computer_exec') shellPending = true;
+      if (call.function.name === pageReviewTool.name) approvalPending = true;
+      else if (call.function.name === connectionActionTool.name)
+        answerPending = true;
+      else if (call.function.name === 'computer_exec') shellPending = true;
     }
+    if (approvalPending) return 'approval';
+    if (answerPending) return 'answer';
     if (shellPending) return 'shell';
   }
   return 'working';

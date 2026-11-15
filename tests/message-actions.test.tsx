@@ -4,6 +4,8 @@ import { api } from '../src/client/api';
 import { act, create } from 'react-test-renderer';
 import { createElement } from 'react';
 import { MessageActions } from '../src/client/MessageActions';
+import { fetchResponseStatsForMessage } from '../src/client/response-stats';
+import type { ReasoningRunStats } from '../src/server/reasoning.js';
 
 beforeEach(() => {
   try {
@@ -270,4 +272,68 @@ it('format de durée du pied : ms, secondes, minutes, heures', async () => {
   expect(formatTokensPerSecond(20.4)).toBe('20,4 tok/s');
   expect(formatTokensPerSecond(null)).toBeNull();
   expect(formatTokensPerSecond(undefined)).toBeNull();
+});
+
+const footerStats = (model = 'glm-5.3'): ReasoningRunStats => ({
+  model,
+  resolvedModel: null,
+  durationMs: 12000,
+  promptTokens: 100,
+  cachedTokens: 0,
+  completionTokens: 250,
+  tokensPerSecond: 20.4,
+  costUsd: null,
+});
+
+it('pied de réponse : un fetch vide ne marque pas l’id — la retentative réussit', async () => {
+  const requested = new Set<string>();
+  const fetchOne = vi
+    .fn()
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce(footerStats());
+  // Premier passage : stats pas encore stockées côté serveur.
+  expect(
+    await fetchResponseStatsForMessage(requested, 'm1', null, fetchOne),
+  ).toBeNull();
+  expect(requested.has('m1')).toBe(false);
+  // Passage suivant de l’effet : on retente et on obtient les stats.
+  expect(
+    await fetchResponseStatsForMessage(requested, 'm1', null, fetchOne),
+  ).toEqual(footerStats());
+  expect(requested.has('m1')).toBe(true);
+  expect(fetchOne).toHaveBeenCalledTimes(2);
+});
+
+it('pied de réponse : un fetch en échec ne marque pas l’id — la retentative réussit', async () => {
+  const requested = new Set<string>();
+  const fetchOne = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('socket hang up'))
+    .mockResolvedValueOnce(footerStats());
+  expect(
+    await fetchResponseStatsForMessage(requested, 'm1', null, fetchOne),
+  ).toBeNull();
+  expect(requested.has('m1')).toBe(false);
+  expect(
+    await fetchResponseStatsForMessage(requested, 'm1', null, fetchOne),
+  ).toEqual(footerStats());
+  expect(fetchOne).toHaveBeenCalledTimes(2);
+});
+
+it('pied de réponse : un id marqué ne refetch pas, et le repli raisonnement est essayé', async () => {
+  const requested = new Set<string>();
+  const fetchOne = vi.fn(async (id: string) =>
+    id === 'reason-1' ? footerStats() : null,
+  );
+  // Id assistant vide, id de raisonnement plein : succès, id marqué.
+  expect(
+    await fetchResponseStatsForMessage(requested, 'm1', 'reason-1', fetchOne),
+  ).toEqual(footerStats());
+  expect(requested.has('m1')).toBe(true);
+  expect(fetchOne).toHaveBeenCalledTimes(2);
+  // Second appel : court-circuit, aucun fetch.
+  expect(
+    await fetchResponseStatsForMessage(requested, 'm1', 'reason-1', fetchOne),
+  ).toBeNull();
+  expect(fetchOne).toHaveBeenCalledTimes(2);
 });

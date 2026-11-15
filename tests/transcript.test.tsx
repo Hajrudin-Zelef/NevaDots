@@ -352,6 +352,45 @@ it('dérive la ligne de statut des appels en attente (approbation, réponse, she
       true,
     ),
   ).toBe('approval');
+  // Priorité : l’approbation passe avant la réponse, quel que soit
+  // l’ordre des appels — le libellé ne dépend pas de l’ordre.
+  expect(
+    deriveTurnStatus(
+      assistantWith([
+        toolCall('c1', 'request_connection_action'),
+        toolCall('c2', 'review_space_page'),
+      ]),
+      true,
+    ),
+  ).toBe('approval');
+  expect(
+    deriveTurnStatus(
+      assistantWith([
+        toolCall('c1', 'review_space_page'),
+        toolCall('c2', 'request_connection_action'),
+      ]),
+      true,
+    ),
+  ).toBe('approval');
+  // Priorité : la réponse passe avant le shell, dans les deux ordres.
+  expect(
+    deriveTurnStatus(
+      assistantWith([
+        toolCall('c1', 'computer_exec'),
+        toolCall('c2', 'request_connection_action'),
+      ]),
+      true,
+    ),
+  ).toBe('answer');
+  expect(
+    deriveTurnStatus(
+      assistantWith([
+        toolCall('c1', 'request_connection_action'),
+        toolCall('c2', 'computer_exec'),
+      ]),
+      true,
+    ),
+  ).toBe('answer');
 });
 
 it('repli utilisateur : 12 lignes déclenchent, 8 sont montrées', () => {

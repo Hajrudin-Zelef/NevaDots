@@ -65,3 +65,37 @@ export function formatResponseMeta({
   if (interrupted) parts.push('Interrompu');
   return parts.join(' · ');
 }
+
+/**
+ * Charge les stats d'un message assistant — id assistant d'abord, puis
+ * id de raisonnement du même tour — avec un marquage anti-doublon qui
+ * ne retient que les succès.
+ *
+ * `requested` ne reçoit l'id que si un fetch a retourné des stats avec
+ * `model` : un fetch vide (stats pas encore stockées au moment où
+ * l'effet `!running` se déclenche) ou en échec ne marque rien, donc un
+ * passage ultérieur de l'effet retente cet id au lieu de perdre le pied
+ * du tour pour toujours. Un id déjà marqué court-circuite sans fetch.
+ * Retourne les stats trouvées, ou `null`.
+ */
+export async function fetchResponseStatsForMessage(
+  requested: Set<string>,
+  assistantId: string,
+  reasoningId: string | null | undefined,
+  fetchOne: (id: string) => Promise<ReasoningRunStats | null | undefined>,
+): Promise<ReasoningRunStats | null> {
+  if (requested.has(assistantId)) return null;
+  for (const id of [assistantId, reasoningId]) {
+    if (!id) continue;
+    try {
+      const stats = await fetchOne(id);
+      if (stats?.model) {
+        requested.add(assistantId);
+        return stats;
+      }
+    } catch {
+      // Best-effort : l'id n'est pas marqué, la retentative reste possible.
+    }
+  }
+  return null;
+}
