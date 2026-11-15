@@ -1512,10 +1512,15 @@ textarea::placeholder {
   border-radius: 6px;
   font-size: 12px;
 }
-/* Barre de sélection 2 px (Lot 2) : la ligne active porte sa marque à
-   gauche, sans déplacer le contenu. */
+/* Conversation active : aucune teinte de fond (la teinte d'accent à 7 %
+   donnait un fond vert/couleur trop visible sur les sessions) — seulement
+   la barre de sélection à gauche et un titre un peu plus affirmé. */
 .template-app .thread-list .nav-item.active {
+  background: transparent;
   box-shadow: inset 2px 0 0 var(--nd-accent);
+}
+.template-app .thread-list .nav-item.active .thread-title {
+  font-weight: 600;
 }
 .template-app .thread-summary > span {
   display: block;
