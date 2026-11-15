@@ -1512,12 +1512,14 @@ textarea::placeholder {
   border-radius: 6px;
   font-size: 12px;
 }
-/* Conversation active : aucune teinte de fond (la teinte d'accent à 7 %
-   donnait un fond vert/couleur trop visible sur les sessions) — seulement
-   la barre de sélection à gauche et un titre un peu plus affirmé. */
+/* Conversation active : strictement neutre — ni fond, ni bordure, ni barre
+   d'accent (elles donnaient un liseré vert/couleur sur les sessions). Seuls
+   le titre en semi-gras et le texte au contraste normal distinguent la
+   session ouverte. */
 .template-app .thread-list .nav-item.active {
   background: transparent;
-  box-shadow: inset 2px 0 0 var(--nd-accent);
+  box-shadow: none;
+  color: var(--nd-text);
 }
 .template-app .thread-list .nav-item.active .thread-title {
   font-weight: 600;
