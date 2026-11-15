@@ -9,6 +9,7 @@ import {
   CircleHelp,
   CircleUserRound,
   Clock3,
+  House,
   Info,
   LogOut,
   Mic,
@@ -63,10 +64,7 @@ import { TaskActions } from './TaskActions';
 import { initialsOf } from './initials';
 import { createSubmitGuard } from './submit-guard';
 import { usePromptDraft } from './prompt-draft';
-import {
-  loadPromptHistory,
-  pushPromptHistory,
-} from './prompt-history';
+import { loadPromptHistory, pushPromptHistory } from './prompt-history';
 import {
   conversationHash,
   isRestoreClosedTabKey,
@@ -644,9 +642,7 @@ export function App() {
           pushPromptHistory({
             prompt: raw,
             mode: 'home',
-            ...(attachmentNames.length
-              ? { attachments: attachmentNames }
-              : {}),
+            ...(attachmentNames.length ? { attachments: attachmentNames } : {}),
           });
         }
       } catch {
@@ -655,9 +651,7 @@ export function App() {
     })();
   };
   // --- Historique des prompts (Lot 5, étape 5), même règle que Chat. ---
-  const [homeHistoryIndex, setHomeHistoryIndex] = useState<number | null>(
-    null,
-  );
+  const [homeHistoryIndex, setHomeHistoryIndex] = useState<number | null>(null);
   const homeHistoryBaseRef = useRef('');
   const homeHistoryPrev = () => {
     const entries = loadPromptHistory();
@@ -901,6 +895,9 @@ export function App() {
         id="workspace-sidebar"
         className={`sidebar ${mobile ? 'open' : ''}`}
       >
+        {/* Lot 6, étape 1 : poignée du tiroir bas (≤ 767 px, 28×4 px ;
+            masquée sur bureau par responsive.css). */}
+        <div className="sidebar-sheet-handle" aria-hidden="true" />
         <div className="sidebar-brand">
           <button
             className="wordmark"
@@ -1250,6 +1247,59 @@ export function App() {
             </button>
           </div>
         </div>
+        {/* Lot 6, étape 1 : navigation basse du tiroir mobile (≤ 767 px ;
+            masquée sur bureau par responsive.css). Actions à portée de
+            pouce : nouvelle session, accueil, paramètres, aide — mêmes
+            actions que la barre latérale (wordmark / profil / réglages /
+            FAQ), le tiroir se referme après chaque choix. */}
+        <nav className="sidebar-sheet-nav" aria-label="Navigation rapide">
+          <button
+            type="button"
+            className="sidebar-sheet-nav-item sidebar-sheet-nav-new"
+            disabled={!configured}
+            onClick={() => {
+              void newConversation();
+              setMobile(false);
+            }}
+          >
+            <Plus size={17} />
+            <span>Nouvelle session</span>
+          </button>
+          <button
+            type="button"
+            className="sidebar-sheet-nav-item"
+            onClick={() => {
+              if (!setView('chat')) return;
+              tabs.deactivate();
+              setMobile(false);
+            }}
+          >
+            <House size={17} />
+            <span>Home</span>
+          </button>
+          <button
+            type="button"
+            className="sidebar-sheet-nav-item"
+            onClick={() => {
+              setDialog({ type: 'settings' });
+              setMobile(false);
+            }}
+          >
+            <Settings2 size={17} />
+            <span>Paramètres</span>
+          </button>
+          <button
+            type="button"
+            className="sidebar-sheet-nav-item"
+            onClick={() => {
+              setDialog({ type: 'faq' });
+              setMobile(false);
+            }}
+          >
+            <CircleHelp size={17} />
+            <span>Aide</span>
+          </button>
+        </nav>
         <div
           className="sidebar-resize-handle"
           role="separator"

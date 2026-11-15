@@ -238,3 +238,142 @@
     min-height: 40px;
   }
 }
+
+/* ===========================================================================
+   Lot 6 — mobile : tiroir bas + barre tactile.
+   =========================================================================== */
+
+/* --- Barre d'envoi (Composer.tsx) : sœur de la rangée d'outils. ---
+   Sur bureau, simple conteneur flex à droite de la rangée d'outils —
+   l'envoi / le Stop gardent leur place et leur gabarit (28 px, règles
+   `.chat-compose-row .send-button` de refonte.css). */
+.composer-touch-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Poignée et navigation basse du tiroir : masquées hors mobile. */
+.sidebar-sheet-handle,
+.sidebar-sheet-nav {
+  display: none;
+}
+
+/* --- Étape 1 : tiroir bas ≤ 767 px. ---
+   La sidebar quitte le tiroir latéral (≤ 1024 px, plus haut) pour un
+   tiroir bas : coins hauts 16 px, poignée 28×4 px, lignes 44 px, hauteur
+   max 85dvh (la liste défile, la navigation basse reste visible).
+   Ces règles suivent le bloc tiroir latéral, à spécificité égale, donc
+   elles le remplacent sous 767 px ; la variante `nav-collapsed` est
+   reprise à spécificité égale (0,4,0) pour que le tiroir s'ouvre aussi
+   quand la sidebar a été repliée sur bureau puis la fenêtre rétrécie. */
+@media (max-width: 767px) {
+  .template-app.app .sidebar,
+  .template-app.app.nav-collapsed .sidebar {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: 85dvh;
+    padding: 8px 11px 10px;
+    border-right: 0;
+    border-top: 1px solid var(--nd-border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 30px color-mix(in srgb, #000 18%, transparent);
+    transform: translateY(103%);
+    visibility: hidden;
+  }
+  .template-app.app .sidebar.open,
+  .template-app.app.nav-collapsed .sidebar.open {
+    transform: translateY(0);
+    visibility: visible;
+  }
+  .sidebar-sheet-handle {
+    display: block;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 4px;
+    margin: 0 auto 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--nd-text) 25%, transparent);
+  }
+  /* Lignes 44 px dans le tiroir : modules, nouvelle conversation,
+     lignes de navigation et de session, navigation basse. */
+  .template-app.app .sidebar .module-button,
+  .template-app.app .sidebar .new-chat-button,
+  .template-app.app .sidebar .nav-item,
+  .template-app.app .sidebar .dot-nav,
+  .sidebar-sheet-nav-item {
+    min-height: 44px;
+  }
+  .sidebar-sheet-nav {
+    display: grid;
+    flex: 0 0 auto;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 8px 0 2px;
+    margin-top: 6px;
+    border-top: 1px solid var(--nd-border);
+  }
+  .sidebar-sheet-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 6px 2px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--nd-text-secondary);
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .sidebar-sheet-nav-item:hover {
+    background: var(--nd-bg-hover);
+    color: var(--nd-text);
+  }
+  .sidebar-sheet-nav-item:disabled {
+    opacity: 0.5;
+  }
+  .sidebar-sheet-nav-new {
+    color: var(--nd-accent);
+    font-weight: 600;
+  }
+}
+
+/* --- Étape 2 : barre tactile, appareils sans survol. ---
+   La rangée d'outils est masquée ; la barre d'envoi (56 px, boutons
+   44 px) porte l'envoi — et le Stop, toujours visible pendant un run
+   (rouge `--nd-danger*`, hors scope `.template-app` depuis le Lot 5).
+   Entrée tactile = nouvelle ligne : rien à changer, `routeComposerKeyDown`
+   ne soumet que sur Ctrl/⌘+Entrée, une Entrée sans modificateur reste le
+   saut de ligne natif du textarea (bureau comme tactile). */
+@media (hover: none) {
+  .template-app .chat-compose-tools,
+  .chat-compose-tools {
+    display: none;
+  }
+  .template-app .chat-compose-row .composer-touch-bar,
+  .chat-compose-row .composer-touch-bar {
+    min-height: 56px;
+    align-items: center;
+    margin-left: auto;
+  }
+  .template-app .chat-compose-row .composer-touch-bar .send-button,
+  .chat-compose-row .composer-touch-bar .send-button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
+  .template-app .chat-compose-row .composer-touch-bar .send-button.send-labeled,
+  .chat-compose-row .composer-touch-bar .send-button.send-labeled {
+    width: auto;
+    height: 44px;
+    padding: 0 16px;
+  }
+}

@@ -491,6 +491,13 @@ export function Composer(props: ComposerProps) {
               })}
             </select>
           )}
+        </div>
+        {/* Lot 6, étape 2 : l'envoi et le Stop vivent dans leur propre barre,
+            sœur de la rangée d'outils (même ligne, à droite, sur bureau —
+            rendu inchangé). Sous `(hover: none)` la rangée d'outils est
+            masquée et cette barre devient la barre tactile d'envoi (56 px,
+            boutons 44 px) ; le Stop y reste visible pendant un run. */}
+        <div className="composer-touch-bar">
           {stopButton}
           {submitLabel ? (
             <button
