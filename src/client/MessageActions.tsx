@@ -11,6 +11,8 @@ import {
   Volume2,
 } from 'lucide-react';
 import { api } from './api';
+import { formatResponseMeta } from './response-stats';
+import type { ReasoningRunStats } from '../server/reasoning.js';
 import {
   groupBlocksForApi,
   pickFrenchVoice,
@@ -78,6 +80,11 @@ async function copyText(text: string): Promise<void> {
  * lecture vocale structurée (pauses calibrées, voix triées, neuronal si
  * configuré). Un « je n'aime pas » ouvre un formulaire : le commentaire
  * explique quoi corriger.
+ *
+ * Pied de réponse (lot 3) : `agent · modèle · durée · tok/s` sous les
+ * boutons, depuis `/reasoning-stats` après le tour (prop `stats`) —
+ * jamais l'estimation live. Sans stats pour ce message, pas de pied :
+ * on n'invente ni modèle, ni durée, ni tok/s.
  */
 export function MessageActions({
   messageId,
@@ -89,6 +96,9 @@ export function MessageActions({
   dotId,
   model,
   tts,
+  stats,
+  agentName,
+  interrupted,
 }: {
   messageId: string;
   text: string;
@@ -100,6 +110,12 @@ export function MessageActions({
   model?: string;
   /** Réglages voix (Réglages globaux) ; absents = valeurs sûres navigateur. */
   tts?: SpeechTtsSettings;
+  /** Métriques du tour, depuis `/reasoning-stats` après le tour. */
+  stats?: ReasoningRunStats | null;
+  /** Nom de l'agent (Dot) auteur de la réponse. */
+  agentName?: string;
+  /** Tour arrêté par l'utilisateur via « Arrêter la réponse ». */
+  interrupted?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [phase, setPhase] = useState<SpeechPhase>('idle');
@@ -319,155 +335,169 @@ export function MessageActions({
     }
   };
 
+  // Pied de réponse (lot 3) : '' sans stats — pas de pied inventé.
+  const meta = formatResponseMeta({
+    agentName,
+    stats: stats ?? null,
+    interrupted: !!interrupted,
+  });
+
   return (
-    <div className="message-actions" role="toolbar" aria-label="Actions">
-      <button
-        type="button"
-        className="icon-button"
-        aria-label={copied ? 'Copié' : 'Copier la réponse'}
-        title={copied ? 'Copié' : 'Copier'}
-        onClick={() => void copy()}
-      >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-      </button>
-      {isLast && (
+    <>
+      <div className="message-actions" role="toolbar" aria-label="Actions">
         <button
           type="button"
           className="icon-button"
-          aria-label="Régénérer la réponse"
-          title="Régénérer"
-          disabled={running}
-          onClick={onRetry}
+          aria-label={copied ? 'Copié' : 'Copier la réponse'}
+          title={copied ? 'Copié' : 'Copier'}
+          onClick={() => void copy()}
         >
-          <RotateCcw size={14} />
+          {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
-      )}
-      <button
-        type="button"
-        className={`icon-button ${vote === 1 ? 'active' : ''}`}
-        aria-label="Bonne réponse"
-        aria-pressed={vote === 1}
-        title="J’aime"
-        onClick={() => castVote(1)}
-      >
-        <ThumbsUp size={14} />
-      </button>
-      <button
-        type="button"
-        className={`icon-button ${vote === -1 ? 'active' : ''}`}
-        aria-label="Je n’aime pas cette réponse"
-        aria-pressed={vote === -1}
-        title="Je n’aime pas — dire pourquoi"
-        onClick={() => castVote(-1)}
-      >
-        <ThumbsDown size={14} />
-      </button>
-      {phase === 'idle' && (
+        {isLast && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Régénérer la réponse"
+            title="Régénérer"
+            disabled={running}
+            onClick={onRetry}
+          >
+            <RotateCcw size={14} />
+          </button>
+        )}
         <button
           type="button"
-          className="icon-button"
-          aria-label="Lire à voix haute"
-          title="Lire à voix haute"
-          onClick={() => void speak()}
+          className={`icon-button ${vote === 1 ? 'active' : ''}`}
+          aria-label="Bonne réponse"
+          aria-pressed={vote === 1}
+          title="J’aime"
+          onClick={() => castVote(1)}
         >
-          <Volume2 size={14} />
+          <ThumbsUp size={14} />
         </button>
-      )}
-      {phase === 'loading' && (
-        <span className="muted" role="status">
-          Préparation…
-        </span>
-      )}
-      {phase === 'speaking' && (
         <button
           type="button"
-          className="icon-button"
-          aria-label="Mettre la lecture en pause"
-          title="Pause"
-          onClick={() => {
-            controlRef.current?.pause();
-            setPhase('paused');
-          }}
+          className={`icon-button ${vote === -1 ? 'active' : ''}`}
+          aria-label="Je n’aime pas cette réponse"
+          aria-pressed={vote === -1}
+          title="Je n’aime pas — dire pourquoi"
+          onClick={() => castVote(-1)}
         >
-          <Pause size={14} />
+          <ThumbsDown size={14} />
         </button>
+        {phase === 'idle' && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Lire à voix haute"
+            title="Lire à voix haute"
+            onClick={() => void speak()}
+          >
+            <Volume2 size={14} />
+          </button>
+        )}
+        {phase === 'loading' && (
+          <span className="muted" role="status">
+            Préparation…
+          </span>
+        )}
+        {phase === 'speaking' && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Mettre la lecture en pause"
+            title="Pause"
+            onClick={() => {
+              controlRef.current?.pause();
+              setPhase('paused');
+            }}
+          >
+            <Pause size={14} />
+          </button>
+        )}
+        {phase === 'paused' && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Reprendre la lecture"
+            title="Reprendre"
+            onClick={() => {
+              controlRef.current?.resume();
+              setPhase('speaking');
+            }}
+          >
+            <Play size={14} />
+          </button>
+        )}
+        {(phase === 'speaking' || phase === 'paused') && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Arrêter la lecture"
+            title="Arrêter"
+            onClick={() => {
+              abortRef.current?.abort();
+              controlRef.current?.stop();
+              finishSpeech();
+            }}
+          >
+            <Square size={14} />
+          </button>
+        )}
+        {speechError && (
+          <p className="feedback-error" role="alert">
+            {speechError}
+          </p>
+        )}
+        {formOpen && (
+          <form
+            className="feedback-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitFeedback();
+            }}
+          >
+            <label htmlFor={`feedback-${messageId}`}>
+              Qu’est-ce qui ne va pas ? (ça nous aide à corriger)
+            </label>
+            <textarea
+              id={`feedback-${messageId}`}
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              placeholder="Ex. : la commande ne marche pas sur Debian…"
+              rows={2}
+              maxLength={2000}
+              autoFocus
+            />
+            {formError && (
+              <p className="feedback-error" role="alert">
+                {formError}
+              </p>
+            )}
+            <div className="feedback-actions">
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setFormOpen(false);
+                  setFormError('');
+                }}
+              >
+                Annuler
+              </button>
+              <button type="submit" className="primary" disabled={sending}>
+                {sending ? 'Envoi…' : 'Envoyer le retour'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+      {meta && (
+        <div className="message-meta" aria-label="Détails de la réponse">
+          {meta}
+        </div>
       )}
-      {phase === 'paused' && (
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Reprendre la lecture"
-          title="Reprendre"
-          onClick={() => {
-            controlRef.current?.resume();
-            setPhase('speaking');
-          }}
-        >
-          <Play size={14} />
-        </button>
-      )}
-      {(phase === 'speaking' || phase === 'paused') && (
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Arrêter la lecture"
-          title="Arrêter"
-          onClick={() => {
-            abortRef.current?.abort();
-            controlRef.current?.stop();
-            finishSpeech();
-          }}
-        >
-          <Square size={14} />
-        </button>
-      )}
-      {speechError && (
-        <p className="feedback-error" role="alert">
-          {speechError}
-        </p>
-      )}
-      {formOpen && (
-        <form
-          className="feedback-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitFeedback();
-          }}
-        >
-          <label htmlFor={`feedback-${messageId}`}>
-            Qu’est-ce qui ne va pas ? (ça nous aide à corriger)
-          </label>
-          <textarea
-            id={`feedback-${messageId}`}
-            value={comment}
-            onChange={(event) => setComment(event.target.value)}
-            placeholder="Ex. : la commande ne marche pas sur Debian…"
-            rows={2}
-            maxLength={2000}
-            autoFocus
-          />
-          {formError && (
-            <p className="feedback-error" role="alert">
-              {formError}
-            </p>
-          )}
-          <div className="feedback-actions">
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => {
-                setFormOpen(false);
-                setFormError('');
-              }}
-            >
-              Annuler
-            </button>
-            <button type="submit" className="primary" disabled={sending}>
-              {sending ? 'Envoi…' : 'Envoyer le retour'}
-            </button>
-          </div>
-        </form>
-      )}
-    </div>
+    </>
   );
 }

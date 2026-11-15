@@ -317,6 +317,16 @@ textarea::placeholder {
   color: var(--nd-accent);
   background: var(--nd-bg-hover);
 }
+/* Lot 3 — pied de réponse : agent · modèle · durée · tok/s (métriques
+   /reasoning-stats après le tour). Une seule ligne de méta, texte
+   atténué, qui passe à la ligne sur mobile au lieu de déborder. */
+.message-meta {
+  margin-top: 4px;
+  font-size: var(--nd-font-size-sm);
+  line-height: var(--nd-line-height-base);
+  color: var(--nd-text-faint);
+  overflow-wrap: anywhere;
+}
 /* Formulaire de retour « je n'aime pas » sous une réponse. */
 .feedback-form {
   margin-top: 8px;
@@ -1711,7 +1721,7 @@ textarea::placeholder {
    persona ; messages alignés, barre de tokens, composer pilule)
    ============================================================ */
 .template-app .live-chat {
-  max-width: 840px;
+  max-width: var(--nd-chat-max-w);
   padding: 8px 30px 12px;
 }
 .template-app .chat-transcript {
@@ -1719,23 +1729,46 @@ textarea::placeholder {
   padding: 18px 0 10px;
   scrollbar-color: var(--nd-scrollbar-thumb) transparent;
 }
+/* Bulle user (lot 3) : fond layer-02, 8 px 12 px, rayon 10 px,
+   max min(82 %, 64ch), 14 px / 150 % / 440. */
 .template-app .chat-transcript .chat-bubble.user {
   align-self: flex-end;
-  max-width: min(78%, 640px);
-  padding: 10px 16px;
-  border-radius: 16px 16px 4px 16px;
+  max-width: min(82%, 64ch);
+  padding: 8px 12px;
+  border-radius: var(--nd-radius-xl);
   background: var(--nd-bg-msg-user);
   color: var(--nd-text);
   box-shadow: none;
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: var(--nd-font-size-base);
+  font-weight: var(--nd-font-weight-regular);
+  line-height: 150%;
 }
 .template-app .chat-transcript .chat-bubble.user p {
   margin: 0 0 8px;
-  line-height: 1.65;
+  line-height: 150%;
 }
 .template-app .chat-transcript .chat-bubble.user p:last-child {
   margin: 0;
+}
+/* Lot 3 — repli du message user passé 12 lignes (8 montrées, hauteur
+   max posée en ligne depuis la hauteur de ligne mesurée). */
+.template-app .chat-transcript .chat-bubble.user .user-text.folded {
+  overflow: hidden;
+}
+.user-text-fold-toggle {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--nd-text-muted);
+  font-size: var(--nd-font-size-sm);
+  line-height: var(--nd-line-height-base);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.user-text-fold-toggle:hover {
+  color: var(--nd-text-base);
 }
 .template-app .chat-transcript .chat-bubble.assistant {
   align-self: flex-start;
@@ -1905,6 +1938,65 @@ textarea::placeholder {
 .template-app .thinking {
   align-self: center;
   color: var(--nd-text-secondary);
+}
+/* Lot 3 — ligne de statut sous le tour en cours : hauteur fixe (36 px,
+   comme OpenCode `h-9`) pour ne pas déplacer les lignes quand le libellé
+   change ; un seul signal « ça travaille » à la fois avec la StepCard
+   dépliée. Le point pulse doucement (le spinner 16 px reste réservé à
+   l'IA qui travaille — ici le texte porte l'état). */
+.turn-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: var(--nd-text-muted);
+  font-size: var(--nd-font-size-sm);
+  line-height: var(--nd-line-height-base);
+}
+.turn-status-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--nd-accent);
+  animation: nd-turn-status-pulse 1.6s ease-in-out infinite;
+}
+@keyframes nd-turn-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+/* Lot 3 — reprise explicite du suivi : visible seulement quand le
+   lecteur est remonté (`detached`). Collant en bas du transcript (pas
+   de positionnement magique par rapport au composer) ; disparaît dès
+   que le suivi reprend. */
+.scroll-to-bottom-btn {
+  position: sticky;
+  bottom: 12px;
+  z-index: 5;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--nd-radius-full);
+  background: var(--nd-bg-layer-03);
+  color: var(--nd-text-base);
+  font-size: var(--nd-font-size-sm);
+  line-height: var(--nd-line-height-base);
+  white-space: nowrap;
+  box-shadow: var(--nd-elevation-floating);
+  cursor: pointer;
+}
+.scroll-to-bottom-btn:hover {
+  background: var(--nd-bg-layer-04);
 }
 
 /* ============================================================
@@ -3501,7 +3593,7 @@ textarea::placeholder {
    (≤760px) inchangés. */
 @media (min-width: 761px) {
   .template-app .live-chat {
-    max-width: 1000px;
+    max-width: var(--nd-chat-max-w);
   }
   .template-app .new-conversation {
     max-width: 900px;
@@ -3510,8 +3602,10 @@ textarea::placeholder {
     max-width: 640px;
   }
   .template-app .chat-transcript .chat-bubble.user {
-    max-width: min(78%, 760px);
-    font-size: 16px;
+    max-width: min(82%, 64ch);
+    font-size: var(--nd-font-size-base);
+    font-weight: var(--nd-font-weight-regular);
+    line-height: 150%;
   }
   .template-app .chat-transcript .chat-bubble.assistant {
     font-size: 16px;

@@ -17,6 +17,7 @@ import {
   useCopilotKit,
 } from '@copilotkit/react-core/v2';
 import {
+  ArrowDown,
   Bell,
   BellOff,
   FilePlus,
@@ -59,6 +60,13 @@ import { stopAllSpeech } from './MessageActions';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
 import { useAgentSteps } from './useAgentSteps';
+import {
+  distanceToEnd,
+  hasOverflow,
+  nextFollowState,
+  type FollowState,
+} from './auto-scroll';
+import { deriveTurnStatus, TURN_STATUS_LABELS } from './turn-status';
 import { useDotModelControls } from './useDotModelControls';
 import { StepCard } from './StepCard';
 import { ComposerMenu } from './ComposerMenu';
@@ -394,22 +402,25 @@ export function Chat({
       .finally(() => setTranslating(false));
   };
   /** Closest reasoning block before an assistant message (same turn only). */
-  const reasoningForMessage = (message: { id: string }): string | undefined => {
-    const index = agent.messages.findIndex((m) => m.id === message.id);
-    if (index < 0) return undefined;
-    for (let i = index - 1; i >= 0; i--) {
-      const candidate = agent.messages[i];
-      if (candidate.role === 'user') break;
-      if (
-        candidate.role === 'reasoning' &&
-        typeof candidate.content === 'string' &&
-        candidate.content.trim()
-      ) {
-        return candidate.id;
+  const reasoningForMessage = useCallback(
+    (message: { id: string }): string | undefined => {
+      const index = agent.messages.findIndex((m) => m.id === message.id);
+      if (index < 0) return undefined;
+      for (let i = index - 1; i >= 0; i--) {
+        const candidate = agent.messages[i];
+        if (candidate.role === 'user') break;
+        if (
+          candidate.role === 'reasoning' &&
+          typeof candidate.content === 'string' &&
+          candidate.content.trim()
+        ) {
+          return candidate.id;
+        }
       }
-    }
-    return undefined;
-  };
+      return undefined;
+    },
+    [agent.messages],
+  );
   // --- End reasoning panel ----------------------------------------------------
   const [modelError, setModelError] = useState('');
   // Modèles + raisonnement centralisés (hook partagé App/Chat).
@@ -447,26 +458,68 @@ export function Chat({
     onVoiceRequestHandled,
   ]);
   const sent = useRef(false);
-  const bottom = useRef<HTMLDivElement>(null);
   const transcript = useRef<HTMLDivElement>(null);
-  const following = useRef(true);
+  // --- Auto-scroll à 4 états (lot 3, `auto-scroll.ts`) -------------------
+  // `following` (défaut, on démarre en bas) / `detached` (lecteur remonté,
+  // rien ne le ramène de force) / `returning` (reprise à la frame suivante,
+  // avec id de tentative anti-obsolescence) / `anchored` (à moins de 4 px
+  // de la fin : écart de zoom, la vue reste épinglée). Constantes 0,5 / 4 px.
+  // Supprimés avec l'ancien booléen : le seuil de 48 px, le throttle
+  // 150 ms, le saut forcé en bas à chaque fin de run et à chaque nouveau
+  // message — c'est eux qui arrachaient la lecture.
+  const [followState, setFollowState] = useState<FollowState>('following');
+  const followStateRef = useRef<FollowState>('following');
+  const setFollow = useCallback((next: FollowState) => {
+    followStateRef.current = next;
+    setFollowState(next);
+  }, []);
   const touching = useRef(false);
-  const lastScrollAt = useRef(0);
-  const scrollToBottom = (force = false) => {
+  const prevScrollTop = useRef(0);
+  const resumeAttempt = useRef(0);
+  /** Descente en bas, sans jamais détacher (mouvement vers le bas). */
+  const scrollToEnd = useCallback(() => {
     const element = transcript.current;
     if (!element) return;
-    if (!force && (!following.current || touching.current)) return;
-    const now = performance.now();
-    if (!force && now - lastScrollAt.current < 150) return;
-    lastScrollAt.current = now;
     element.scrollTop = element.scrollHeight;
-  };
+  }, []);
+  /** Reprise explicite (bouton, envoi) : retour en bas à la frame suivante. */
+  const resumeFollow = useCallback(() => {
+    if (followStateRef.current === 'following') return;
+    setFollow('returning');
+    const attempt = ++resumeAttempt.current;
+    requestAnimationFrame(() => {
+      // L'utilisateur est remonté entre-temps : tentative périmée, on
+      // ne le ramène pas de force.
+      if (resumeAttempt.current !== attempt) return;
+      scrollToEnd();
+      setFollow('following');
+    });
+  }, [scrollToEnd, setFollow]);
   useEffect(() => {
     const element = transcript.current;
     if (!element) return;
     const onScroll = () => {
-      following.current =
-        element.scrollHeight - element.scrollTop - element.clientHeight < 48;
+      const metrics = {
+        scrollHeight: element.scrollHeight,
+        scrollTop: element.scrollTop,
+        clientHeight: element.clientHeight,
+      };
+      const direction =
+        element.scrollTop < prevScrollTop.current
+          ? 'up'
+          : element.scrollTop > prevScrollTop.current
+            ? 'down'
+            : null;
+      prevScrollTop.current = element.scrollTop;
+      if (!direction) return;
+      setFollow(
+        nextFollowState(followStateRef.current, {
+          type: 'scroll',
+          direction,
+          distance: distanceToEnd(metrics),
+          overflow: hasOverflow(metrics),
+        }),
+      );
     };
     const onTouchStart = () => {
       touching.current = true;
@@ -484,7 +537,77 @@ export function Chat({
       element.removeEventListener('touchend', onTouchEnd);
       element.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, []);
+  }, [setFollow]);
+  // --- Pied de réponse (lot 3) : métriques `/reasoning-stats` par
+  // message assistant, lues APRÈS le tour (jamais l'estimation live).
+  // Le serveur les range sous l'id du message assistant (tours avec
+  // usage) ou du message de raisonnement (tours avec reasoning) : on
+  // essaie les deux, dans cet ordre — comme l'effet des totaux de
+  // session ci-dessous. `requested` évite de re-demander un id à chaque
+  // rendu pendant le streaming.
+  const [responseStats, setResponseStats] = useState<
+    Record<string, ReasoningRunStats>
+  >({});
+  const responseStatsRequested = useRef(new Set<string>());
+  const fetchResponseStats = useCallback(
+    async (assistantId: string) => {
+      if (responseStatsRequested.current.has(assistantId)) return;
+      responseStatsRequested.current.add(assistantId);
+      const reasoningId = reasoningForMessage({ id: assistantId });
+      for (const id of [assistantId, reasoningId]) {
+        if (!id) continue;
+        try {
+          const stats = await api<ReasoningRunStats>(
+            `/reasoning-stats?messageId=${encodeURIComponent(id)}`,
+          );
+          if (stats?.model) {
+            setResponseStats((previous) =>
+              previous[assistantId]
+                ? previous
+                : { ...previous, [assistantId]: stats },
+            );
+            return;
+          }
+        } catch {
+          // Stats best-effort : le pied reste simplement absent.
+        }
+      }
+    },
+    [reasoningForMessage],
+  );
+  useEffect(() => {
+    // Hors run uniquement : pendant le streaming les stats ne sont pas
+    // finales (le panneau raisonnement re-fetch déjà à la fin du tour).
+    if (running) return;
+    for (const message of agent.messages) {
+      if (
+        message.role === 'assistant' &&
+        typeof message.content === 'string' &&
+        message.content.trim()
+      )
+        void fetchResponseStats(message.id);
+    }
+  }, [running, agent.messages, fetchResponseStats]);
+  // --- Tour interrompu (pied « Interrompu », session courante) ---------
+  const stopRequestedRef = useRef(false);
+  const [interruptedIds, setInterruptedIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const prevRunningForInterrupt = useRef(false);
+  useEffect(() => {
+    if (prevRunningForInterrupt.current && !running) {
+      if (stopRequestedRef.current) {
+        const last = [...agent.messages]
+          .reverse()
+          .find((message) => message.role === 'assistant');
+        if (last) {
+          setInterruptedIds((previous) => new Set(previous).add(last.id));
+        }
+        stopRequestedRef.current = false;
+      }
+    }
+    prevRunningForInterrupt.current = running;
+  }, [running, agent.messages]);
   useEffect(() => {
     const subscription = copilotkit.subscribe({
       onError: ({ error }) => {
@@ -524,6 +647,7 @@ export function Chat({
   const executeTurn = async () => {
     setError('');
     runError.current = '';
+    stopRequestedRef.current = false;
     setRunning(true);
     resetSteps();
     try {
@@ -560,6 +684,8 @@ export function Chat({
     setDraft('');
     setSource('');
     setSourceOpen(false);
+    // L'envoi est un geste explicite : il ré-attache le suivi en bas.
+    resumeFollow();
     await executeTurn();
   };
   /** Régénère la dernière réponse : tronque au dernier message user
@@ -574,6 +700,8 @@ export function Chat({
     if (lastUser < 0) return;
     stopAllSpeech();
     agent.setMessages(msgs.slice(0, lastUser + 1));
+    // Régénération demandée : on repart du bas, comme pour un envoi.
+    resumeFollow();
     void executeTurn();
   };
   const send = (text: string) => {
@@ -585,6 +713,8 @@ export function Chat({
       setDraft('');
       setSource('');
       setSourceOpen(false);
+      // La bulle en file apparaît en bas : on y descend tout de suite.
+      resumeFollow();
       return;
     }
     void runPrompt(text);
@@ -605,25 +735,36 @@ export function Chat({
       void send(initialPrompt);
     }
   }, [loaded, contextReady, paused, initialPrompt]);
-  // Follow the conversation while a turn runs (throttled, respects touches).
+  // Suivi du tour en cours : la machine décide, pas le run. Pendant le
+  // run, le contenu qui grandit fait suivre (à la frame) seulement si
+  // l'état est `following` / `anchored` ; un lecteur `detached` n'est
+  // jamais ramené de force, et le doigt posé bloque le défilement
+  // programmatique. À la fin du run : plus aucun saut forcé en bas.
   useEffect(() => {
-    if (!running) {
-      scrollToBottom(true);
-      return;
-    }
+    if (!running) return;
     let frame = 0;
     const loop = () => {
-      scrollToBottom();
+      const state = followStateRef.current;
+      if ((state === 'following' || state === 'anchored') && !touching.current)
+        scrollToEnd();
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
-  }, [running]);
-  // Jump to the bottom when a new message is appended (e.g. the user's message).
+  }, [running, scrollToEnd]);
+  // Un message ajouté (le message user, le texte assistant, un appel
+  // d'outil) ne ré-attache plus : la machine décide — `following` /
+  // `anchored` restent en bas, `detached` / `returning` ne bougent pas.
   useEffect(() => {
-    following.current = true;
-    scrollToBottom(true);
-  }, [agent.messages.length]);
+    const element = transcript.current;
+    if (!element) return;
+    const next = nextFollowState(followStateRef.current, {
+      type: 'content-grew',
+      distance: element.scrollHeight - element.scrollTop - element.clientHeight,
+    });
+    setFollow(next);
+    if (next === 'following') scrollToEnd();
+  }, [agent.messages.length, scrollToEnd, setFollow]);
   useEffect(() => {
     if (paused && voice.status !== 'idle') void voice.end();
   }, [paused]);
@@ -866,6 +1007,9 @@ export function Chat({
     if (runError.current) return;
     postActivity(true);
   }, [running, postActivity]);
+  // Ligne de statut sous le tour (lot 3) : un seul libellé, dérivé des
+  // messages — jamais empilé avec un autre signal « ça travaille ».
+  const turnStatus = deriveTurnStatus(agent.messages, running);
   return (
     <div className={`live-chat ${visible.length ? 'in-conversation' : ''}`}>
       {pageContext && (
@@ -910,6 +1054,12 @@ export function Chat({
           threadId={thread.id}
           dotId={dot.id}
           model={modelControls.selectedModelLabel ?? undefined}
+          liveSteps={steps}
+          thinkingLabel={`${dot.name} is thinking`}
+          responseStats={responseStats}
+          agentName={dot.name}
+          interruptedIds={interruptedIds}
+          statusLabel={turnStatus ? TURN_STATUS_LABELS[turnStatus] : null}
           tts={{
             mode: settings?.ttsMode ?? 'browser',
             voice: settings?.ttsVoice ?? '',
@@ -925,17 +1075,20 @@ export function Chat({
             <UserMessageContent content={text} />
           </div>
         ))}
-        {running && steps.length > 0 ? (
-          <StepCard steps={steps} live />
-        ) : running ? (
-          <div className="thinking">
-            <span />
-            <span />
-            <span />
-            <span>{dot.name} is thinking</span>
-          </div>
-        ) : null}
-        <div ref={bottom} />
+        {/* Reprise explicite du suivi : visible seulement quand le lecteur
+            est remonté (`detached`). Bouton collant en bas du transcript —
+            ni flottant magique, ni réattachement forcé. */}
+        {followState === 'detached' && (
+          <button
+            type="button"
+            className="scroll-to-bottom-btn"
+            aria-label="Revenir en bas de la conversation"
+            onClick={resumeFollow}
+          >
+            <ArrowDown size={14} aria-hidden="true" />
+            Revenir en bas
+          </button>
+        )}
       </div>
       {contextError && (
         <div className="chat-error" role="alert">
@@ -1258,7 +1411,11 @@ export function Chat({
               className="send-button stop"
               aria-label="Arrêter la réponse"
               title="Arrêter la réponse"
-              onClick={() => copilotkit.stopAgent({ agent })}
+              onClick={() => {
+                // Le pied du tour portera « Interrompu ».
+                stopRequestedRef.current = true;
+                copilotkit.stopAgent({ agent });
+              }}
             >
               <Square size={16} />
             </button>
@@ -1281,7 +1438,10 @@ export function Chat({
         messages={visible}
         events={activity}
         running={running}
-        onStop={() => copilotkit.stopAgent({ agent })}
+        onStop={() => {
+          stopRequestedRef.current = true;
+          copilotkit.stopAgent({ agent });
+        }}
       />
     </div>
   );

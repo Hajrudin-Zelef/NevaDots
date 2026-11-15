@@ -191,3 +191,83 @@ it('lecture vocale navigateur : lire, pause, reprise, arrêt', async () => {
     vi.unstubAllGlobals();
   }
 });
+
+it('pied de réponse : agent · modèle · durée · tok/s depuis /reasoning-stats', () => {
+  const { renderer } = renderActions({
+    agentName: 'Nev',
+    stats: {
+      model: 'glm-5.3',
+      resolvedModel: 'glm-5.3-flash',
+      durationMs: 12400,
+      promptTokens: 100,
+      cachedTokens: 10,
+      completionTokens: 250,
+      tokensPerSecond: 20.4,
+      costUsd: 0.001,
+    },
+  });
+  const meta = renderer.root.findByProps({ className: 'message-meta' });
+  expect(meta.children.join('')).toBe(
+    'Nev · glm-5.3-flash · 12 s · 20,4 tok/s',
+  );
+});
+
+it('pied de réponse : modèle demandé quand le servi est inconnu, métriques absentes omises', () => {
+  const { renderer } = renderActions({
+    agentName: 'Nev',
+    stats: {
+      model: 'glm-5.3',
+      resolvedModel: null,
+      durationMs: 65000,
+      promptTokens: null,
+      cachedTokens: null,
+      completionTokens: null,
+      tokensPerSecond: null,
+      costUsd: null,
+    },
+  });
+  const meta = renderer.root.findByProps({ className: 'message-meta' });
+  expect(meta.children.join('')).toBe('Nev · glm-5.3 · 1 min 5 s');
+});
+
+it('pied de réponse : sans stats, pas de pied — rien d’inventé', () => {
+  const { renderer } = renderActions({ agentName: 'Nev' });
+  expect(
+    renderer.root.findAllByProps({ className: 'message-meta' }),
+  ).toHaveLength(0);
+});
+
+it('pied de réponse : tour interrompu porte « Interrompu »', () => {
+  const { renderer } = renderActions({
+    agentName: 'Nev',
+    interrupted: true,
+    stats: {
+      model: 'glm-5.3',
+      resolvedModel: null,
+      durationMs: 3000,
+      promptTokens: 10,
+      cachedTokens: 0,
+      completionTokens: 40,
+      tokensPerSecond: 13.3,
+      costUsd: null,
+    },
+  });
+  const meta = renderer.root.findByProps({ className: 'message-meta' });
+  expect(meta.children.join('')).toBe(
+    'Nev · glm-5.3 · 3 s · 13,3 tok/s · Interrompu',
+  );
+});
+
+it('format de durée du pied : ms, secondes, minutes, heures', async () => {
+  const { formatResponseDuration, formatTokensPerSecond } =
+    await import('../src/client/response-stats');
+  expect(formatResponseDuration(450)).toBe('450 ms');
+  expect(formatResponseDuration(12000)).toBe('12 s');
+  expect(formatResponseDuration(60000)).toBe('1 min');
+  expect(formatResponseDuration(65000)).toBe('1 min 5 s');
+  expect(formatResponseDuration(3720000)).toBe('1 h 2 min');
+  expect(formatResponseDuration(-1)).toBe('');
+  expect(formatTokensPerSecond(20.4)).toBe('20,4 tok/s');
+  expect(formatTokensPerSecond(null)).toBeNull();
+  expect(formatTokensPerSecond(undefined)).toBeNull();
+});

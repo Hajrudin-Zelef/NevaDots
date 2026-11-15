@@ -3777,7 +3777,10 @@ h3 {
 }
 .template-app .live-chat {
   padding: 18px 35px 22px;
-  max-width: 850px;
+  /* Lot 3 : 744 px partout (token --nd-chat-max-w) — la règle en
+     refonte.css, de même spécificité et importée après, gagnait déjà ;
+     l'ancienne valeur 850 px ne servait qu'à piéger le prochain lecteur. */
+  max-width: var(--nd-chat-max-w);
 }
 .template-app .chat-persona {
   justify-content: center;

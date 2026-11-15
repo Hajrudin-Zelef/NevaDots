@@ -2,6 +2,7 @@ import {
   Fragment,
   memo,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { AssistantMessage, Message } from '@ag-ui/core';
 import type { CallReceipt } from '../shared/types';
+import type { ReasoningRunStats } from '../server/reasoning.js';
 import {
   fileExtension,
   formatChars,
@@ -19,6 +21,13 @@ import {
 } from './attachments';
 import { markdownComponents } from './markdown-components';
 import { MessageActions, type SpeechTtsSettings } from './MessageActions';
+import { StepCard } from './StepCard';
+import type { AgentStep } from './useAgentSteps';
+import {
+  isUserTextFoldable,
+  parseLineHeightPx,
+  userTextFoldMaxHeightPx,
+} from './user-message-fold';
 import { voiceReceiptMessagePrefix } from '../shared/voice-receipt';
 import { isScheduledTaskMessage } from '../shared/scheduled-message';
 
@@ -168,20 +177,77 @@ export function StreamingMarkdown({
 }
 
 /**
+ * Texte utilisateur repliable (lot 3) : passé 12 lignes rendues, on
+ * n'en montre que 8 + « Voir plus / Voir moins ». La mesure est faite
+ * sur le rendu (hauteur / hauteur de ligne) après montage ; sans DOM
+ * (rendu serveur, tests) il n'y a pas de mesure, donc pas de repli.
+ * Le texte court garde le même rendu qu'avant, à un `<div>` près.
+ */
+function FoldableUserText({ content }: { content: string }) {
+  const textRef = useRef<HTMLDivElement>(null);
+  const [foldable, setFoldable] = useState(false);
+  const [lineHeight, setLineHeight] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  useLayoutEffect(() => {
+    const element = textRef.current;
+    if (
+      !element ||
+      typeof window === 'undefined' ||
+      typeof window.getComputedStyle !== 'function'
+    )
+      return;
+    const style = window.getComputedStyle(element);
+    const fontSize = Number.parseFloat(style.fontSize);
+    const parsed = parseLineHeightPx(
+      style.lineHeight,
+      Number.isFinite(fontSize) ? fontSize : 14,
+    );
+    if (parsed === null) return;
+    setLineHeight(parsed);
+    setFoldable(isUserTextFoldable(element.scrollHeight, parsed));
+  }, [content]);
+  return (
+    <>
+      <div
+        ref={textRef}
+        className={`user-text${foldable && !expanded ? ' folded' : ''}`}
+        style={
+          foldable && !expanded && lineHeight !== null
+            ? { maxHeight: `${userTextFoldMaxHeightPx(lineHeight)}px` }
+            : undefined
+        }
+      >
+        <StaticMarkdown content={content} />
+      </div>
+      {foldable && (
+        <button
+          type="button"
+          className="user-text-fold-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? 'Voir moins' : 'Voir plus'}
+        </button>
+      )}
+    </>
+  );
+}
+
+/**
  * Bulle utilisateur : les blocs de contenu de pièces jointes injectés
  * ([Fichier : nom — N car.]) sont repliés en puces dépliables ; le modèle
  * garde le texte intégral, l'utilisateur ne voit que le brouillon + chips.
- * Sans bloc : rendu Markdown inchangé.
+ * Le texte (sans les pièces jointes) se replie passé 12 lignes.
  */
 export function UserMessageContent({ content }: { content: string }) {
   const parts = useMemo(
     () => parseUserMessageWithAttachments(content),
     [content],
   );
-  if (!parts.attachments.length) return <StaticMarkdown content={content} />;
+  if (!parts.attachments.length) return <FoldableUserText content={content} />;
   return (
     <>
-      {parts.text && <StaticMarkdown content={parts.text} />}
+      {parts.text && <FoldableUserText content={parts.text} />}
       {parts.attachments.map((attachment, index) => {
         const ext = fileExtension(attachment.name);
         return (
@@ -232,6 +298,12 @@ export function ChatTranscript({
   model,
   tts,
   onQuote,
+  liveSteps,
+  thinkingLabel,
+  responseStats,
+  agentName,
+  interruptedIds,
+  statusLabel,
 }: {
   messages: Message[];
   calls: CallReceipt[];
@@ -251,11 +323,60 @@ export function ChatTranscript({
   tts?: SpeechTtsSettings;
   /** Cite la sélection (« Répondre ») comme contexte du prochain message. */
   onQuote?: (text: string) => void;
+  /** Étapes du tour en cours (carte live, ancrée à son tour). */
+  liveSteps?: AgentStep[];
+  /** Texte de l'indicateur « … is thinking » quand le tour tourne sans étape. */
+  thinkingLabel?: string;
+  /** Métriques `/reasoning-stats` par message assistant (pied de réponse). */
+  responseStats?: Record<string, ReasoningRunStats>;
+  /** Nom de l'agent (Dot) auteur des réponses (pied de réponse). */
+  agentName?: string;
+  /** Messages assistants dont le tour a été arrêté par l'utilisateur. */
+  interruptedIds?: ReadonlySet<string>;
+  /** Libellé de la ligne de statut sous le tour en cours (null = pas de tour). */
+  statusLabel?: string | null;
 }) {
   const ids = new Set(messages.map((message) => message.id));
   const lastAssistantId = [...messages]
     .reverse()
     .find((message) => message.role === 'assistant')?.id;
+  // Ancrage du live (lot 3, à préserver au lot 4) : le bloc live
+  // (StepCard / « … is thinking ») vit DANS le tour qu'il concerne —
+  // jamais flottant après le transcript. Ancre = le dernier message
+  // assistant du tour en cours (après le dernier message user) ; s'il
+  // n'existe pas encore (tour démarré, pas de texte ni d'outil), ancre =
+  // le dernier message user, et le bloc se rend après sa bulle.
+  let liveAnchorId: string | undefined;
+  {
+    let lastUserIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserIndex = i;
+        break;
+      }
+    }
+    for (let i = messages.length - 1; i > lastUserIndex; i--) {
+      if (messages[i].role === 'assistant') {
+        liveAnchorId = messages[i].id;
+        break;
+      }
+    }
+    liveAnchorId ??=
+      lastUserIndex >= 0 ? messages[lastUserIndex].id : undefined;
+  }
+  const liveBlock =
+    running && liveAnchorId ? (
+      liveSteps?.length ? (
+        <StepCard steps={liveSteps} live />
+      ) : thinkingLabel ? (
+        <div className="thinking">
+          <span />
+          <span />
+          <span />
+          <span>{thinkingLabel}</span>
+        </div>
+      ) : null
+    ) : null;
   const [quote, setQuote] = useState<{
     x: number;
     y: number;
@@ -370,6 +491,14 @@ export function ChatTranscript({
         ))}
       {messages.map((message) => (
         <Fragment key={message.id}>
+          {/* Outils AVANT le texte assistant (lot 3) : le tour se lit
+              prompt user → outils → texte → pied, et le bloc live occupe
+              la même place que la carte enregistrée après le tour — pas
+              de saut de place entre live et terminé. */}
+          {message.role === 'assistant' &&
+            message.id === liveAnchorId &&
+            liveBlock}
+          {message.role === 'assistant' && renderTools?.(message)}
           {typeof message.content === 'string' && message.content.trim() && (
             <div
               className={`chat-bubble ${message.role}${isScheduledTaskMessage(message) ? ' scheduled' : ''}`}
@@ -416,11 +545,16 @@ export function ChatTranscript({
                     dotId={dotId}
                     model={model}
                     tts={tts}
+                    stats={responseStats?.[message.id]}
+                    agentName={agentName}
+                    interrupted={interruptedIds?.has(message.id) ?? false}
                   />
                 )}
             </div>
           )}
-          {message.role === 'assistant' && renderTools?.(message)}
+          {/* Pas encore de message assistant dans ce tour : le bloc live
+              se rend après la bulle user qui a démarré le tour. */}
+          {message.role === 'user' && message.id === liveAnchorId && liveBlock}
           {calls
             .filter((call) => call.anchorMessageId === message.id)
             .map((call) => (
@@ -428,6 +562,12 @@ export function ChatTranscript({
             ))}
         </Fragment>
       ))}
+      {statusLabel && (
+        <div className="turn-status" role="status">
+          <span className="turn-status-dot" aria-hidden="true" />
+          {statusLabel}
+        </div>
+      )}
     </div>
   );
 }

@@ -145,6 +145,9 @@ samp,
   /* Sidebar (Lot 2) : largeur d'état, source unique de vérité — la
      largeur redimensionnée est écrite ici en ligne par App.tsx. */
   --nd-sidebar-w: 240px;
+  /* Transcript (Lot 3) : largeur de contenu OpenCode, source unique —
+     les 3 règles concurrentes (850/840/1000 px) y renvoient toutes. */
+  --nd-chat-max-w: 744px;
 
   /* Élévations claires (anneau 0,5 px faisant office de bordure). */
   --nd-elevation-raised:
