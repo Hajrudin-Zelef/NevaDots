@@ -100,6 +100,11 @@ export class WorkspaceStore {
       )
         this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
+    // Paliers de contexte : 8K/16K ne sont plus proposés (trop petits dès
+    // qu'un Dot charge des outils) — les Dots qui les portent passent à 32K.
+    this.db.exec(
+      'UPDATE dots SET contextBudget=32768 WHERE contextBudget IN (8192,16384)',
+    );
     // app_config passe de (key) à (user_id, key) : reconstruction par
     // copie, les lignes existantes deviennent orphelines (user_id NULL).
     if (

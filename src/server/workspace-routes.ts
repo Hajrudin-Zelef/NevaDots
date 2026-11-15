@@ -504,7 +504,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
     const data = z
       .object({
         budget: z
-          .union([z.literal(8192), z.literal(16384), z.literal(32768)])
+          .union([z.literal(32768), z.literal(65536), z.literal(131072)])
           .nullable(),
       })
       .strict()

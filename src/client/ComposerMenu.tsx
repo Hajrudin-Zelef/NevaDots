@@ -103,10 +103,10 @@ export function ComposerMenu({
           <span className="composer-menu-label">Contexte</span>
           {(
             [
-              { label: '8K', value: 8192 },
-              { label: '16K', value: 16384 },
-              { label: '32K', value: 32768 },
-              { label: 'Max (agentique)', value: null },
+              { label: '32K', value: 32768, hint: 'compaction ~13K' },
+              { label: '64K', value: 65536, hint: 'compaction ~29K' },
+              { label: '128K', value: 131072, hint: 'compaction ~61K' },
+              { label: 'Max (agentique)', value: null, hint: 'fenêtre native' },
             ] as const
           ).map((option) => (
             <button
@@ -118,6 +118,7 @@ export function ComposerMenu({
               onClick={run(() => onContextBudget(option.value))}
             >
               {option.label}
+              <span className="composer-menu-hint">{option.hint}</span>
             </button>
           ))}
         </div>

@@ -34,7 +34,7 @@ it('edits a space and duplicates a dot with its tune', () => {
   expect(() => store.updateSpace('missing', 'x', '')).toThrow();
 
   const dot = store.createDot(space.id, 'Scout', 'Be concise', false, true);
-  store.setDotContextBudget(dot.id, 16384);
+  store.setDotContextBudget(dot.id, 65536);
   store.setDotCompactionStrategy(dot.id, 'magic-compact');
   const before = store.dots().length;
   const copy = store.duplicateDot(dot.id);
@@ -42,7 +42,7 @@ it('edits a space and duplicates a dot with its tune', () => {
   expect(copy?.name).toBe('Scout (copie)');
   expect(copy?.instructions).toBe('Be concise');
   expect(copy?.memoryAllowed).toBe(true);
-  expect(copy?.contextBudget).toBe(16384);
+  expect(copy?.contextBudget).toBe(65536);
   expect(copy?.compactionStrategy).toBe('magic-compact');
   expect(copy?.id).not.toBe(dot.id);
   expect(store.dots()).toHaveLength(before + 1);
@@ -89,11 +89,11 @@ it('persists the per-dot context budget (phase 6)', () => {
   const space = store.createSpace('Design', 'Design decisions');
   const dot = store.createDot(space.id, 'Scout', 'Be concise', false, true);
   expect(store.dot(dot.id)?.contextBudget ?? null).toBeNull();
-  store.setDotContextBudget(dot.id, 16384);
-  expect(store.dot(dot.id)?.contextBudget).toBe(16384);
+  store.setDotContextBudget(dot.id, 65536);
+  expect(store.dot(dot.id)?.contextBudget).toBe(65536);
   store.setDotContextBudget(dot.id, null);
   expect(store.dot(dot.id)?.contextBudget ?? null).toBeNull();
-  expect(() => store.setDotContextBudget('missing', 8192)).toThrow();
+  expect(() => store.setDotContextBudget('missing', 32768)).toThrow();
   store.close();
 });
 
@@ -227,4 +227,23 @@ it('skills locaux : flag par Dot, politique admin et usage', () => {
   ).run();
   expect(store.skillsAllowed()).toBe(false);
   store.close();
+});
+
+it('remonte les anciens paliers de contexte 8K/16K à 32K au démarrage', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    const first = new WorkspaceStore(db, 'owner');
+    first.ensureSeed();
+    const dot = first.dots()[0];
+    first.setDotContextBudget(dot.id, 8192);
+    expect(first.dot(dot.id)?.contextBudget).toBe(8192);
+    // Réouverture : la migration des paliers s'applique une seule fois, et
+    // reste idempotente.
+    const reopened = new WorkspaceStore(db, 'owner');
+    expect(reopened.dot(dot.id)?.contextBudget).toBe(32768);
+    const again = new WorkspaceStore(db, 'owner');
+    expect(again.dot(dot.id)?.contextBudget).toBe(32768);
+  } finally {
+    db.close();
+  }
 });
