@@ -1,14 +1,15 @@
 import { openPageLink } from './page-navigation';
-import { SpaceNav } from './SpaceNav';
 import { SpaceWorkspace } from './SpaceWorkspace';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { CopilotKitProvider } from '@copilotkit/react-core/v2';
 import {
   ArrowUpRight,
   BookOpen,
+  Bot,
   CircleHelp,
   CircleUserRound,
   Clock3,
+  Folder,
   House,
   Info,
   LogOut,
@@ -285,6 +286,10 @@ export function App() {
   const [dialog, setDialog] = useState<Dialog>();
   /** Phase F : menu avatar (Profil / Apparence / Paramètres / FAQ / À propos / Déconnexion). */
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  /** Sélecteur Dots / Spaces, ouvert depuis les icônes du pied de sidebar. */
+  const [sidebarPicker, setSidebarPicker] = useState<'dots' | 'spaces' | null>(
+    null,
+  );
   /** MVC-Statut (lots 1.3-1.4) : le statut de session vient du modèle —
    *  aucune lecture `/me` locale. `out` → la porte serveur + api.ts 401
    *  restent l'autorité réseau ; ici on ne fait que refléter. */
@@ -303,6 +308,14 @@ export function App() {
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
   }, [profileMenuOpen]);
+  useEffect(() => {
+    if (!sidebarPicker) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarPicker(null);
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [sidebarPicker]);
   const [mobile, setMobile] = useState(false);
   // Sidebar (Lot 2) : bascule persistée (`mod+shift+b` + bouton flottant)
   // et largeur redimensionnable (240 px par défaut, 136–640, persistée).
@@ -904,7 +917,10 @@ export function App() {
         <button
           className="nav-scrim"
           aria-label="Fermer la navigation"
-          onClick={() => setMobile(false)}
+          onClick={() => {
+            setSidebarPicker(null);
+            setMobile(false);
+          }}
         />
       )}
       <aside
@@ -1012,80 +1028,6 @@ export function App() {
           </button>
         </div>
         <div className="sidebar-list">
-          <div className="spaces-heading nav-label">
-            Dots
-            <button
-              className="icon-button"
-              aria-label="Créer un Dot"
-              onClick={() =>
-                setDialog({ type: 'dot', spaceId: workspace.spaces[0].id })
-              }
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-          <nav className="dots-nav" aria-label="Dots">
-            {workspace.dots.map((item) => (
-              <div className="dot-nav-row" key={item.id}>
-                <button
-                  className={`dot-nav ${dot.id === item.id && view === 'chat' ? 'active' : ''}`}
-                  aria-current={
-                    dot.id === item.id && view === 'chat' ? 'page' : undefined
-                  }
-                  onClick={() => chooseDot(item)}
-                >
-                  <Mascot
-                    name={item.name}
-                    avatar={item.avatar}
-                    small
-                    decorative
-                  />
-                  <span>{item.name}</span>
-                </button>
-                <button
-                  className="icon-button dot-settings"
-                  aria-label={`Modifier les paramètres de ${item.name}`}
-                  onClick={() =>
-                    setDialog({ type: 'dot', dot: item, spaceId: item.spaceId })
-                  }
-                >
-                  <MoreHorizontal size={15} />
-                </button>
-              </div>
-            ))}
-          </nav>
-          <div className="spaces-heading nav-label">
-            Spaces
-            <button
-              className="icon-button"
-              aria-label="Créer un Space"
-              onClick={() => setDialog({ type: 'space' })}
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-          <nav className="spaces-nav" aria-label="Spaces">
-            {workspace.spaces.map((space) => (
-              <SpaceNav
-                key={space.id}
-                space={space}
-                active={view === 'space' && spaceId === space.id}
-                pageId={pageId}
-                onOpen={(id) => openPage(space.id, id)}
-              />
-            ))}
-          </nav>
-          <button
-            className={`nav-item sidebar-activity ${view === 'tasks' ? 'active' : ''}`}
-            onClick={() => {
-              setView('tasks');
-              setMobile(false);
-            }}
-          >
-            <Clock3 size={14} />
-            <span>Activité</span>
-            {state.tasks.length > 0 && <small>{state.tasks.length}</small>}
-          </button>
           <div className="conversation-list-label">Conversations</div>
           {configured ? (
             <ThreadList
@@ -1260,6 +1202,136 @@ export function App() {
               onClick={() => void deleteAllConversations()}
             >
               <Trash2 size={16} />
+            </button>
+            {/* Dots, Spaces et Activité : leur contenu quitte le haut de la
+                sidebar, seules les icônes restent ici (clic = sélecteur). */}
+            <div className="sidebar-picker-wrap">
+              <button
+                type="button"
+                className={`icon-button ${sidebarPicker === 'dots' ? 'active' : ''}`}
+                aria-label="Dots"
+                title="Dots"
+                aria-expanded={sidebarPicker === 'dots'}
+                onClick={() =>
+                  setSidebarPicker((current) =>
+                    current === 'dots' ? null : 'dots',
+                  )
+                }
+              >
+                <Bot size={17} />
+              </button>
+              {sidebarPicker === 'dots' && (
+                <>
+                  <div
+                    className="profile-menu-backdrop"
+                    onClick={() => setSidebarPicker(null)}
+                  />
+                  <div className="profile-menu sidebar-picker" role="menu">
+                    {workspace.dots.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="menuitem"
+                        className={`profile-menu-item${dot.id === item.id && view === 'chat' ? ' active' : ''}`}
+                        onClick={() => {
+                          setSidebarPicker(null);
+                          chooseDot(item);
+                          setMobile(false);
+                        }}
+                      >
+                        <Mascot
+                          name={item.name}
+                          avatar={item.avatar}
+                          small
+                          decorative
+                        />
+                        {item.name}
+                      </button>
+                    ))}
+                    <div className="profile-menu-separator" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="profile-menu-item"
+                      onClick={() => {
+                        setSidebarPicker(null);
+                        setDialog({
+                          type: 'dot',
+                          spaceId: workspace.spaces[0]?.id,
+                        });
+                      }}
+                    >
+                      <Plus size={15} /> Créer un Dot
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="sidebar-picker-wrap">
+              <button
+                type="button"
+                className={`icon-button ${sidebarPicker === 'spaces' ? 'active' : ''}`}
+                aria-label="Spaces"
+                title="Spaces"
+                aria-expanded={sidebarPicker === 'spaces'}
+                onClick={() =>
+                  setSidebarPicker((current) =>
+                    current === 'spaces' ? null : 'spaces',
+                  )
+                }
+              >
+                <Folder size={17} />
+              </button>
+              {sidebarPicker === 'spaces' && (
+                <>
+                  <div
+                    className="profile-menu-backdrop"
+                    onClick={() => setSidebarPicker(null)}
+                  />
+                  <div className="profile-menu sidebar-picker" role="menu">
+                    {workspace.spaces.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="menuitem"
+                        className={`profile-menu-item${view === 'space' && spaceId === item.id ? ' active' : ''}`}
+                        onClick={() => {
+                          setSidebarPicker(null);
+                          openPage(item.id);
+                          setMobile(false);
+                        }}
+                      >
+                        <Folder size={15} /> {item.name}
+                      </button>
+                    ))}
+                    <div className="profile-menu-separator" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="profile-menu-item"
+                      onClick={() => {
+                        setSidebarPicker(null);
+                        setDialog({ type: 'space' });
+                      }}
+                    >
+                      <Plus size={15} /> Créer un Space
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              className={`icon-button ${view === 'tasks' ? 'active' : ''}`}
+              aria-label="Activité"
+              title="Activité"
+              onClick={() => {
+                setSidebarPicker(null);
+                setView('tasks');
+                setMobile(false);
+              }}
+            >
+              <Clock3 size={17} />
             </button>
           </div>
         </div>
