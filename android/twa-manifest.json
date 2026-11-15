@@ -1,0 +1,43 @@
+{
+  "packageId": "pro.neva_ci.nevadots",
+  "host": "nevadots.neva-ci.pro",
+  "name": "NevaDots",
+  "launcherName": "NevaDots",
+  "display": "standalone",
+  "themeColor": "#ffffff",
+  "themeColorDark": "#161616",
+  "navigationColor": "#ffffff",
+  "navigationColorDark": "#161616",
+  "navigationDividerColor": "#ffffff",
+  "navigationDividerColorDark": "#161616",
+  "backgroundColor": "#000016",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://nevadots.neva-ci.pro/app-icon-maskable-512.png",
+  "maskableIconUrl": "https://nevadots.neva-ci.pro/app-icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 200,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "nevadots"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://nevadots.neva-ci.pro/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://nevadots.neva-ci.pro/",
+  "minSdkVersion": 21,
+  "orientation": "portrait-primary",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "appVersion": "1.0.0"
+}

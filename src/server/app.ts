@@ -156,6 +156,13 @@ export function createStaticGate(auth: AuthStore | undefined) {
       path === '/bootstrap' ||
       path === '/health' ||
       path === '/logo.png' ||
+      // PWA / TWA : le manifest, les icônes d'application et le fichier
+      // de vérification Android DOIVENT être lisibles sans session
+      // (Chrome les récupère avant toute connexion, et Play/assetlinks
+      // vérifie le domaine hors session).
+      path === '/manifest.webmanifest' ||
+      path.startsWith('/app-icon-') ||
+      path.startsWith('/.well-known/') ||
       path.startsWith('/fonts/') ||
       path.startsWith('/api/')
     ) {

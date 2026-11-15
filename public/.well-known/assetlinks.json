@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "pro.neva_ci.nevadots",
+      "sha256_cert_fingerprints": [
+        "47:6B:7E:51:EC:9C:52:FF:14:D6:E6:A2:72:F6:AB:36:AB:96:02:57:2D:13:EE:15:F3:02:4F:62:B0:1E:F9:2F"
+      ]
+    }
+  }
+]
