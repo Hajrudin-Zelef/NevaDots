@@ -2382,9 +2382,9 @@ h3 {
   background: transparent;
   padding: 10px 3px;
   resize: none;
-  font-size: 14px;
+  font-size: 13px;
   min-height: 43px;
-  max-height: 120px;
+  max-height: 180px;
 }
 .chat-compose-row textarea::placeholder {
   color: #b1b3be;
@@ -2393,8 +2393,8 @@ h3 {
   background: #75b9b4;
   border-radius: 50%;
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   margin-bottom: 5px;
 }
 .chat-compose-row .icon-button {

@@ -1,7 +1,15 @@
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Brain, Globe, Link2, Plus, X } from 'lucide-react';
-import { shouldSubmitComposerOnKeyDown } from './chat-composer';
+import {
+  routeComposerKeyDown,
+  shouldSubmitComposerOnKeyDown,
+} from './chat-composer';
+import {
+  isCursorOnFirstLine,
+  isCursorOnLastLine,
+  type PromptHistoryEntry,
+} from './prompt-history';
 import { reasoningEffortLabel } from './useDotModelControls';
 import { type ModelsResponse } from '../shared/models';
 import { ModelSelector } from './ModelSelector';
@@ -75,6 +83,31 @@ export interface ComposerProps {
 
   // --- Focus programmé (citation « Répondre », suggestions) ---
   textareaRef?: { current: HTMLTextAreaElement | null };
+
+  // --- Lot 5 : chip agent, citation, historique, file, raccourcis ---
+  /** Chip Dot/agent, avant la chip modèle (visible seulement si plusieurs
+   *  Dots — le parent la rend conditionnellement). */
+  agentChip?: ReactNode;
+  /** Carte de citation structurée, au-dessus du textarea (même rangée que
+   *  les pièces jointes). */
+  quoteCard?: ReactNode;
+  /** Historique des prompts (liste Maj+↑, navigation ↑/↓). */
+  historyEntries?: PromptHistoryEntry[];
+  onHistorySelect?: (prompt: string) => void;
+  onHistoryPrev?: () => void;
+  onHistoryNext?: () => void;
+  /** Alt+Entrée : tête de file (ou envoi si aucun tour en cours). */
+  onQueueFront?: () => void;
+  /** Mod+U : ouvrir le sélecteur de fichiers. */
+  onOpenAttachments?: () => void;
+  /** Mod+. / Maj+Mod+. : Dot suivant / précédent. */
+  onCycleDot?: (direction: 1 | -1) => void;
+  /** Mod+' : basculer le champ page web. */
+  onToggleSourceShortcut?: () => void;
+  /** Ctrl+G : basculer le menu « + » du composer. */
+  onToggleMenuShortcut?: () => void;
+  /** Échap : annuler le chargement en file, fermer menu/citation. */
+  onEscape?: () => void;
 }
 
 /**
@@ -122,18 +155,34 @@ export function Composer(props: ComposerProps) {
     attachmentCards,
     note,
     textareaRef,
+    agentChip,
+    quoteCard,
+    historyEntries,
+    onHistorySelect,
+    onHistoryPrev,
+    onHistoryNext,
+    onQueueFront,
+    onOpenAttachments,
+    onCycleDot,
+    onToggleSourceShortcut,
+    onToggleMenuShortcut,
+    onEscape,
   } = props;
 
-  // Auto-agrandissement du textarea : suit le contenu jusqu'à max-height (120px),
-  // puis le texte défile à l'intérieur. Sans ça, un long message reste écrasé
-  // sur une ligne et le texte « casse » visuellement.
+  // Auto-agrandissement du textarea : suit le contenu jusqu'à max-height
+  // (180 px, Lot 5), puis le texte défile à l'intérieur. Sans ça, un long
+  // message reste écrasé sur une ligne et le texte « casse » visuellement.
   const innerRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const el = innerRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 180) + 'px';
   }, [text]);
+
+  // Liste d'historique (Maj+↑) : une simple liste au-dessus du textarea,
+  // un clic charge le prompt, Échap la ferme.
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // Icône Brain : interrupteur — éteint (`none`) si un niveau est actif,
   // rallume au Standard (auto) si éteint. Le select à côté sert au
@@ -177,7 +226,35 @@ export function Composer(props: ComposerProps) {
         </div>
       )}
       {menuOpen && menu}
-      {attachmentCards}
+      {(quoteCard || attachmentCards) && (
+        <div className="composer-extras">
+          {quoteCard}
+          {attachmentCards}
+        </div>
+      )}
+      {historyOpen && (historyEntries?.length ?? 0) > 0 && (
+        <div
+          className="composer-history-list"
+          role="listbox"
+          aria-label="Historique des prompts"
+        >
+          {historyEntries!.map((entry, index) => (
+            <button
+              key={`${entry.prompt}-${index}`}
+              type="button"
+              role="option"
+              className="composer-history-item"
+              title={entry.prompt}
+              onClick={() => {
+                setHistoryOpen(false);
+                onHistorySelect?.(entry.prompt);
+              }}
+            >
+              {entry.prompt}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="chat-compose-row">
         <textarea
           ref={(el) => {
@@ -191,9 +268,87 @@ export function Composer(props: ComposerProps) {
           maxLength={4000}
           onChange={(e) => onTextChange(e.target.value)}
           onKeyDown={(e) => {
-            if (shouldSubmitComposerOnKeyDown(e)) {
+            // Historique ↑/↓ : seulement quand le curseur est sur la
+            // première / dernière ligne (sinon le curseur se déplace
+            // normalement dans le texte). Maj+↑ ouvre la liste.
+            if (e.key === 'ArrowUp' && e.shiftKey) {
               e.preventDefault();
-              if (canSubmitOnEnter) e.currentTarget.form?.requestSubmit();
+              setHistoryOpen(true);
+              return;
+            }
+            if (
+              e.key === 'ArrowUp' &&
+              !e.ctrlKey &&
+              !e.metaKey &&
+              !e.altKey &&
+              onHistoryPrev &&
+              isCursorOnFirstLine(
+                e.currentTarget.value,
+                e.currentTarget.selectionStart ?? 0,
+              )
+            ) {
+              e.preventDefault();
+              onHistoryPrev();
+              return;
+            }
+            if (
+              e.key === 'ArrowDown' &&
+              !e.ctrlKey &&
+              !e.metaKey &&
+              !e.altKey &&
+              onHistoryNext &&
+              isCursorOnLastLine(
+                e.currentTarget.value,
+                e.currentTarget.selectionStart ?? 0,
+              )
+            ) {
+              e.preventDefault();
+              onHistoryNext();
+              return;
+            }
+            const action = routeComposerKeyDown(e);
+            if (!action) return;
+            switch (action) {
+              case 'submit':
+                // Règle verrouillée : Ctrl+Entrée envoie, Entrée seule =
+                // saut de ligne (voir `shouldSubmitComposerOnKeyDown`).
+                if (shouldSubmitComposerOnKeyDown(e)) {
+                  e.preventDefault();
+                  if (canSubmitOnEnter) e.currentTarget.form?.requestSubmit();
+                }
+                break;
+              case 'queue-front':
+                e.preventDefault();
+                onQueueFront?.();
+                break;
+              case 'open-attachments':
+                e.preventDefault();
+                onOpenAttachments?.();
+                break;
+              case 'toggle-source':
+                e.preventDefault();
+                onToggleSourceShortcut?.();
+                break;
+              case 'cycle-dot':
+                e.preventDefault();
+                onCycleDot?.(1);
+                break;
+              case 'cycle-dot-reverse':
+                e.preventDefault();
+                onCycleDot?.(-1);
+                break;
+              case 'toggle-menu':
+                e.preventDefault();
+                onToggleMenuShortcut?.();
+                break;
+              case 'cancel':
+                if (historyOpen) {
+                  e.preventDefault();
+                  setHistoryOpen(false);
+                  break;
+                }
+                onEscape?.();
+                break;
             }
           }}
           disabled={inputDisabled}
@@ -242,7 +397,8 @@ export function Composer(props: ComposerProps) {
             )
           )}
           {voiceButton}
-          {modelOptions.providers.length > 0 && (
+          {agentChip}
+          {modelOptions.providers.length > 0 ? (
             <ModelSelector
               dotId={dotId}
               modelValue={modelValue}
@@ -251,6 +407,18 @@ export function Composer(props: ComposerProps) {
               onModelSaved={onModelSaved}
               onModelError={onModelError}
             />
+          ) : (
+            // Chip modèle en chargement : inerte au lieu de non rendue
+            // (Lot 5, étape 4) — la rangée d'outils ne saute pas quand
+            // les modèles arrivent.
+            <span
+              className="model-selector model-selector-loading"
+              role="status"
+              aria-label="Modèles en cours de chargement"
+              title="Chargement des modèles…"
+            >
+              <span className="model-selector-label">Chargement…</span>
+            </span>
           )}
           <button
             type="button"

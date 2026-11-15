@@ -15,6 +15,8 @@ export interface Attachment {
   objectUrl?: string;
   /** État de l'upload serveur. */
   status: AttachmentUploadStatus;
+  /** Progression de l'upload en cours, 0–100 (Lot 5 : XHR `progress`). */
+  progress?: number;
 }
 
 /** Limite d'aperçu inline : 5 Mo (au-delà → téléchargement proposé). */

@@ -21,8 +21,50 @@ interface ServerAttachment {
  * Upload multipart brut.
  * Le helper api() force Content-Type: application/json et JSON.stringify()
  * le FormData — il est inutilisable pour l'upload de fichiers.
+ * Lot 5, étape 7 : `XMLHttpRequest` (et non `fetch`) pour exposer la
+ * progression (`upload.onprogress`) affichée sur la carte. Repli `fetch`
+ * quand XHR est indisponible (tests Node, sans progression).
  */
-async function uploadFiles(
+function uploadFiles(
+  entries: { file: File; name: string }[],
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<ServerAttachment[]> {
+  if (typeof XMLHttpRequest === 'undefined')
+    return uploadFilesViaFetch(entries);
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    for (const { file, name } of entries) form.append('files', file, name);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/attachments');
+    xhr.withCredentials = true;
+    xhr.responseType = 'json';
+    xhr.upload.onprogress = (event) => {
+      if (onProgress && event.lengthComputable)
+        onProgress(event.loaded, event.total);
+    };
+    xhr.onload = () => {
+      const data = (xhr.response ?? {}) as {
+        attachments?: ServerAttachment[];
+        error?: string;
+      };
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data.attachments ?? []);
+      } else {
+        reject(
+          new ApiError(
+            data.error ?? `Échec de l'envoi des fichiers (${xhr.status}).`,
+            xhr.status,
+          ),
+        );
+      }
+    };
+    xhr.onerror = () =>
+      reject(new ApiError("Échec de l'envoi des fichiers (réseau).", 0));
+    xhr.send(form);
+  });
+}
+
+async function uploadFilesViaFetch(
   entries: { file: File; name: string }[],
 ): Promise<ServerAttachment[]> {
   const form = new FormData();
@@ -68,6 +110,32 @@ export function useAttachments(scope: string) {
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   const [restoring, setRestoring] = useState(true);
+  /** Noms des fichiers refusés car déjà joints (toast « doublon »). */
+  const [duplicateNotice, setDuplicateNotice] = useState<string[] | null>(
+    null,
+  );
+  const duplicateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+
+  const flagDuplicates = (names: string[]) => {
+    if (!names.length) return;
+    setDuplicateNotice(names);
+    if (duplicateTimer.current !== undefined)
+      clearTimeout(duplicateTimer.current);
+    duplicateTimer.current = setTimeout(
+      () => setDuplicateNotice(null),
+      3500,
+    );
+  };
+
+  useEffect(
+    () => () => {
+      if (duplicateTimer.current !== undefined)
+        clearTimeout(duplicateTimer.current);
+    },
+    [],
+  );
 
   const setItems = (
     next: Attachment[] | ((cur: Attachment[]) => Attachment[]),
@@ -156,6 +224,7 @@ export function useAttachments(scope: string) {
           mime: server.mime,
           category: server.category,
           status: 'ready' as const,
+          progress: undefined,
         };
       }),
     );
@@ -170,7 +239,13 @@ export function useAttachments(scope: string) {
   };
 
   const uploadOne = (localId: string, file: File, name: string) => {
-    void uploadFiles([{ file, name }])
+    void uploadFiles([{ file, name }], (loaded, total) => {
+      const progress =
+        total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+      setItems((cur) =>
+        cur.map((a) => (a.id === localId ? { ...a, progress } : a)),
+      );
+    })
       .then((servers) => {
         const server = servers[0];
         if (!server) throw new Error('Réponse serveur vide.');
@@ -180,6 +255,16 @@ export function useAttachments(scope: string) {
   };
 
   const addFiles = (files: FileList | File[]) => {
+    const duplicates = Array.from(files)
+      .filter((file) =>
+        itemsRef.current.some(
+          (a) => a.name === file.name && a.size === file.size,
+        ),
+      )
+      .map((file) => file.name);
+    // Toast « doublon » : les fichiers déjà joints sont ignorés, sans
+    // re-téléversement ; les autres sont ajoutés normalement.
+    flagDuplicates(duplicates);
     const candidates = Array.from(files).filter(
       (file) =>
         !itemsRef.current.some(
@@ -302,7 +387,15 @@ export function useAttachments(scope: string) {
   // `uploading` couvre aussi la restauration : pas d'envoi avant cartes stables.
   const uploading = restoring || items.some((a) => a.status === 'uploading');
 
-  return { items, addFiles, remove, retry, prepareSend, uploading };
+  return {
+    items,
+    addFiles,
+    remove,
+    retry,
+    prepareSend,
+    uploading,
+    duplicateNotice,
+  };
 }
 
 function guessCategory(file: File): Attachment['category'] {

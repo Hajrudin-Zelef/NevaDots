@@ -62,6 +62,11 @@ import { TaskRow } from './TaskPresentation';
 import { TaskActions } from './TaskActions';
 import { initialsOf } from './initials';
 import { createSubmitGuard } from './submit-guard';
+import { usePromptDraft } from './prompt-draft';
+import {
+  loadPromptHistory,
+  pushPromptHistory,
+} from './prompt-history';
 import {
   conversationHash,
   isRestoreClosedTabKey,
@@ -431,7 +436,14 @@ export function App() {
     setPane(true);
   }, []);
   const [capture, setCapture] = useState<Result>();
-  const [prompt, setPrompt] = useState('');
+  // Lot 5, étape 2 : brouillon persisté (`nevadots:draft:home:<dotId>`),
+  // rechargé quand le Dot actif change.
+  const {
+    draft: prompt,
+    draftRef: promptRef,
+    setDraft: setPrompt,
+    clearDraft: clearPrompt,
+  } = usePromptDraft(`home:${selectedDot}`);
   const [promptSource, setPromptSource] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
@@ -567,26 +579,26 @@ export function App() {
     setPendingPrompt(undefined);
     setPendingVoice(false);
   };
-  const newConversation = async (text?: string) => {
+  const newConversation = async (text?: string): Promise<boolean> => {
     if (text === undefined) {
       // Garde page-sale D'ABORD : si l'utilisateur annule, la page vierge
       // n'est pas ouverte et l'onglet actif ne bouge pas.
-      if (!setView('chat')) return;
+      if (!setView('chat')) return false;
       tabs.deactivate();
       setPendingPrompt(undefined);
       setPendingVoice(false);
-      setPrompt('');
+      clearPrompt();
       setPromptSource('');
       setSourceOpen(false);
       setComposerToolsOpen(false);
       setPane(false);
       setMobile(false);
-      return;
+      return true;
     }
-    if (!dot || !configured || busy) return;
+    if (!dot || !configured || busy) return false;
     // H5 : `busy` est stale entre deux appels rapprochés et `prepareSend`
     // est async — le garde synchrone bloque le second appel.
-    if (!startingGuard.current.tryAcquire()) return;
+    if (!startingGuard.current.tryAcquire()) return false;
     setBusy(true);
     setError('');
     try {
@@ -598,21 +610,104 @@ export function App() {
       tabs.openTab(next.id);
       setPendingPrompt(text.trim() ? text : undefined);
       setPendingVoice(text === '');
-      setPrompt('');
+      clearPrompt();
       setPromptSource('');
       setSourceOpen(false);
       setComposerToolsOpen(false);
       setView('chat');
       setMobile(false);
+      return true;
     } catch (e) {
       setError(
         e instanceof Error ? e.message : 'Could not create the conversation.',
       );
+      return false;
     } finally {
       setBusy(false);
       startingGuard.current.release();
     }
   };
+  /** Envoi du composer d'accueil (Ctrl+Entrée ou Alt+Entrée : pas de
+   *  tour en cours ici, les deux démarrent la conversation). L'historique
+   *  n'est poussé qu'après création réussie ; en cas d'échec le brouillon
+   *  est conservé tel quel. */
+  const submitHomePrompt = () => {
+    void (async () => {
+      try {
+        const raw = promptRef.current;
+        const attachmentNames = attachments.items.map((a) => a.name);
+        const text = await attachments.prepareSend(raw);
+        const ok = await newConversation(
+          `${promptSource.trim() ? `From ${promptSource.trim()}:\n\n` : ''}${text}`,
+        );
+        if (ok && raw.trim()) {
+          pushPromptHistory({
+            prompt: raw,
+            mode: 'home',
+            ...(attachmentNames.length
+              ? { attachments: attachmentNames }
+              : {}),
+          });
+        }
+      } catch {
+        // prepareSend a déjà signalé l'échec (fichiers en erreur).
+      }
+    })();
+  };
+  // --- Historique des prompts (Lot 5, étape 5), même règle que Chat. ---
+  const [homeHistoryIndex, setHomeHistoryIndex] = useState<number | null>(
+    null,
+  );
+  const homeHistoryBaseRef = useRef('');
+  const homeHistoryPrev = () => {
+    const entries = loadPromptHistory();
+    if (!entries.length) return;
+    if (homeHistoryIndex === null)
+      homeHistoryBaseRef.current = promptRef.current;
+    const next = Math.min((homeHistoryIndex ?? -1) + 1, entries.length - 1);
+    setHomeHistoryIndex(next);
+    setPrompt(entries[next].prompt);
+  };
+  const homeHistoryNext = () => {
+    if (homeHistoryIndex === null) return;
+    const entries = loadPromptHistory();
+    const next = homeHistoryIndex - 1;
+    if (next < 0) {
+      setHomeHistoryIndex(null);
+      setPrompt(homeHistoryBaseRef.current);
+    } else {
+      setHomeHistoryIndex(next);
+      setPrompt(entries[next].prompt);
+    }
+  };
+  const homeHistorySelect = (value: string) => {
+    setHomeHistoryIndex(null);
+    setPrompt(value);
+  };
+  const onPromptChange = (value: string) => {
+    setHomeHistoryIndex(null);
+    setPrompt(value);
+  };
+  /** Mod+. / Maj+Mod+. : cycle entre les Dots (chip agent, étape 4). */
+  const cycleHomeDot = (direction: 1 | -1) => {
+    const list = workspace?.dots ?? [];
+    if (list.length < 2 || !dot) return;
+    const index = list.findIndex((candidate) => candidate.id === dot.id);
+    const next = list[(index + direction + list.length) % list.length];
+    if (next && next.id !== dot.id) chooseDot(next);
+  };
+  const homeAgentChip =
+    (workspace?.dots.length ?? 0) > 1 && dot ? (
+      <button
+        type="button"
+        className="agent-chip"
+        aria-label={`Agent actif : ${dot.name} — changer d'agent (Mod+.)`}
+        title={`Agent : ${dot.name} — Mod+. pour changer`}
+        onClick={() => cycleHomeDot(1)}
+      >
+        {dot.name}
+      </button>
+    ) : undefined;
   /** Renommage (Lot 2) : mise à jour optimiste (titre + `updatedAt` :
    * la conversation remonte en tête de liste), PATCH avec timeout 15 s,
    * puis `refresh()` ; en cas d'échec, `refresh()` restaure le titre et
@@ -1363,7 +1458,7 @@ export function App() {
                   </div>
                   <Composer
                     text={prompt}
-                    onTextChange={setPrompt}
+                    onTextChange={onPromptChange}
                     placeholder={
                       configured
                         ? `Demander à ${dot.name}`
@@ -1372,18 +1467,7 @@ export function App() {
                     inputDisabled={!configured}
                     inputAriaLabel="Démarrer une conversation"
                     canSubmitOnEnter={configured && !busy && !!prompt.trim()}
-                    onSubmit={() => {
-                      void (async () => {
-                        try {
-                          const text = await attachments.prepareSend(prompt);
-                          await newConversation(
-                            `${promptSource.trim() ? `From ${promptSource.trim()}:\n\n` : ''}${text}`,
-                          );
-                        } catch {
-                          // prepareSend a déjà signalé l'échec (fichiers en erreur).
-                        }
-                      })();
-                    }}
+                    onSubmit={submitHomePrompt}
                     submitDisabled={
                       !configured ||
                       busy ||
@@ -1482,6 +1566,25 @@ export function App() {
                         attachments={attachments}
                       />
                     }
+                    agentChip={homeAgentChip}
+                    historyEntries={loadPromptHistory()}
+                    onHistorySelect={homeHistorySelect}
+                    onHistoryPrev={homeHistoryPrev}
+                    onHistoryNext={homeHistoryNext}
+                    onQueueFront={submitHomePrompt}
+                    onOpenAttachments={() =>
+                      attachmentBar.current?.openFilesPicker()
+                    }
+                    onCycleDot={cycleHomeDot}
+                    onToggleSourceShortcut={() =>
+                      setSourceOpen((open) => !open)
+                    }
+                    onToggleMenuShortcut={() =>
+                      setComposerToolsOpen((open) => !open)
+                    }
+                    onEscape={() => {
+                      if (composerToolsOpen) setComposerToolsOpen(false);
+                    }}
                   />
                 </div>
               )}

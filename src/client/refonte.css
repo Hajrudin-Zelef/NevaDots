@@ -179,6 +179,16 @@
 .chat-compose-row textarea::placeholder {
   color: var(--nd-text-secondary);
 }
+/* Lot 5, étape 1 : la rangée d'outils est flex dès la base (plus
+   seulement sous `.template-app`) ; conteneur de requête pour la chip
+   modèle (`max-width: 60cqw`). */
+.chat-compose-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  container-type: inline-size;
+}
 .chat-compose-row .icon-button {
   color: var(--nd-text-secondary);
 }
@@ -1878,7 +1888,7 @@ textarea::placeholder {
   flex: 1 1 100%;
   min-height: 30px;
   padding: 6px 8px 2px;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .template-app .chat-compose-tools {
@@ -1891,7 +1901,7 @@ textarea::placeholder {
 .template-app .chat-compose-tools .model-select {
   height: 28px;
   min-width: 0;
-  max-width: 190px;
+  max-width: 60cqw;
   padding: 0 20px 0 8px;
   border-color: var(--nd-border);
   border-radius: 6px;
@@ -1899,13 +1909,18 @@ textarea::placeholder {
   color: var(--nd-text-secondary);
   font-size: 11px;
 }
+/* Lot 5, étape 1 : le select de raisonnement a le même gabarit 28 px
+   que la chip modèle. */
+.template-app .chat-compose-tools .reasoning-select {
+  height: 28px;
+}
 .template-app .chat-compose-row .send-button {
-  width: 31px;
-  height: 31px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: 50%;
   background: var(--nd-accent);
-  color: white;
+  color: var(--nd-text-inverse);
 }
 .template-app .chat-compose-row .send-button.send-labeled {
   width: auto;
@@ -1921,19 +1936,175 @@ textarea::placeholder {
 .template-app .chat-compose-row .send-button:hover:not(:disabled) {
   background: var(--nd-accent-dark);
 }
-/* Stop : pastille rouge distincte de l'envoi (même gabarit, autre couleur). */
-.template-app .chat-compose-row .send-button.stop {
-  background: #dc2626;
-  color: #fff;
+/* Lot 5, étape 1 : le rouge Stop sort du scope `.template-app` vers la
+   base (même pastille rouge partout, tokens `--nd-danger*`). */
+.chat-compose-row .send-button.stop {
+  background: var(--nd-danger);
+  color: var(--nd-text-inverse);
 }
-.template-app .chat-compose-row .send-button.stop:hover:not(:disabled) {
-  background: #b91c1c;
+.chat-compose-row .send-button.stop:hover:not(:disabled) {
+  background: var(--nd-danger-dark);
 }
 .template-app .chat-compose-note {
   padding-top: 5px;
   color: var(--nd-text-secondary);
   font-size: 12px;
   text-align: center;
+}
+/* --- Lot 5 : composer V1 --- */
+/* Rangée au-dessus du textarea : carte de citation + pièces jointes. */
+.composer-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+.composer-extras .file-cards {
+  padding-top: 0;
+}
+/* Chip agent (étape 4) : avant la chip modèle, 28 px, max 220 px. */
+.agent-chip {
+  flex-shrink: 0;
+  height: 28px;
+  max-width: 220px;
+  padding: 0 10px;
+  border: 1px solid var(--nd-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.agent-chip:hover {
+  color: var(--nd-text);
+  background: var(--nd-bg-hover);
+}
+/* Chip modèle en chargement (étape 4) : inerte, même gabarit que la chip. */
+.model-selector-loading {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  max-width: 60cqw;
+  padding: 0 8px;
+  border: 1px solid var(--nd-border);
+  border-radius: 6px;
+  color: var(--nd-text-secondary);
+  font-size: 11px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+/* Carte de citation structurée (étape 6). */
+.quote-card {
+  flex: 1 1 100%;
+  border: 1px solid var(--nd-border);
+  border-left: 3px solid var(--nd-accent);
+  border-radius: 8px;
+  background: var(--nd-bg-input);
+  padding: 8px 10px;
+}
+.quote-card blockquote {
+  margin: 0 0 6px;
+  color: var(--nd-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.quote-card-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.quote-card-row input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--nd-text);
+  font-size: 13px;
+  padding: 4px 2px;
+}
+.quote-card-row input::placeholder {
+  color: var(--nd-text-secondary);
+}
+/* Liste d'historique des prompts (Maj+↑, étape 5). */
+.composer-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--nd-border);
+  border-radius: 10px;
+  background: var(--nd-bg-input);
+  padding: 4px;
+  margin-bottom: 6px;
+}
+.composer-history-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--nd-text);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.composer-history-item:hover {
+  background: var(--nd-bg-hover);
+}
+/* Toast « doublon » (étape 7). */
+.attachment-toast {
+  flex: 1 1 100%;
+  border: 1px solid var(--nd-border);
+  border-radius: 8px;
+  background: var(--nd-bg-hover);
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+  padding: 6px 10px;
+}
+/* Bulles en file (étape 3) : ✕ pour retirer, clic pour charger en éditeur. */
+.chat-bubble.user.pending {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.chat-bubble.user.pending .queued-remove {
+  flex: none;
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--nd-text-secondary);
+  cursor: pointer;
+}
+.chat-bubble.user.pending .queued-remove:hover {
+  color: var(--nd-danger);
+  background: var(--nd-bg-hover);
+}
+.chat-bubble.user.pending .queued-load {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
 }
 .template-app .thinking {
   align-self: center;
@@ -4533,8 +4704,8 @@ textarea::placeholder {
   background: var(--nd-bg-hover);
 }
 .file-card-thumb {
-  width: 34px;
-  height: 34px;
+  width: 58px;
+  height: 46px;
   object-fit: cover;
   border-radius: 6px;
   flex: none;
@@ -4542,8 +4713,8 @@ textarea::placeholder {
 .file-card-icon {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 58px;
+  height: 46px;
   border-radius: 6px;
   flex: none;
   color: var(--nd-text-secondary);

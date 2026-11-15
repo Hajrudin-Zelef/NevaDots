@@ -70,6 +70,11 @@ export const AttachmentBar = forwardRef<
           ))}
         </div>
       )}
+      {attachments.duplicateNotice && (
+        <div className="attachment-toast" role="status">
+          Déjà joint : {attachments.duplicateNotice.join(', ')}
+        </div>
+      )}
       {preview && (
         <FilePreviewModal
           attachment={preview}

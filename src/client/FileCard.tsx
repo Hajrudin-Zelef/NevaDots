@@ -66,7 +66,10 @@ export function FileCard({
           <span className="file-card-size">
             {isUploading ? (
               <span className="file-card-status">
-                <ThinkingOrb kind="working" label="Envoi en cours" /> Envoi…
+                <ThinkingOrb kind="working" label="Envoi en cours" />{' '}
+                {attachment.progress != null
+                  ? `Envoi… ${attachment.progress} %`
+                  : 'Envoi…'}
               </span>
             ) : isError ? (
               <span className="file-card-status error">Échec de l'envoi</span>

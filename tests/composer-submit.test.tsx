@@ -14,6 +14,7 @@ function renderComposer(
     onSet: () => void;
     levels?: string[] | null;
   },
+  extras?: { agentChip?: ReactNode; quoteCard?: ReactNode },
 ) {
   const nothing: ReactNode = null;
   let renderer: ReactTestRenderer;
@@ -51,6 +52,8 @@ function renderComposer(
         onSetReasoningEffort: reasoning?.onSet ?? (() => {}),
         reasoningLevels: reasoning?.levels,
         note: nothing,
+        agentChip: extras?.agentChip,
+        quoteCard: extras?.quoteCard,
       }),
     );
   });
@@ -176,4 +179,44 @@ it('option non native grisée avec motif au survol', () => {
   expect(String(max.props.title)).toContain('non supporté nativement');
   const low = options.find((o) => o.props.value === 'low')!;
   expect(low.props.disabled).toBeFalsy();
+});
+
+it('chip modèle en chargement : inerte au lieu de non rendue (providers vides)', () => {
+  const renderer = renderComposer(undefined);
+  const loading = renderer.root.findByProps({
+    'aria-label': 'Modèles en cours de chargement',
+  });
+  expect(loading.type).toBe('span');
+  expect(loading.props.role).toBe('status');
+  // Inerte : pas un bouton, pas cliquable.
+  expect(renderer.root.findAllByType('button')).not.toContainEqual(loading);
+});
+
+it('chip agent rendue avant la chip modèle quand fournie', () => {
+  const renderer = renderComposer(undefined, false, undefined, undefined, {
+    agentChip: createElement(
+      'button',
+      {
+        type: 'button',
+        className: 'agent-chip',
+        'aria-label': 'Agent actif : Leo',
+      },
+      'Leo',
+    ),
+  });
+  const chip = renderer.root.findByProps({ 'aria-label': 'Agent actif : Leo' });
+  expect(chip.type).toBe('button');
+  expect(chip.children).toContain('Leo');
+});
+
+it('carte de citation rendue au-dessus du textarea quand fournie', () => {
+  const renderer = renderComposer(undefined, false, undefined, undefined, {
+    quoteCard: createElement(
+      'div',
+      { className: 'quote-card' },
+      createElement('blockquote', null, 'texte cité'),
+    ),
+  });
+  const card = renderer.root.findByProps({ className: 'quote-card' });
+  expect(card.findByType('blockquote').children).toContain('texte cité');
 });

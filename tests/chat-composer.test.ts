@@ -1,5 +1,11 @@
 import { expect, it, vi } from 'vitest';
 import {
+  createQueuedMessage,
+  dequeueQueued,
+  enqueueQueued,
+  enqueueQueuedFront,
+  removeQueued,
+  routeComposerKeyDown,
   shouldSubmitComposerOnKeyDown,
   submitComposerOnEnter,
 } from '../src/client/chat-composer';
@@ -101,4 +107,104 @@ it('n’envoie pas si le composer est vide ou occupé', () => {
   submitComposerOnEnter(event, false);
   expect(preventDefault).toHaveBeenCalled();
   expect(requestSubmit).not.toHaveBeenCalled();
+});
+
+// --- Routeur de raccourcis (Lot 5, étape 4) : la règle d'envoi reste
+// verrouillée (Ctrl+Entrée envoie, Entrée seule = saut de ligne). ---
+function routeEvent(init: {
+  key?: string;
+  shiftKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+  isComposing?: boolean;
+  keyCode?: number;
+} = {}) {
+  return {
+    key: init.key ?? 'Enter',
+    shiftKey: init.shiftKey ?? false,
+    ctrlKey: init.ctrlKey ?? false,
+    metaKey: init.metaKey ?? false,
+    altKey: init.altKey ?? false,
+    nativeEvent: {
+      isComposing: init.isComposing ?? false,
+      keyCode: init.keyCode,
+    },
+  };
+}
+
+it('routeur : Ctrl+Entrée → submit, Entrée seule → null', () => {
+  expect(routeComposerKeyDown(routeEvent({ ctrlKey: true }))).toBe('submit');
+  expect(routeComposerKeyDown(routeEvent({ metaKey: true }))).toBe('submit');
+  expect(routeComposerKeyDown(routeEvent())).toBeNull();
+  expect(routeComposerKeyDown(routeEvent({ shiftKey: true }))).toBeNull();
+});
+
+it('routeur : Alt+Entrée → queue-front (tête de file)', () => {
+  expect(routeComposerKeyDown(routeEvent({ altKey: true }))).toBe(
+    'queue-front',
+  );
+});
+
+it('routeur : Mod+U → open-attachments, Mod+\' → toggle-source', () => {
+  expect(routeComposerKeyDown(routeEvent({ key: 'u', ctrlKey: true }))).toBe(
+    'open-attachments',
+  );
+  expect(routeComposerKeyDown(routeEvent({ key: 'U', metaKey: true }))).toBe(
+    'open-attachments',
+  );
+  expect(routeComposerKeyDown(routeEvent({ key: "'", ctrlKey: true }))).toBe(
+    'toggle-source',
+  );
+});
+
+it('routeur : Mod+. → cycle-dot, Maj+Mod+. → cycle-dot-reverse', () => {
+  expect(routeComposerKeyDown(routeEvent({ key: '.', ctrlKey: true }))).toBe(
+    'cycle-dot',
+  );
+  expect(
+    routeComposerKeyDown(
+      routeEvent({ key: '.', metaKey: true, shiftKey: true }),
+    ),
+  ).toBe('cycle-dot-reverse');
+});
+
+it('routeur : Ctrl+G → toggle-menu, Échap → cancel', () => {
+  expect(routeComposerKeyDown(routeEvent({ key: 'g', ctrlKey: true }))).toBe(
+    'toggle-menu',
+  );
+  expect(routeComposerKeyDown(routeEvent({ key: 'Escape' }))).toBe('cancel');
+  // ⌘+G n'est pas le raccourci menu (Ctrl+G littéral, cf. brief).
+  expect(routeComposerKeyDown(routeEvent({ key: 'g', metaKey: true }))).toBe(
+    null,
+  );
+});
+
+it('routeur : rien pendant la composition IME', () => {
+  expect(
+    routeComposerKeyDown(routeEvent({ ctrlKey: true, isComposing: true })),
+  ).toBeNull();
+  expect(
+    routeComposerKeyDown(routeEvent({ ctrlKey: true, keyCode: 229 })),
+  ).toBeNull();
+});
+
+// --- File en objets (Lot 5, étape 3) ---
+it('file : enqueue / dequeue / remove, ids stables et uniques', () => {
+  const first = createQueuedMessage('a');
+  const second = createQueuedMessage('b');
+  expect(first.id).not.toBe(second.id);
+  expect(first.text).toBe('a');
+  let queue = enqueueQueued([], 'a');
+  queue = enqueueQueued(queue, 'b');
+  expect(queue.map((item) => item.text)).toEqual(['a', 'b']);
+  queue = enqueueQueuedFront(queue, 'tête');
+  expect(queue.map((item) => item.text)).toEqual(['tête', 'a', 'b']);
+  const { next, rest } = dequeueQueued(queue);
+  expect(next?.text).toBe('tête');
+  expect(rest.map((item) => item.text)).toEqual(['a', 'b']);
+  expect(removeQueued(rest, rest[0].id).map((item) => item.text)).toEqual([
+    'b',
+  ]);
+  expect(dequeueQueued([]).next).toBeUndefined();
 });

@@ -188,3 +188,25 @@ it('double Entrée rapprochée → un seul envoi (sendingRef)', async () => {
   expect(addMessage).toHaveBeenCalledTimes(1);
   expect(runAgent).toHaveBeenCalledTimes(1);
 });
+
+it('échec du tour → brouillon restauré, entrée d’historique retirée', async () => {
+  runAgent.mockResolvedValue({ newMessages: [] });
+  const root = await mountChat();
+  await typeDraft(root, 'à restaurer');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  // addMessage a bien eu lieu (un seul envoi), mais le tour a échoué
+  // (aucune réponse) : le brouillon revient dans le composer.
+  expect(addMessage).toHaveBeenCalledTimes(1);
+  const composer = root.root.findByType(Composer);
+  expect(composer.props.text).toBe('à restaurer');
+  const historyRaw = (
+    globalThis as unknown as { localStorage: { getItem: (k: string) => string | null } }
+  ).localStorage.getItem('nevadots:prompt-history');
+  const history = historyRaw ? (JSON.parse(historyRaw) as unknown[]) : [];
+  expect(history).toHaveLength(0);
+});

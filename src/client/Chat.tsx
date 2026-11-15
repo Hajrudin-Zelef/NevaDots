@@ -26,6 +26,7 @@ import {
   Phone,
   PhoneOff,
   Square,
+  X,
 } from 'lucide-react';
 import {
   ComputerToolCard,
@@ -74,6 +75,20 @@ import { ComposerMenu } from './ComposerMenu';
 import { useVoice } from './useVoice';
 import { CallView } from './CallView';
 import { useComputerActivity } from './useComputerActivity';
+import { usePromptDraft } from './prompt-draft';
+import {
+  loadPromptHistory,
+  pushPromptHistory,
+  removePromptHistoryEntry,
+  type PromptHistoryEntry,
+} from './prompt-history';
+import {
+  dequeueQueued,
+  enqueueQueued,
+  enqueueQueuedFront,
+  removeQueued,
+  type QueuedMessage,
+} from './chat-composer';
 
 export function Chat({
   thread,
@@ -177,20 +192,53 @@ export function Chat({
       active = false;
     };
   }, [thread.id, contextAttempt]);
-  const [draft, setDraft] = useState('');
+  // Lot 5, étape 2 : brouillon persisté (`nevadots:draft:thread:<id>`),
+  // chargé au montage, sauvé à chaque frappe, vidé après envoi réussi.
+  const {
+    draft,
+    draftRef,
+    setDraft,
+    clearDraft,
+    restoreDraft,
+  } = usePromptDraft(`thread:${thread.id}`);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  /** Citation structurée (Lot 5, étape 6) : carte au-dessus du textarea,
+   *  avec son champ commentaire — remplace le préfixe `> citation`. */
+  const [quote, setQuote] = useState<{ text: string; comment: string } | null>(
+    null,
+  );
   /** Cite une sélection (« Répondre ») comme contexte du prochain message. */
   const quoteSelection = (text: string) => {
-    const quoted = text
-      .split('\n')
-      .map((line) => `> ${line}`)
-      .join('\n');
-    setDraft((current) =>
-      current ? `${quoted}\n\n${current}` : `${quoted}\n\n`,
-    );
+    setQuote({ text, comment: '' });
     composerInputRef.current?.focus();
   };
-  const [queued, setQueued] = useState<string[]>([]);
+  // Lot 5, étape 3 : file en objets `{ id, text }` (même ordre, même
+  // sémantique d'envoi — l'id stable permet ✕ / chargement en éditeur).
+  const [queued, setQueued] = useState<QueuedMessage[]>([]);
+  /** Chargement d'un message en file dans l'éditeur (Échap annule). */
+  const [editingQueued, setEditingQueued] = useState<{
+    id: string;
+    text: string;
+    previousDraft: string;
+  } | null>(null);
+  const loadQueued = (item: QueuedMessage) => {
+    setEditingQueued({
+      id: item.id,
+      text: item.text,
+      previousDraft: draftRef.current,
+    });
+    setQueued((current) => removeQueued(current, item.id));
+    setDraft(item.text);
+    composerInputRef.current?.focus();
+  };
+  const cancelQueuedEdit = (): boolean => {
+    if (!editingQueued) return false;
+    const { id, text, previousDraft } = editingQueued;
+    setEditingQueued(null);
+    setDraft(previousDraft);
+    setQueued((current) => [{ id, text }, ...current]);
+    return true;
+  };
   const attachments = useAttachments(`thread:${thread.id}`);
   const attachmentBar = useRef<AttachmentBarHandle>(null);
   const [stageOpen, setStageOpen] = useState(false);
@@ -644,7 +692,7 @@ export function Chat({
       active = false;
     };
   }, [agent, copilotkit, isReady]);
-  const executeTurn = async () => {
+  const executeTurn = async (): Promise<boolean> => {
     setError('');
     runError.current = '';
     stopRequestedRef.current = false;
@@ -664,6 +712,7 @@ export function Chat({
             'Le modèle n’a produit aucune réponse. Réessaie, ou choisis un autre modèle dans le sélecteur.',
         );
       onSaved();
+      return true;
     } catch (e) {
       setError(
         runError.current ||
@@ -671,22 +720,49 @@ export function Chat({
             ? e.message
             : 'Le tour a échoué. Votre conversation reste enregistrée.'),
       );
+      return false;
     } finally {
       setRunning(false);
     }
   };
-  const runPrompt = async (text: string) => {
+  const runPrompt = async (
+    text: string,
+    meta?: { attachments?: string[]; historyPrompt?: string },
+  ) => {
+    const sentDraft = draftRef.current;
+    const sentQuote = quote;
+    const historyEntry: PromptHistoryEntry = {
+      prompt: meta?.historyPrompt ?? text,
+      mode: 'chat',
+      ...(meta?.attachments?.length
+        ? { attachments: meta.attachments }
+        : {}),
+    };
     agent.addMessage({
       id: crypto.randomUUID(),
       role: 'user',
       content: contextualMessage(text, pageContext),
     });
-    setDraft('');
+    // Historique poussé à l'envoi (retiré en cas d'échec, ci-dessous).
+    pushPromptHistory(historyEntry);
+    // Le brouillon n'est vidé qu'après `addMessage` réussi ; la carte de
+    // citation est retirée avec lui. Un message chargé depuis la file est
+    // consommé : Échap ne doit plus pouvoir le remettre en file.
+    clearDraft();
+    setEditingQueued(null);
+    setQuote(null);
     setSource('');
     setSourceOpen(false);
     // L'envoi est un geste explicite : il ré-attache le suivi en bas.
     resumeFollow();
-    await executeTurn();
+    const ok = await executeTurn();
+    if (!ok) {
+      // Échec du tour : l'entrée d'historique est retirée et le brouillon
+      // restauré si le composer n'a pas changé depuis l'envoi.
+      removePromptHistoryEntry(historyEntry);
+      if (draftRef.current === '') restoreDraft(sentDraft);
+      if (quote === null && sentQuote) setQuote(sentQuote);
+    }
   };
   /** Régénère la dernière réponse : tronque au dernier message user
    *  (le snapshot serveur est écrasé au prochain run — pas de fantôme). */
@@ -704,30 +780,140 @@ export function Chat({
     resumeFollow();
     void executeTurn();
   };
-  const send = (text: string) => {
+  const send = (text: string, meta?: { attachments?: string[]; historyPrompt?: string }) => {
     if (!text.trim() || !loaded || !contextReady || paused) return;
     stopAllSpeech();
     // While a turn runs, hold the message and start it as soon as the turn ends.
     if (running) {
-      setQueued((current) => [...current, text.trim()]);
-      setDraft('');
+      setQueued((current) => enqueueQueued(current, text.trim()));
+      clearDraft();
       setSource('');
       setSourceOpen(false);
       // La bulle en file apparaît en bas : on y descend tout de suite.
       resumeFollow();
       return;
     }
-    void runPrompt(text);
+    void runPrompt(text, meta);
   };
-  const queuedRef = useRef<string[]>([]);
+  const queuedRef = useRef<QueuedMessage[]>([]);
   queuedRef.current = queued;
   useEffect(() => {
     if (running || paused || !loaded || !contextReady) return;
     if (!queuedRef.current.length) return;
-    const next = queuedRef.current[0];
-    setQueued((current) => current.slice(1));
-    void runPrompt(next);
+    const { next, rest } = dequeueQueued(queuedRef.current);
+    if (!next) return;
+    setQueued(rest);
+    void runPrompt(next.text);
   }, [running, queued, loaded, contextReady, paused]);
+  // --- Historique des prompts (Lot 5, étape 5) : ↑/↓ quand le curseur
+  // est sur la première/dernière ligne, Maj+↑ pour la liste. `null` =
+  // pas de navigation en cours ; le brouillon d'origine est restauré en
+  // redescendant sous la première entrée.
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const historyBaseRef = useRef('');
+  const historyPrev = () => {
+    const entries = loadPromptHistory();
+    if (!entries.length) return;
+    if (historyIndex === null) historyBaseRef.current = draftRef.current;
+    const next = Math.min((historyIndex ?? -1) + 1, entries.length - 1);
+    setHistoryIndex(next);
+    setDraft(entries[next].prompt);
+  };
+  const historyNext = () => {
+    if (historyIndex === null) return;
+    const entries = loadPromptHistory();
+    const next = historyIndex - 1;
+    if (next < 0) {
+      setHistoryIndex(null);
+      setDraft(historyBaseRef.current);
+    } else {
+      setHistoryIndex(next);
+      setDraft(entries[next].prompt);
+    }
+  };
+  const historySelect = (prompt: string) => {
+    setHistoryIndex(null);
+    setDraft(prompt);
+    composerInputRef.current?.focus();
+  };
+  /** La frappe dans le composer annule la navigation d'historique. */
+  const onDraftChange = (value: string) => {
+    setHistoryIndex(null);
+    setDraft(value);
+  };
+  /** Alt+Entrée : tête de file pendant un tour, envoi sinon (`steer`
+   *  hors périmètre — la file ne fait que prioriser). */
+  const queueFront = () => {
+    const text = draftRef.current.trim();
+    if (!text || !loaded || !contextReady || paused) return;
+    stopAllSpeech();
+    if (running) {
+      setQueued((current) => enqueueQueuedFront(current, text));
+      clearDraft();
+      setSource('');
+      setSourceOpen(false);
+      resumeFollow();
+      return;
+    }
+    void send(text);
+  };
+  /** Mod+. / Maj+Mod+. : cycle entre les Dots (chip agent, étape 4). */
+  const cycleDot = (direction: 1 | -1) => {
+    const list = dots ?? [dot];
+    if (list.length < 2 || !onChooseDot) return;
+    const index = list.findIndex((candidate) => candidate.id === dot.id);
+    const next = list[(index + direction + list.length) % list.length];
+    if (next && next.id !== dot.id) onChooseDot(next);
+  };
+  /** Échap : annule le chargement en file, sinon ferme le menu, sinon
+   *  retire la carte de citation. */
+  const handleEscape = () => {
+    if (cancelQueuedEdit()) return;
+    if (composerToolsOpen) {
+      setComposerToolsOpen(false);
+      return;
+    }
+    if (quote) setQuote(null);
+  };
+  /** Chip agent (étape 4) : avant la chip modèle, seulement si plusieurs
+   *  Dots — un clic cycle comme Mod+. */
+  const agentChip =
+    (dots?.length ?? 0) > 1 ? (
+      <button
+        type="button"
+        className="agent-chip"
+        aria-label={`Agent actif : ${dot.name} — changer d'agent (Mod+.)`}
+        title={`Agent : ${dot.name} — Mod+. pour changer`}
+        onClick={() => cycleDot(1)}
+      >
+        {dot.name}
+      </button>
+    ) : undefined;
+  /** Carte de citation (étape 6) : texte cité + champ commentaire. */
+  const quoteCard = quote ? (
+    <div className="quote-card">
+      <blockquote>{quote.text}</blockquote>
+      <div className="quote-card-row">
+        <input
+          aria-label="Commentaire sur la citation"
+          placeholder="Ajouter un commentaire…"
+          value={quote.comment}
+          onChange={(event) =>
+            setQuote({ text: quote.text, comment: event.target.value })
+          }
+        />
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Retirer la citation"
+          title="Retirer la citation"
+          onClick={() => setQuote(null)}
+        >
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  ) : undefined;
   useEffect(() => {
     if (loaded && contextReady && !paused && initialPrompt && !sent.current) {
       sent.current = true;
@@ -1097,9 +1283,29 @@ export function Chat({
             model: settings?.ttsModel ?? null,
           }}
         />
-        {queued.map((text, index) => (
-          <div className="chat-bubble user pending" key={`queued-${index}`}>
-            <UserMessageContent content={text} />
+        {queued.map((item) => (
+          <div className="chat-bubble user pending" key={item.id}>
+            <button
+              type="button"
+              className="queued-remove"
+              aria-label="Retirer de la file"
+              title="Retirer de la file"
+              onClick={(event) => {
+                event.stopPropagation();
+                setQueued((current) => removeQueued(current, item.id));
+              }}
+            >
+              <X size={14} />
+            </button>
+            <button
+              type="button"
+              className="queued-load"
+              aria-label="Charger ce message dans l'éditeur"
+              title="Cliquer pour modifier — Échap annule"
+              onClick={() => loadQueued(item)}
+            >
+              <UserMessageContent content={item.text} />
+            </button>
           </div>
         ))}
         {/* Reprise explicite du suivi : visible seulement quand le lecteur
@@ -1329,7 +1535,7 @@ export function Chat({
       </div>
       <Composer
         text={draft}
-        onTextChange={setDraft}
+        onTextChange={onDraftChange}
         textareaRef={composerInputRef}
         placeholder={`Demander à ${dot.name}`}
         inputAriaLabel={`Discuter avec ${dot.name}`}
@@ -1339,8 +1545,23 @@ export function Chat({
           sendingRef.current = true;
           void (async () => {
             try {
-              const text = await attachments.prepareSend(draft);
-              void send(`${source ? `From ${source}:\n\n` : ''}${text}`);
+              // Citation structurée : le contenu envoyé = commentaire +
+              // référence citée ; l'historique retient le texte utilisateur
+              // (sans les blocs de pièces jointes injectés).
+              const quoted = quote
+                ? quote.comment.trim()
+                  ? `${quote.comment.trim()}\n\n[Citation : ${quote.text}]`
+                  : `[Citation : ${quote.text}]`
+                : draft;
+              const attachmentNames = attachments.items.map((a) => a.name);
+              const text = await attachments.prepareSend(quoted);
+              void send(
+                `${source ? `From ${source}:\n\n` : ''}${text}`,
+                {
+                  attachments: attachmentNames,
+                  historyPrompt: quoted,
+                },
+              );
             } catch (error) {
               // prepareSend a échoué (timeout, upload, rattachement) :
               // erreur visible, brouillon conservé.
@@ -1457,6 +1678,18 @@ export function Chat({
         attachmentCards={
           <AttachmentBar ref={attachmentBar} attachments={attachments} />
         }
+        agentChip={agentChip}
+        quoteCard={quoteCard}
+        historyEntries={loadPromptHistory()}
+        onHistorySelect={historySelect}
+        onHistoryPrev={historyPrev}
+        onHistoryNext={historyNext}
+        onQueueFront={queueFront}
+        onOpenAttachments={() => attachmentBar.current?.openFilesPicker()}
+        onCycleDot={cycleDot}
+        onToggleSourceShortcut={() => setSourceOpen((open) => !open)}
+        onToggleMenuShortcut={() => setComposerToolsOpen((open) => !open)}
+        onEscape={handleEscape}
       />
       <InterventionStage
         open={stageOpen}
