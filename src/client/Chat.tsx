@@ -207,6 +207,12 @@ export function Chat({
   const [quote, setQuote] = useState<{ text: string; comment: string } | null>(
     null,
   );
+  /** Miroir synchrone de `quote` : les fermetures async (`runPrompt`,
+   *  échec du tour) doivent lire la carte *courante*, pas la valeur
+   *  capturée à l'envoi — sinon la restauration ne peut jamais se
+   *  déclencher et une carte fraîche serait écrasée. */
+  const quoteRef = useRef<{ text: string; comment: string } | null>(null);
+  quoteRef.current = quote;
   /** Cite une sélection (« Répondre ») comme contexte du prochain message. */
   const quoteSelection = (text: string) => {
     setQuote({ text, comment: '' });
@@ -215,16 +221,17 @@ export function Chat({
   // Lot 5, étape 3 : file en objets `{ id, text }` (même ordre, même
   // sémantique d'envoi — l'id stable permet ✕ / chargement en éditeur).
   const [queued, setQueued] = useState<QueuedMessage[]>([]);
-  /** Chargement d'un message en file dans l'éditeur (Échap annule). */
+  /** Chargement d'un message en file dans l'éditeur (Échap annule).
+   *  L'élément entier est conservé (pas seulement `id`/`text`) pour que
+   *  l'annulation remette en file le message avec son snapshot
+   *  (`historyPrompt`, pièces jointes, citation) intact. */
   const [editingQueued, setEditingQueued] = useState<{
-    id: string;
-    text: string;
+    item: QueuedMessage;
     previousDraft: string;
   } | null>(null);
   const loadQueued = (item: QueuedMessage) => {
     setEditingQueued({
-      id: item.id,
-      text: item.text,
+      item,
       previousDraft: draftRef.current,
     });
     setQueued((current) => removeQueued(current, item.id));
@@ -233,10 +240,10 @@ export function Chat({
   };
   const cancelQueuedEdit = (): boolean => {
     if (!editingQueued) return false;
-    const { id, text, previousDraft } = editingQueued;
+    const { item, previousDraft } = editingQueued;
     setEditingQueued(null);
     setDraft(previousDraft);
-    setQueued((current) => [{ id, text }, ...current]);
+    setQueued((current) => [item, ...current]);
     return true;
   };
   const attachments = useAttachments(`thread:${thread.id}`);
@@ -727,10 +734,17 @@ export function Chat({
   };
   const runPrompt = async (
     text: string,
-    meta?: { attachments?: string[]; historyPrompt?: string },
+    meta?: {
+      attachments?: string[];
+      historyPrompt?: string;
+      quote?: { text: string; comment: string } | null;
+    },
   ) => {
     const sentDraft = draftRef.current;
-    const sentQuote = quote;
+    // Citation attachée à CE tour (snapshot pris à l'envoi / à la mise en
+    // file), pas la carte courante : un tour en file ne doit jamais
+    // effacer une carte posée après sa mise en file.
+    const sentQuote = meta?.quote ?? null;
     const historyEntry: PromptHistoryEntry = {
       prompt: meta?.historyPrompt ?? text,
       mode: 'chat',
@@ -738,19 +752,28 @@ export function Chat({
         ? { attachments: meta.attachments }
         : {}),
     };
+    // Une entrée sans texte utilisateur (citation seule, sans brouillon ni
+    // commentaire) n'a rien à rappeler : on ne la pousse pas.
+    const historyPushed = historyEntry.prompt.trim() !== '';
     agent.addMessage({
       id: crypto.randomUUID(),
       role: 'user',
       content: contextualMessage(text, pageContext),
     });
     // Historique poussé à l'envoi (retiré en cas d'échec, ci-dessous).
-    pushPromptHistory(historyEntry);
+    if (historyPushed) pushPromptHistory(historyEntry);
     // Le brouillon n'est vidé qu'après `addMessage` réussi ; la carte de
-    // citation est retirée avec lui. Un message chargé depuis la file est
-    // consommé : Échap ne doit plus pouvoir le remettre en file.
+    // citation attachée à ce tour est retirée avec lui — seulement si
+    // c'est toujours elle qui est affichée. Un message chargé depuis la
+    // file est consommé : Échap ne doit plus pouvoir le remettre en file.
     clearDraft();
     setEditingQueued(null);
-    setQuote(null);
+    if (
+      sentQuote &&
+      quoteRef.current?.text === sentQuote.text &&
+      quoteRef.current?.comment === sentQuote.comment
+    )
+      setQuote(null);
     setSource('');
     setSourceOpen(false);
     // L'envoi est un geste explicite : il ré-attache le suivi en bas.
@@ -758,10 +781,14 @@ export function Chat({
     const ok = await executeTurn();
     if (!ok) {
       // Échec du tour : l'entrée d'historique est retirée et le brouillon
-      // restauré si le composer n'a pas changé depuis l'envoi.
-      removePromptHistoryEntry(historyEntry);
+      // restauré si le composer n'a pas changé depuis l'envoi ; la carte
+      // de citation est restaurée sauf si une autre carte est ouverte
+      // entre-temps (comparaison sur l'état courant via `quoteRef`, pas
+      // sur la valeur capturée à l'envoi — l'ancien test `quote === null`
+      // ne pouvait jamais être vrai quand `sentQuote` existait).
+      if (historyPushed) removePromptHistoryEntry(historyEntry);
       if (draftRef.current === '') restoreDraft(sentDraft);
-      if (quote === null && sentQuote) setQuote(sentQuote);
+      if (sentQuote && !quoteRef.current) setQuote(sentQuote);
     }
   };
   /** Régénère la dernière réponse : tronque au dernier message user
@@ -780,12 +807,29 @@ export function Chat({
     resumeFollow();
     void executeTurn();
   };
-  const send = (text: string, meta?: { attachments?: string[]; historyPrompt?: string }) => {
+  const send = (
+    text: string,
+    meta?: {
+      attachments?: string[];
+      historyPrompt?: string;
+      quote?: { text: string; comment: string } | null;
+    },
+  ) => {
     if (!text.trim() || !loaded || !contextReady || paused) return;
     stopAllSpeech();
     // While a turn runs, hold the message and start it as soon as the turn ends.
     if (running) {
-      setQueued((current) => enqueueQueued(current, text.trim()));
+      // Le texte en file porte déjà le bloc `[Citation : …]` et les
+      // blocs de pièces jointes : on snapshotte le texte utilisateur et
+      // la citation avec lui, et la carte est consommée (sinon la même
+      // citation serait ré-appliquée au message suivant).
+      setQueued((current) => enqueueQueued(current, text.trim(), meta));
+      if (
+        meta?.quote &&
+        quoteRef.current?.text === meta.quote.text &&
+        quoteRef.current?.comment === meta.quote.comment
+      )
+        setQuote(null);
       clearDraft();
       setSource('');
       setSourceOpen(false);
@@ -803,7 +847,11 @@ export function Chat({
     const { next, rest } = dequeueQueued(queuedRef.current);
     if (!next) return;
     setQueued(rest);
-    void runPrompt(next.text);
+    void runPrompt(next.text, {
+      historyPrompt: next.historyPrompt,
+      attachments: next.attachments,
+      quote: next.quote,
+    });
   }, [running, queued, loaded, contextReady, paused]);
   // --- Historique des prompts (Lot 5, étape 5) : ↑/↓ quand le curseur
   // est sur la première/dernière ligne, Maj+↑ pour la liste. `null` =
@@ -1545,12 +1593,17 @@ export function Chat({
           sendingRef.current = true;
           void (async () => {
             try {
-              // Citation structurée : le contenu envoyé = commentaire +
-              // référence citée ; l'historique retient le texte utilisateur
-              // (sans les blocs de pièces jointes injectés).
+              // Citation structurée : le brouillon tapé est préservé —
+              // contenu envoyé = brouillon + commentaire + référence
+              // citée ; l'historique retient le texte utilisateur
+              // (brouillon + commentaire, sans le bloc de citation ni
+              // les blocs de pièces jointes injectés).
+              const userText = [draft.trim(), quote?.comment.trim()]
+                .filter(Boolean)
+                .join('\n\n');
               const quoted = quote
-                ? quote.comment.trim()
-                  ? `${quote.comment.trim()}\n\n[Citation : ${quote.text}]`
+                ? userText
+                  ? `${userText}\n\n[Citation : ${quote.text}]`
                   : `[Citation : ${quote.text}]`
                 : draft;
               const attachmentNames = attachments.items.map((a) => a.name);
@@ -1559,7 +1612,8 @@ export function Chat({
                 `${source ? `From ${source}:\n\n` : ''}${text}`,
                 {
                   attachments: attachmentNames,
-                  historyPrompt: quoted,
+                  historyPrompt: userText,
+                  quote: quote ?? undefined,
                 },
               );
             } catch (error) {

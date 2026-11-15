@@ -208,3 +208,21 @@ it('file : enqueue / dequeue / remove, ids stables et uniques', () => {
   ]);
   expect(dequeueQueued([]).next).toBeUndefined();
 });
+
+it('file : le snapshot (historique, pièces jointes, citation) voyage avec l’élément', () => {
+  const meta = {
+    historyPrompt: 'ma question\n\nmon commentaire',
+    attachments: ['doc.pdf'],
+    quote: { text: 'texte cité', comment: 'mon commentaire' },
+  };
+  const queue = enqueueQueued([], 'texte préparé [Citation : texte cité]', meta);
+  expect(queue[0].historyPrompt).toBe('ma question\n\nmon commentaire');
+  expect(queue[0].attachments).toEqual(['doc.pdf']);
+  expect(queue[0].quote).toEqual({ text: 'texte cité', comment: 'mon commentaire' });
+  const { next } = dequeueQueued(queue);
+  expect(next?.historyPrompt).toBe(meta.historyPrompt);
+  expect(next?.quote).toEqual(meta.quote);
+  // Sans meta : comportement historique, champs absents.
+  expect(createQueuedMessage('a').historyPrompt).toBeUndefined();
+  expect(createQueuedMessage('a').quote).toBeUndefined();
+});

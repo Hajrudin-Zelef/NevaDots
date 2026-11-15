@@ -114,6 +114,7 @@ vi.mock('thinking-orbs', () => ({
 }));
 
 import { Chat } from '../src/client/Chat';
+import { ChatTranscript } from '../src/client/ChatTranscript';
 import { Composer } from '../src/client/Composer';
 
 const roots: ReturnType<typeof create>[] = [];
@@ -121,6 +122,10 @@ afterEach(() => {
   while (roots.length) roots.pop()?.unmount();
   vi.clearAllMocks();
   runAgent.mockResolvedValue({ newMessages: [] });
+  // Chaque test repart d'un historique / de brouillons vides.
+  (
+    globalThis as unknown as { localStorage: { clear: () => void } }
+  ).localStorage.clear();
 });
 
 const dot = {
@@ -175,6 +180,47 @@ function submitForm(root: ReturnType<typeof create>) {
   form.props.onSubmit({ preventDefault: () => {} });
 }
 
+function readHistory(): { prompt: string; mode: string }[] {
+  const raw = (
+    globalThis as unknown as { localStorage: { getItem: (k: string) => string | null } }
+  ).localStorage.getItem('nevadots:prompt-history');
+  return raw ? (JSON.parse(raw) as { prompt: string; mode: string }[]) : [];
+}
+
+/** Simule « Répondre » sur une sélection : ouvre la carte de citation. */
+async function openQuote(root: ReturnType<typeof create>, text: string) {
+  await act(async () => {
+    root.root.findByType(ChatTranscript).props.onQuote?.(text);
+  });
+  await act(async () => {});
+}
+
+async function setQuoteComment(root: ReturnType<typeof create>, comment: string) {
+  await act(async () => {
+    root.root
+      .findByProps({ 'aria-label': 'Commentaire sur la citation' })
+      .props.onChange({ target: { value: comment } });
+  });
+  await act(async () => {});
+}
+
+function quoteCardOpen(root: ReturnType<typeof create>): boolean {
+  return (
+    root.root.findAllByProps({ 'aria-label': 'Commentaire sur la citation' })
+      .length > 0
+  );
+}
+
+function quoteCardText(root: ReturnType<typeof create>): string | null {
+  const quotes = root.root.findAllByType('blockquote');
+  if (!quotes.length) return null;
+  return quotes.map((quote) => quote.children.join('')).join('');
+}
+
+function sentContents(): string[] {
+  return addMessage.mock.calls.map((call) => String(call[0].content));
+}
+
 it('double Entrée rapprochée → un seul envoi (sendingRef)', async () => {
   runAgent.mockResolvedValue({ newMessages: [] });
   const root = await mountChat();
@@ -209,4 +255,169 @@ it('échec du tour → brouillon restauré, entrée d’historique retirée', as
   ).localStorage.getItem('nevadots:prompt-history');
   const history = historyRaw ? (JSON.parse(historyRaw) as unknown[]) : [];
   expect(history).toHaveLength(0);
+});
+
+// --- Fix round 1/5 : brouillon + citation, quote et file cohérentes ---
+
+it('envoi avec brouillon + quote : le brouillon est préservé (texte envoyé + historique)', async () => {
+  runAgent.mockResolvedValue({
+    newMessages: [{ role: 'assistant', content: 'ok' }],
+  });
+  const root = await mountChat();
+  await openQuote(root, 'texte cité');
+  await setQuoteComment(root, 'mon commentaire');
+  await typeDraft(root, 'ma question');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  expect(addMessage).toHaveBeenCalledTimes(1);
+  const content = sentContents()[0];
+  expect(content).toContain('ma question');
+  expect(content).toContain('mon commentaire');
+  expect(content).toContain('[Citation : texte cité]');
+  expect(content.indexOf('ma question')).toBeLessThan(
+    content.indexOf('mon commentaire'),
+  );
+  expect(content.indexOf('mon commentaire')).toBeLessThan(
+    content.indexOf('[Citation'),
+  );
+  // L'historique retient le texte utilisateur, sans le bloc de citation.
+  const history = readHistory();
+  expect(history).toHaveLength(1);
+  expect(history[0].prompt).toBe('ma question\n\nmon commentaire');
+  expect(history[0].prompt).not.toContain('[Citation');
+  // Carte consommée, brouillon vidé après succès.
+  expect(quoteCardOpen(root)).toBe(false);
+  expect(root.root.findByType(Composer).props.text).toBe('');
+});
+
+it('échec du tour avec quote : carte + commentaire restaurés, brouillon restauré', async () => {
+  runAgent.mockResolvedValue({ newMessages: [] });
+  const root = await mountChat();
+  await openQuote(root, 'texte cité');
+  await setQuoteComment(root, 'à garder');
+  await typeDraft(root, 'à restaurer');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  expect(addMessage).toHaveBeenCalledTimes(1);
+  expect(root.root.findByType(Composer).props.text).toBe('à restaurer');
+  expect(quoteCardOpen(root)).toBe(true);
+  expect(quoteCardText(root)).toBe('texte cité');
+  expect(
+    root.root.findByProps({ 'aria-label': 'Commentaire sur la citation' })
+      .props.value,
+  ).toBe('à garder');
+  expect(readHistory()).toHaveLength(0);
+});
+
+it('mise en file avec quote : carte consommée, citation appliquée une seule fois', async () => {
+  let resolveFirst!: (value: unknown) => void;
+  runAgent.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveFirst = resolve;
+      }),
+  );
+  runAgent.mockResolvedValue({
+    newMessages: [{ role: 'assistant', content: 'ok' }],
+  });
+  const root = await mountChat();
+  await typeDraft(root, 'premier');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  expect(addMessage).toHaveBeenCalledTimes(1);
+  // Tour 1 en cours : second message avec citation → mis en file.
+  await openQuote(root, 'citation une');
+  await setQuoteComment(root, 'commentaire un');
+  await typeDraft(root, 'deuxième');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  // Carte consommée à la mise en file, rien envoyé de plus pour l'instant.
+  expect(quoteCardOpen(root)).toBe(false);
+  expect(addMessage).toHaveBeenCalledTimes(1);
+  expect(
+    root.root.findAllByProps({ className: 'chat-bubble user pending' }),
+  ).toHaveLength(1);
+  // Fin du tour 1 : le message en file s'exécute.
+  await act(async () => {
+    resolveFirst({ newMessages: [{ role: 'assistant', content: 'ok' }] });
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  expect(addMessage).toHaveBeenCalledTimes(2);
+  const second = sentContents()[1];
+  expect(second).toContain('deuxième');
+  expect(second).toContain('commentaire un');
+  expect(second).toContain('[Citation : citation une]');
+  expect(second.split('[Citation').length - 1).toBe(1);
+  // L'historique du tour en file retient le texte utilisateur.
+  const history = readHistory();
+  expect(history).toHaveLength(2);
+  expect(history[0].prompt).toBe('deuxième\n\ncommentaire un');
+  expect(history[0].prompt).not.toContain('[Citation');
+  expect(history[1].prompt).toBe('premier');
+});
+
+it('tour en file : une quote fraîche posée en attendant survit à l’exécution', async () => {
+  let resolveFirst!: (value: unknown) => void;
+  runAgent.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveFirst = resolve;
+      }),
+  );
+  runAgent.mockResolvedValue({
+    newMessages: [{ role: 'assistant', content: 'ok' }],
+  });
+  const root = await mountChat();
+  await typeDraft(root, 'premier');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await openQuote(root, 'citation A');
+  await typeDraft(root, 'deuxième');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  expect(quoteCardOpen(root)).toBe(false);
+  // En attendant, l'utilisateur prépare son prochain message avec une
+  // autre citation (sans taper de brouillon : le brouillon tapé pendant
+  // l'exécution d'un tour en file est vidé par `runPrompt`, comportement
+  // pré-existant hors périmètre de ce correctif).
+  await openQuote(root, 'citation B');
+  expect(quoteCardOpen(root)).toBe(true);
+  expect(quoteCardText(root)).toBe('citation B');
+  await act(async () => {
+    resolveFirst({ newMessages: [{ role: 'assistant', content: 'ok' }] });
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  expect(addMessage).toHaveBeenCalledTimes(2);
+  const second = sentContents()[1];
+  expect(second).toContain('[Citation : citation A]');
+  expect(second).not.toContain('citation B');
+  // La carte fraîche est toujours là.
+  expect(quoteCardOpen(root)).toBe(true);
+  expect(quoteCardText(root)).toBe('citation B');
 });

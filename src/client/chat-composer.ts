@@ -110,24 +110,47 @@ export function routeComposerKeyDown(
 export interface QueuedMessage {
   id: string;
   text: string;
+  /** Texte utilisateur retenu pour l'historique (sans citation ni blocs
+   *  de pièces jointes injectés par `prepareSend`) — snapshot pris à la
+   *  mise en file, car au moment de l'exécution le brouillon a changé. */
+  historyPrompt?: string;
+  /** Noms des pièces jointes présentes à la mise en file. */
+  attachments?: string[];
+  /** Citation attachée au message en file (snapshot pris à la mise en
+   *  file) : le texte en file porte déjà le bloc `[Citation : …]`, donc
+   *  la carte est consommée à la mise en file et ce snapshot dit à
+   *  l'exécution quelle carte retirer — jamais une carte posée après. */
+  quote?: { text: string; comment: string } | null;
 }
 
-export function createQueuedMessage(text: string): QueuedMessage {
-  return { id: crypto.randomUUID(), text };
+/** Snapshot optionnel porté par un message en file (cf. `QueuedMessage`). */
+export interface QueuedMessageMeta {
+  historyPrompt?: string;
+  attachments?: string[];
+  quote?: { text: string; comment: string } | null;
+}
+
+export function createQueuedMessage(
+  text: string,
+  meta?: QueuedMessageMeta,
+): QueuedMessage {
+  return { id: crypto.randomUUID(), text, ...(meta ?? {}) };
 }
 
 export function enqueueQueued(
   queue: QueuedMessage[],
   text: string,
+  meta?: QueuedMessageMeta,
 ): QueuedMessage[] {
-  return [...queue, createQueuedMessage(text)];
+  return [...queue, createQueuedMessage(text, meta)];
 }
 
 export function enqueueQueuedFront(
   queue: QueuedMessage[],
   text: string,
+  meta?: QueuedMessageMeta,
 ): QueuedMessage[] {
-  return [createQueuedMessage(text), ...queue];
+  return [createQueuedMessage(text, meta), ...queue];
 }
 
 export function dequeueQueued(
