@@ -193,6 +193,18 @@ export function stepsFromTranscriptMessage(
  * avec l'identité de l'appel en `metadata.ndStep` ; l'appariement
  * fin/début se fait par `toolCallId` (repli sur le libellé pour les
  * événements sans identité, ex. drain d'étapes orphelines).
+ *
+ * Limitations connues (lot 4, fix round 1 — lecture acceptée, voir le
+ * rapport du lot) :
+ * - Enrichissement live différé : au `STEP_FINISHED`, le message
+ *   `role:"tool"` n'est pas toujours déjà dans `agent.messages` ; l'étape
+ *   bascule alors en `done` sans son résultat (matches, fichiers, exit
+ *   code) — `finishRun` ré-enrichit depuis le transcript figé et corrige.
+ * - Appels parallèles du même libellé : le serveur n'émet qu'un seul
+ *   `STEP_STARTED` par libellé (contrainte protocole AG-UI, `StepTracker`
+ *   : premier appel = représentant) ; ils partagent donc une seule étape
+ *   et sont invisibles comme étapes distinctes. La fin d'un 2e appel
+ *   solde l'étape du représentant par le repli libellé.
  */
 export function useAgentSteps(agent: AbstractAgent | null) {
   const [steps, setSteps] = useState<AgentStep[]>([]);

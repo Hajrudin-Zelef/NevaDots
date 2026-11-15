@@ -169,7 +169,70 @@ function HookProbe({
   return null;
 }
 
-it('apparie STEP_FINISHED par toolCallId, pas par libellé', async () => {
+it('apparie STEP_FINISHED par toolCallId entre libellés distincts', async () => {
+  // Deux appels en parallèle, libellés distincts, deux toolCallId.
+  const messages: Message[] = [
+    { id: 'u1', role: 'user', content: 'go' },
+    {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      toolCalls: [searchCall, execCall],
+    } as unknown as Message,
+  ];
+  const { agent, handlers } = FakeAgent({ messages });
+  let seen: ReturnType<typeof useAgentSteps> | undefined;
+  await act(async () => {
+    root = create(
+      createElement(HookProbe, {
+        agent,
+        onResult: (value) => {
+          seen = value;
+        },
+      }),
+    );
+  });
+  await act(async () => {
+    handlers.onStepStartedEvent?.({
+      event: {
+        stepName: 'Recherche web',
+        metadata: { ndStep: { toolCallId: 'c1', toolName: 'search_web' } },
+      },
+    });
+    handlers.onStepStartedEvent?.({
+      event: {
+        stepName: 'Ordinateur : exec',
+        metadata: { ndStep: { toolCallId: 'c2', toolName: 'computer_exec' } },
+      },
+    });
+  });
+  expect(seen?.steps).toHaveLength(2);
+  expect(seen?.steps.map((s) => s.id)).toEqual(['c1', 'c2']);
+  // La fin de c2 ne doit solder que c2 (par libellé, c1 aurait été soldée).
+  await act(async () => {
+    handlers.onStepFinishedEvent?.({
+      event: {
+        stepName: 'Ordinateur : exec',
+        metadata: { ndStep: { toolCallId: 'c2', toolName: 'computer_exec' } },
+      },
+    });
+  });
+  expect(seen?.steps.find((s) => s.id === 'c1')?.status).toBe('running');
+  expect(seen?.steps.find((s) => s.id === 'c2')?.status).toBe('done');
+  // Sans identité, repli sur le libellé (événement drainé).
+  await act(async () => {
+    handlers.onStepFinishedEvent?.({ event: { stepName: 'Recherche web' } });
+  });
+  expect(seen?.steps.find((s) => s.id === 'c1')?.status).toBe('done');
+});
+
+it('un seul STEP_STARTED par libellé : le 2e appel parallèle partage l’étape du représentant', async () => {
+  // Prémisse réelle (fix round 1) : le serveur (`StepTracker`) n'émet
+  // qu'un seul STEP_STARTED par libellé — le premier appel est le
+  // représentant, le 2e appel parallèle du même libellé n'a jamais sa
+  // propre étape. Sa fin solde donc l'étape du représentant par le
+  // repli libellé ; les deux appels restent invisibles comme étapes
+  // distinctes (limitation documentée dans `useAgentSteps`).
   const messages: Message[] = [
     { id: 'u1', role: 'user', content: 'go' },
     {
@@ -191,7 +254,6 @@ it('apparie STEP_FINISHED par toolCallId, pas par libellé', async () => {
       }),
     );
   });
-  // Deux recherches en parallèle, même libellé, deux toolCallId.
   await act(async () => {
     handlers.onStepStartedEvent?.({
       event: {
@@ -199,16 +261,10 @@ it('apparie STEP_FINISHED par toolCallId, pas par libellé', async () => {
         metadata: { ndStep: { toolCallId: 'c1', toolName: 'search_web' } },
       },
     });
-    handlers.onStepStartedEvent?.({
-      event: {
-        stepName: 'Recherche web',
-        metadata: { ndStep: { toolCallId: 'c2', toolName: 'search_web' } },
-      },
-    });
   });
-  expect(seen?.steps).toHaveLength(2);
-  expect(seen?.steps.map((s) => s.id)).toEqual(['c1', 'c2']);
-  // La fin de c2 ne doit solder que c2 (par libellé, c1 aurait été soldée).
+  expect(seen?.steps).toHaveLength(1);
+  // Fin portée par le 2e appel (c2, sans étape propre) : le repli
+  // libellé solde l'étape du représentant (c1).
   await act(async () => {
     handlers.onStepFinishedEvent?.({
       event: {
@@ -217,12 +273,9 @@ it('apparie STEP_FINISHED par toolCallId, pas par libellé', async () => {
       },
     });
   });
-  expect(seen?.steps.find((s) => s.id === 'c1')?.status).toBe('running');
-  // Sans identité, repli sur le libellé (événement drainé).
-  await act(async () => {
-    handlers.onStepFinishedEvent?.({ event: { stepName: 'Recherche web' } });
-  });
-  expect(seen?.steps.find((s) => s.id === 'c1')?.status).toBe('done');
+  expect(seen?.steps).toHaveLength(1);
+  expect(seen?.steps[0].id).toBe('c1');
+  expect(seen?.steps[0].status).toBe('done');
 });
 
 it('enregistre l’historique enrichi à la fin du run', async () => {

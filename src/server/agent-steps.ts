@@ -42,7 +42,9 @@ export interface StepProtocolEvent {
   type: 'started' | 'finished';
   stepName: string;
   /** Appel d'outil représenté (1er appel du libellé ; les appels
-   *  parallèles du même libellé partagent l'unique événement émis). */
+   *  parallèles du même libellé partagent l'unique événement émis et
+   *  sont donc invisibles comme étapes distinctes côté client —
+   *  limitation documentée, pas un bug du client). */
   toolCallId: string;
   toolName: string;
 }

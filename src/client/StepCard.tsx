@@ -21,11 +21,13 @@ function isReadLike(step: AgentStep): boolean {
 }
 
 /**
- * Regroupements (lot 4, étape 3) : lectures consécutives → une ligne
- * (« Exploré · 3 fichiers ») ; edits consécutifs → une ligne PAR fichier
- * (avec +N −N) ; le reste (commandes, autres outils) → une ligne par
- * appel. Une erreur ou une interruption ne se regroupe jamais : elle
- * sort du groupe (étape 5).
+ * Regroupements (lot 4, étape 3) : lectures consécutives DU MÊME KIND →
+ * une ligne (« Exploré · 3 fichiers », « 2 recherches », « 2 pages ») ;
+ * edits consécutifs → une ligne PAR fichier (le sous-titre porte déjà le
+ * diff `+N −N`, construit une seule fois par `summarizeToolCall` — ne
+ * jamais le rajouter ici) ; le reste (commandes, autres outils) → une
+ * ligne par appel. Une erreur ou une interruption ne se regroupe jamais :
+ * elle sort du groupe (étape 5).
  */
 export function groupSteps(steps: AgentStep[]): StepGroup[] {
   const groups: StepGroup[] = [];
@@ -38,7 +40,7 @@ export function groupSteps(steps: AgentStep[]): StepGroup[] {
       last.status !== 'error' &&
       last.status !== 'stopped' &&
       isReadLike(step) &&
-      last.steps.every(isReadLike)
+      last.steps.every((s) => isReadLike(s) && s.kind === step.kind)
     ) {
       last.steps.push(step);
       continue;
@@ -53,45 +55,59 @@ export function groupSteps(steps: AgentStep[]): StepGroup[] {
   }
   for (const group of groups) {
     if (group.steps.length > 1) {
-      const files = group.steps.length;
+      // Libellé par kind : une recherche n'est pas un fichier, une
+      // lecture web n'est pas un fichier non plus.
+      const kind = group.steps[0].kind;
+      const count = group.steps.length;
+      const plural = count > 1 ? 's' : '';
       group.label = 'Exploré';
-      group.subtitle = `${files} fichier${files > 1 ? 's' : ''}`;
+      group.subtitle =
+        kind === 'search'
+          ? `${count} recherche${plural}`
+          : kind === 'web'
+            ? `${count} page${plural}`
+            : kind === 'file'
+              ? `${count} fichier${plural}`
+              : `${count} outil${plural}`;
       group.key = `read-${group.steps.map((s) => s.id).join('-')}`;
-    } else {
-      const step = group.steps[0];
-      if (step.verb === 'Modifié') {
-        const diff =
-          step.addedLines !== undefined
-            ? `+${step.addedLines}${step.removedLines !== undefined ? ` −${step.removedLines}` : ''}`
-            : '';
-        group.subtitle = [step.subtitle, diff]
-          .filter(Boolean)
-          .join(' · ');
-      }
     }
+    // Ligne seule : le sous-titre est repris tel quel. Pour un edit, le
+    // diff `+N −N` y est déjà (voir `summarizeToolCall`) : le reconstruire
+    // ici l'afficherait deux fois (« page-a.md · +12 −3 · +12 −3 »).
   }
   return groups;
 }
 
 /**
- * Titre de la carte : verbes dédupliqués + détail
- * (« Exploré 3 fichiers · Exécuté 2 commandes »). Repli « N outils »
- * quand les étapes n'ont pas de verbe (historique pré-lot 4).
+ * Titre de la carte : verbes dédupliqués + détail par kind
+ * (« Exploré 3 fichiers · Exécuté 2 commandes », « Exploré 3 recherches »,
+ * « Exploré 2 pages »). Une recherche ou une lecture web n'est jamais
+ * comptée comme un fichier. Repli « N outils » quand les étapes n'ont pas
+ * de verbe (historique pré-lot 4).
  */
 export function stepCardTitle(steps: AgentStep[]): string {
-  const counts = new Map<string, { files: number; commands: number }>();
+  interface VerbCounts {
+    files: number;
+    searches: number;
+    pages: number;
+    commands: number;
+    others: number;
+  }
+  const counts = new Map<string, VerbCounts>();
   const order: string[] = [];
   for (const step of steps) {
     const verb = step.verb ?? 'Utilisé';
     if (!counts.has(verb)) {
-      counts.set(verb, { files: 0, commands: 0 });
+      counts.set(verb, { files: 0, searches: 0, pages: 0, commands: 0, others: 0 });
       order.push(verb);
     }
     const entry = counts.get(verb);
     if (!entry) continue;
     if (step.kind === 'command') entry.commands += 1;
-    else if (step.kind === 'file' || step.kind === 'search' || step.kind === 'web')
-      entry.files += 1;
+    else if (step.kind === 'file') entry.files += 1;
+    else if (step.kind === 'search') entry.searches += 1;
+    else if (step.kind === 'web') entry.pages += 1;
+    else entry.others += 1;
   }
   const hasVerb = steps.some((s) => s.verb !== undefined);
   if (!hasVerb) {
@@ -99,18 +115,21 @@ export function stepCardTitle(steps: AgentStep[]): string {
   }
   return order
     .map((verb) => {
-      const { files, commands } = counts.get(verb) ?? {
-        files: 0,
-        commands: 0,
-      };
+      const { files, searches, pages, commands, others } = counts.get(
+        verb,
+      ) ?? { files: 0, searches: 0, pages: 0, commands: 0, others: 0 };
       const total = steps.filter((s) => (s.verb ?? 'Utilisé') === verb).length;
-      if (commands > 0 && files === 0)
-        return `${verb} ${commands} commande${commands > 1 ? 's' : ''}`;
-      if (files > 0 && commands === 0)
-        return `${verb} ${files} fichier${files > 1 ? 's' : ''}`;
-      if (files > 0 && commands > 0)
-        return `${verb} ${files} fichier${files > 1 ? 's' : ''} · ${commands} commande${commands > 1 ? 's' : ''}`;
-      return `${verb} ${total} outil${total > 1 ? 's' : ''}`;
+      const parts: string[] = [];
+      if (files > 0) parts.push(`${files} fichier${files > 1 ? 's' : ''}`);
+      if (searches > 0)
+        parts.push(`${searches} recherche${searches > 1 ? 's' : ''}`);
+      if (pages > 0) parts.push(`${pages} page${pages > 1 ? 's' : ''}`);
+      if (commands > 0)
+        parts.push(`${commands} commande${commands > 1 ? 's' : ''}`);
+      if (others > 0) parts.push(`${others} outil${others > 1 ? 's' : ''}`);
+      if (parts.length === 0)
+        return `${verb} ${total} outil${total > 1 ? 's' : ''}`;
+      return `${verb} ${parts.join(' · ')}`;
     })
     .join(' · ');
 }

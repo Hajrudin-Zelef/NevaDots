@@ -1040,8 +1040,11 @@ export function Chat({
             // Lot 4, étape 6 : repli transcript — les outils non-computer
             // ne rendent plus `null` (rechargement, historique live
             // perdu). La carte computer reste rendue par
-            // `CopilotChatToolCallsView` juste après : le repli ne
-            // reprend ici que les outils non-computer (pas de doublon).
+            // `CopilotChatToolCallsView` juste après, tout comme les
+            // cartes dédiées `PageReviewCard` (pageReviewTool) et
+            // `ConnectionActionCard` (connectionActionTool) enregistrées
+            // via `useHumanInTheLoop` : le repli ne reprend ici que les
+            // outils sans carte dédiée (pas de doublon).
             // Placement lot 3 inchangé : tout reste dans `renderTools`,
             // après le bloc live et avant la bulle (voir ChatTranscript).
             // Pendant le run, le tour courant est couvert par le bloc
@@ -1052,7 +1055,10 @@ export function Chat({
               ? []
               : stepsFromTranscriptMessage(message, agent.messages).filter(
                   (step) =>
-                    step.toolName && !step.toolName.startsWith('computer_'),
+                    step.toolName &&
+                    !step.toolName.startsWith('computer_') &&
+                    step.toolName !== pageReviewTool.name &&
+                    step.toolName !== connectionActionTool.name,
                 );
             return (
               <>

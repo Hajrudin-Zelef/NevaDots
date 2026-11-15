@@ -103,7 +103,8 @@ it('regroupe les lectures consécutives en une ligne, pas les edits', () => {
       label: 'Modifie une page',
       verb: 'Modifié',
       kind: 'file',
-      subtitle: 'page-a.md',
+      // Sous-titre réaliste : `summarizeToolCall` y a déjà mis le diff.
+      subtitle: 'page-a.md · +12 −3',
       addedLines: 12,
       removedLines: 3,
     }),
@@ -112,7 +113,7 @@ it('regroupe les lectures consécutives en une ligne, pas les edits', () => {
       label: 'Modifie une page',
       verb: 'Modifié',
       kind: 'file',
-      subtitle: 'page-b.md',
+      subtitle: 'page-b.md · +2 −0',
       addedLines: 2,
       removedLines: 0,
     }),
@@ -123,7 +124,10 @@ it('regroupe les lectures consécutives en une ligne, pas les edits', () => {
   expect(groups[0].subtitle).toBe('3 fichiers');
   expect(groups[0].steps).toHaveLength(3);
   expect(groups[1].subtitle).toContain('+12 −3');
+  // Le diff n'apparaît qu'une seule fois par ligne d'edit (fix round 1).
+  expect((groups[1].subtitle ?? '').split('+12 −3').length - 1).toBe(1);
   expect(groups[2].subtitle).toContain('+2 −0');
+  expect((groups[2].subtitle ?? '').split('+2 −0').length - 1).toBe(1);
 });
 
 it('ne regroupe jamais une erreur avec ses voisines', () => {
@@ -167,6 +171,72 @@ it('titre : verbes dédupliqués + détail fichiers/commandes', () => {
   expect(
     stepCardTitle([step({ id: 'x' }), step({ id: 'y' })]),
   ).toBe('2 outils');
+});
+
+it('rend une ligne d’edit avec +N −N une seule fois', () => {
+  const html = renderToStaticMarkup(
+    <StepCard
+      live
+      steps={[
+        step({
+          id: 'e1',
+          label: 'Modifie une page',
+          verb: 'Modifié',
+          kind: 'file',
+          subtitle: 'page-a.md · +12 −3',
+          addedLines: 12,
+          removedLines: 3,
+        }),
+      ]}
+    />,
+  );
+  expect(html).toContain('page-a.md · +12 −3');
+  expect(html.split('+12 −3').length - 1).toBe(1);
+});
+
+it('titre : recherches et pages web ne sont pas des fichiers', () => {
+  const searches = [
+    step({ id: 's1', verb: 'Exploré', kind: 'search' }),
+    step({ id: 's2', verb: 'Exploré', kind: 'search' }),
+    step({ id: 's3', verb: 'Exploré', kind: 'search' }),
+  ];
+  expect(stepCardTitle(searches)).toBe('Exploré 3 recherches');
+  const pages = [
+    step({ id: 'w1', verb: 'Exploré', kind: 'web' }),
+    step({ id: 'w2', verb: 'Exploré', kind: 'web' }),
+  ];
+  expect(stepCardTitle(pages)).toBe('Exploré 2 pages');
+  const mixed = [
+    step({ id: 'f1', verb: 'Exploré', kind: 'file' }),
+    step({ id: 'f2', verb: 'Exploré', kind: 'file' }),
+    step({ id: 's1', verb: 'Exploré', kind: 'search' }),
+    step({ id: 'w1', verb: 'Exploré', kind: 'web' }),
+  ];
+  expect(stepCardTitle(mixed)).toBe(
+    'Exploré 2 fichiers · 1 recherche · 1 page',
+  );
+});
+
+it('regroupe les recherches entre elles, les pages web entre elles, jamais les kinds mélangés', () => {
+  const searches = groupSteps([
+    step({ id: 's1', label: 'Recherche web', verb: 'Exploré', kind: 'search' }),
+    step({ id: 's2', label: 'Recherche web', verb: 'Exploré', kind: 'search' }),
+    step({ id: 's3', label: 'Recherche web', verb: 'Exploré', kind: 'search' }),
+  ]);
+  expect(searches).toHaveLength(1);
+  expect(searches[0].subtitle).toBe('3 recherches');
+  const pages = groupSteps([
+    step({ id: 'w1', label: 'Lit une page web', verb: 'Exploré', kind: 'web' }),
+    step({ id: 'w2', label: 'Lit une page web', verb: 'Exploré', kind: 'web' }),
+  ]);
+  expect(pages).toHaveLength(1);
+  expect(pages[0].subtitle).toBe('2 pages');
+  const mixed = groupSteps([
+    step({ id: 'f1', label: 'Lit un fichier', verb: 'Exploré', kind: 'file' }),
+    step({ id: 's1', label: 'Recherche web', verb: 'Exploré', kind: 'search' }),
+    step({ id: 'f2', label: 'Lit un fichier', verb: 'Exploré', kind: 'file' }),
+  ]);
+  expect(mixed).toHaveLength(3);
 });
 
 it('rend le titre verbe + lignes groupées une fois terminée', () => {
