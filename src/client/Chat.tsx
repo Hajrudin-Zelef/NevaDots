@@ -59,7 +59,7 @@ import { Composer } from './Composer';
 import { stopAllSpeech } from './MessageActions';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
-import { useAgentSteps } from './useAgentSteps';
+import { useAgentSteps, stepsFromTranscriptMessage } from './useAgentSteps';
 import {
   distanceToEnd,
   hasOverflow,
@@ -857,12 +857,11 @@ export function Chat({
       ['user', 'assistant'].includes(message.role) &&
       ((typeof message.content === 'string' && message.content.trim()) ||
         (message.role === 'assistant' &&
-          message.toolCalls?.some(
-            (call) =>
-              call.function.name.startsWith('computer_') ||
-              call.function.name === pageReviewTool.name ||
-              call.function.name === connectionActionTool.name,
-          ))),
+          // Lot 4 : tout appel d'outil rend le message visible, pas
+          // seulement les outils computer / page / connexion — sinon
+          // les tours « recherche seule » n'affichent jamais leurs
+          // blocs d'outils (repli transcript, étape 6).
+          (message.toolCalls?.length ?? 0) > 0)),
   );
   // Live activity feed (commands, websites, files, searches) + collapsed bubbles.
   // Dérivé dans RunStatusModel (miroir via `useRunActivity`).
@@ -1038,11 +1037,33 @@ export function Chat({
             if (recorded) {
               return <StepCard steps={recorded.steps} live={false} />;
             }
+            // Lot 4, étape 6 : repli transcript — les outils non-computer
+            // ne rendent plus `null` (rechargement, historique live
+            // perdu). La carte computer reste rendue par
+            // `CopilotChatToolCallsView` juste après : le repli ne
+            // reprend ici que les outils non-computer (pas de doublon).
+            // Placement lot 3 inchangé : tout reste dans `renderTools`,
+            // après le bloc live et avant la bulle (voir ChatTranscript).
+            // Pendant le run, le tour courant est couvert par le bloc
+            // live : on ne double pas sa carte.
+            const isCurrentTurn =
+              running && message.id === lastAssistant?.id;
+            const fallback = isCurrentTurn
+              ? []
+              : stepsFromTranscriptMessage(message, agent.messages).filter(
+                  (step) =>
+                    step.toolName && !step.toolName.startsWith('computer_'),
+                );
             return (
-              <CopilotChatToolCallsView
-                message={message}
-                messages={agent.messages}
-              />
+              <>
+                {fallback.length > 0 && (
+                  <StepCard steps={fallback} live={false} />
+                )}
+                <CopilotChatToolCallsView
+                  message={message}
+                  messages={agent.messages}
+                />
+              </>
             );
           }}
           reasoningForMessage={reasoningForMessage}

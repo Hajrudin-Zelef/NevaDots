@@ -4688,7 +4688,7 @@ textarea::placeholder {
   color: var(--nd-text);
 }
 .step-card-step.done .step-card-step-icon {
-  color: #16a34a;
+  color: var(--nd-success, #16a34a);
 }
 .step-card-step.running .step-card-step-icon {
   color: var(--nd-accent, #2563eb);
@@ -4702,6 +4702,76 @@ textarea::placeholder {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Lot 4 : lignes groupées (label + sous-titre typé), erreur hors groupe
+   (carte rouge), interruption distincte, bouton copier. */
+.step-card-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.step-card-step-subtitle {
+  font-size: 12px;
+  color: var(--nd-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.step-card-step.error {
+  color: var(--nd-danger);
+  background: color-mix(in srgb, var(--nd-danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nd-danger) 35%, transparent);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+}
+.step-card-step.error .step-card-step-label {
+  color: var(--nd-danger);
+  font-weight: 600;
+}
+.step-card-step.error .step-card-step-subtitle {
+  color: var(--nd-text-secondary);
+}
+.step-card-step.error .step-card-step-icon {
+  color: var(--nd-danger);
+}
+.step-card-step.stopped .step-card-step-icon {
+  color: var(--nd-text-secondary);
+}
+.copy-button {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--nd-border);
+  border-radius: 6px;
+  background: var(--nd-bg-secondary, transparent);
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.copy-button:hover {
+  color: var(--nd-text);
+  background: var(--nd-bg-hover);
+}
+/* Lot 4 : sortie terminal en zone défilante, bouton Copier à côté du <pre>. */
+.muse-tool-output {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.muse-tool-output-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--nd-text-secondary);
+}
+.muse-tool-output pre {
+  max-height: 240px;
+  overflow: auto;
+  margin: 0;
 }
 .file-preview-overlay {
   position: fixed;

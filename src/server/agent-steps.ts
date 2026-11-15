@@ -41,6 +41,10 @@ export function stepLabelForTool(toolName: string): string {
 export interface StepProtocolEvent {
   type: 'started' | 'finished';
   stepName: string;
+  /** Appel d'outil représenté (1er appel du libellé ; les appels
+   *  parallèles du même libellé partagent l'unique événement émis). */
+  toolCallId: string;
+  toolName: string;
 }
 
 /**
@@ -52,36 +56,67 @@ export interface StepProtocolEvent {
  */
 export class StepTracker {
   private counts = new Map<string, number>();
-  private byCall = new Map<string, string>();
+  private byCall = new Map<string, { label: string; toolName: string }>();
+  /** Premier appel de chaque libellé actif (représentant de l'événement). */
+  private firstCall = new Map<string, { toolCallId: string; toolName: string }>();
 
-  start(toolCallId: string, label: string): StepProtocolEvent[] {
-    this.byCall.set(toolCallId, label);
+  start(
+    toolCallId: string,
+    label: string,
+    toolName = '',
+  ): StepProtocolEvent[] {
+    this.byCall.set(toolCallId, { label, toolName });
     const active = (this.counts.get(label) ?? 0) + 1;
     this.counts.set(label, active);
-    return active === 1 ? [{ type: 'started', stepName: label }] : [];
+    if (active === 1) {
+      this.firstCall.set(label, { toolCallId, toolName });
+      return [{ type: 'started', stepName: label, toolCallId, toolName }];
+    }
+    return [];
   }
 
   end(toolCallId: string): StepProtocolEvent[] {
-    const label = this.byCall.get(toolCallId);
-    if (!label) return [];
+    const call = this.byCall.get(toolCallId);
+    if (!call) return [];
     this.byCall.delete(toolCallId);
-    const remaining = (this.counts.get(label) ?? 1) - 1;
+    const remaining = (this.counts.get(call.label) ?? 1) - 1;
     if (remaining <= 0) {
-      this.counts.delete(label);
-      return [{ type: 'finished', stepName: label }];
+      this.counts.delete(call.label);
+      const first = this.firstCall.get(call.label) ?? {
+        toolCallId,
+        toolName: call.toolName,
+      };
+      this.firstCall.delete(call.label);
+      return [
+        {
+          type: 'finished',
+          stepName: call.label,
+          toolCallId: first.toolCallId,
+          toolName: first.toolName,
+        },
+      ];
     }
-    this.counts.set(label, remaining);
+    this.counts.set(call.label, remaining);
     return [];
   }
 
   /** Solde les étapes restées actives (run en erreur sans fins d'outils). */
   drain(): StepProtocolEvent[] {
-    const done = [...this.counts.keys()].map((stepName) => ({
-      type: 'finished' as const,
-      stepName,
-    }));
+    const done = [...this.counts.keys()].map((stepName) => {
+      const first = this.firstCall.get(stepName) ?? {
+        toolCallId: '',
+        toolName: '',
+      };
+      return {
+        type: 'finished' as const,
+        stepName,
+        toolCallId: first.toolCallId,
+        toolName: first.toolName,
+      };
+    });
     this.counts.clear();
     this.byCall.clear();
+    this.firstCall.clear();
     return done;
   }
 }

@@ -31,26 +31,48 @@ describe('stepLabelForTool (phase 3)', () => {
 describe('StepTracker (protocole équilibré)', () => {
   it('n’émet qu’un START par libellé actif (appels parallèles)', () => {
     const tracker = new StepTracker();
-    expect(tracker.start('a', 'Ordinateur : exec')).toEqual([
-      { type: 'started', stepName: 'Ordinateur : exec' },
+    expect(tracker.start('a', 'Ordinateur : exec', 'computer_exec')).toEqual([
+      {
+        type: 'started',
+        stepName: 'Ordinateur : exec',
+        toolCallId: 'a',
+        toolName: 'computer_exec',
+      },
     ]);
     // Second appel identique en parallèle : pas de doublon (sinon AGUIError).
-    expect(tracker.start('b', 'Ordinateur : exec')).toEqual([]);
-    // Les deux fins soldent une seule fois.
+    expect(tracker.start('b', 'Ordinateur : exec', 'computer_exec')).toEqual(
+      [],
+    );
+    // Les deux fins soldent une seule fois, avec l'identité du 1er appel.
     expect(tracker.end('a')).toEqual([]);
     expect(tracker.end('b')).toEqual([
-      { type: 'finished', stepName: 'Ordinateur : exec' },
+      {
+        type: 'finished',
+        stepName: 'Ordinateur : exec',
+        toolCallId: 'a',
+        toolName: 'computer_exec',
+      },
     ]);
   });
 
   it('ignore les fins sans début et solde les étapes orphelines', () => {
     const tracker = new StepTracker();
     expect(tracker.end('inconnu')).toEqual([]);
-    tracker.start('a', 'Recherche web');
-    tracker.start('b', 'Ordinateur : exec');
+    tracker.start('a', 'Recherche web', 'search_web');
+    tracker.start('b', 'Ordinateur : exec', 'computer_exec');
     expect(tracker.drain()).toEqual([
-      { type: 'finished', stepName: 'Recherche web' },
-      { type: 'finished', stepName: 'Ordinateur : exec' },
+      {
+        type: 'finished',
+        stepName: 'Recherche web',
+        toolCallId: 'a',
+        toolName: 'search_web',
+      },
+      {
+        type: 'finished',
+        stepName: 'Ordinateur : exec',
+        toolCallId: 'b',
+        toolName: 'computer_exec',
+      },
     ]);
     // Après solde, les fins tardives sont ignorées (pas de doublon).
     expect(tracker.end('a')).toEqual([]);
@@ -60,12 +82,22 @@ describe('StepTracker (protocole équilibré)', () => {
   it('séquence simple équilibrée', () => {
     const tracker = new StepTracker();
     const events = [
-      ...tracker.start('a', 'Recherche web'),
+      ...tracker.start('a', 'Recherche web', 'search_web'),
       ...tracker.end('a'),
     ];
     expect(events).toEqual([
-      { type: 'started', stepName: 'Recherche web' },
-      { type: 'finished', stepName: 'Recherche web' },
+      {
+        type: 'started',
+        stepName: 'Recherche web',
+        toolCallId: 'a',
+        toolName: 'search_web',
+      },
+      {
+        type: 'finished',
+        stepName: 'Recherche web',
+        toolCallId: 'a',
+        toolName: 'search_web',
+      },
     ]);
   });
 });

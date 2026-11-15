@@ -3,8 +3,15 @@ import { FileText, Globe, Terminal } from 'lucide-react';
 import { z } from 'zod';
 import { api } from './api';
 import { ThinkingOrb } from './ThinkingOrb';
-import { computerToolResult } from '../shared/activity';
+import { computerToolResult, stripAnsiCodes } from '../shared/activity';
 import { useComputerActivity } from './useComputerActivity';
+import { CopyButton } from './CopyButton';
+
+/** Polling de l'aperçu navigateur (lot 4) : 1 s nominal, backoff
+ *  exponentiel plafonné à 16 s en échec, 15 s max par tentative. */
+const SCREEN_POLL_MS = 1000;
+const SCREEN_BACKOFF_MAX_MS = 16000;
+const SCREEN_ATTEMPT_TIMEOUT_MS = 15000;
 
 const screenSchema = z.object({
   base64: z
@@ -65,7 +72,8 @@ export function ComputerToolCard({
   const error =
     typeof data.error === 'string'
       ? data.error
-      : data.status === 'error' && typeof data.message === 'string'
+      : (data.status === 'error' || data.status === 'timeout') &&
+          typeof data.message === 'string'
         ? data.message
         : '';
   const interruption =
@@ -73,8 +81,31 @@ export function ComputerToolCard({
   const complete = status === 'complete';
   const failed =
     data.status === 'error' ||
+    data.status === 'timeout' ||
     !!error ||
     (typeof data.exitCode === 'number' && data.exitCode !== 0);
+  const exitCode =
+    typeof data.exitCode === 'number' ? data.exitCode : undefined;
+  const timedOut =
+    data.status === 'timeout' ||
+    /timed out/i.test(error) ||
+    (typeof data.message === 'string' && /timed out/i.test(data.message));
+  // Lot 4 : succès = pas de badge ; badge seulement en échec
+  // (`Exit 1`, `Timed out`, `Échec`) ou sur interruption (`Interrompu`,
+  // état distinct, pas une erreur) ; « En cours » pendant le run.
+  const badge = interrupted
+    ? 'Interrompu'
+    : failed
+      ? exitCode !== undefined && exitCode !== 0
+        ? `Exit ${exitCode}`
+        : timedOut
+          ? 'Timed out'
+          : 'Échec'
+      : !complete && !running
+        ? 'Interrompu'
+        : running
+          ? 'En cours'
+          : null;
   const state = interrupted
     ? 'Interrompu'
     : failed
@@ -94,21 +125,30 @@ export function ComputerToolCard({
     if (!showScreen) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
+    let failures = 0;
     setScreen(undefined);
     setScreenError('');
     const refresh = async () => {
-      if (!document.hidden) {
+      if (!controller.signal.aborted && !document.hidden) {
+        const attempt = new AbortController();
+        const onOuterAbort = () => attempt.abort();
+        controller.signal.addEventListener('abort', onOuterAbort);
+        const timeout = setTimeout(
+          () => attempt.abort(),
+          SCREEN_ATTEMPT_TIMEOUT_MS,
+        );
         try {
           const value = await api<unknown>(
             `/dots/${encodeURIComponent(dotId)}/computer/actions`,
             'POST',
             { action: 'screenshot', input: {} },
-            controller.signal,
+            attempt.signal,
           );
           const next = screenSchema.parse(value);
           if (!controller.signal.aborted) {
             setScreen(next);
             setScreenError('');
+            failures = 0;
           }
         } catch (cause) {
           if (!controller.signal.aborted) {
@@ -118,11 +158,23 @@ export function ComputerToolCard({
                 ? cause.message
                 : 'Computer preview unavailable.',
             );
+            failures += 1;
           }
+        } finally {
+          clearTimeout(timeout);
+          controller.signal.removeEventListener('abort', onOuterAbort);
         }
       }
-      if (!controller.signal.aborted)
-        timer = setTimeout(() => void refresh(), 3000);
+      if (!controller.signal.aborted) {
+        const delay =
+          failures === 0
+            ? SCREEN_POLL_MS
+            : Math.min(
+                SCREEN_POLL_MS * 2 ** failures,
+                SCREEN_BACKOFF_MAX_MS,
+              );
+        timer = setTimeout(() => void refresh(), delay);
+      }
     };
     void refresh();
     return () => {
@@ -157,9 +209,12 @@ export function ComputerToolCard({
   const liveOutput = [liveStdout, liveStderr].filter(Boolean).join('\n');
   const finalStdout = typeof data.stdout === 'string' ? data.stdout : '';
   const finalStderr = typeof data.stderr === 'string' ? data.stderr : '';
-  const previewOutput = (
-    liveOutput || [finalStdout, finalStderr].filter(Boolean).join('\n')
-  ).slice(0, 4000);
+  const previewOutput = stripAnsiCodes(
+    (liveOutput || [finalStdout, finalStderr].filter(Boolean).join('\n')).slice(
+      0,
+      4000,
+    ),
+  );
   const previewRunning = liveRun?.running ?? (!complete && running);
   const expandTerminal = onExpandTerminal ?? onExpand;
   return (
@@ -176,7 +231,8 @@ export function ComputerToolCard({
         <span className="muse-tool-titles">
           <strong>{title}</strong>
           <span className={`muse-tool-sub ${failed ? 'failed' : ''}`}>
-            {state} · {labels[action] ?? 'Ordinateur'}
+            {badge ? `${badge} · ` : ''}
+            {labels[action] ?? 'Ordinateur'}
           </span>
         </span>
       </header>
@@ -202,7 +258,13 @@ export function ComputerToolCard({
             </span>
           </div>
           {previewOutput ? (
-            <pre aria-label="Aperçu terminal">{previewOutput}</pre>
+            <div className="muse-tool-output">
+              <div className="muse-tool-output-head">
+                <span>Sortie</span>
+                <CopyButton text={previewOutput} />
+              </div>
+              <pre aria-label="Aperçu terminal">{previewOutput}</pre>
+            </div>
           ) : (
             <div className="muse-preview-empty" role="status">
               <ThinkingOrb kind="connecting" size={32} />
@@ -212,10 +274,24 @@ export function ComputerToolCard({
         </div>
       )}
       {isExec && showTerminal !== true && complete && finalStdout && (
-        <pre aria-label="Sortie terminal">{finalStdout.slice(0, 4000)}</pre>
+        <div className="muse-tool-output">
+          <div className="muse-tool-output-head">
+            <span>Sortie</span>
+            <CopyButton text={stripAnsiCodes(finalStdout.slice(0, 4000))} />
+          </div>
+          <pre aria-label="Sortie terminal">
+            {stripAnsiCodes(finalStdout.slice(0, 4000))}
+          </pre>
+        </div>
       )}
       {isExec && showTerminal !== true && complete && finalStderr && (
-        <pre>{finalStderr.slice(0, 2000)}</pre>
+        <div className="muse-tool-output">
+          <div className="muse-tool-output-head">
+            <span>Erreur</span>
+            <CopyButton text={stripAnsiCodes(finalStderr.slice(0, 2000))} />
+          </div>
+          <pre>{stripAnsiCodes(finalStderr.slice(0, 2000))}</pre>
+        </div>
       )}
       {showScreen && (
         <div className="muse-preview">

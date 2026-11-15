@@ -1183,6 +1183,16 @@ export class DotAgent extends AbstractAgent {
                   subscriber.next({
                     type: EventType.STEP_FINISHED,
                     stepName: step.stepName,
+                    // Lot 4 : l'appariement fin/début se fait par toolCallId
+                    // (et non plus par libellé). Les schémas AG-UI sont en
+                    // `passthrough` : `metadata` traverse le transport sans
+                    // nouvelle route ni nouveau protocole (F1 respecté).
+                    metadata: {
+                      ndStep: {
+                        toolCallId: step.toolCallId,
+                        toolName: step.toolName,
+                      },
+                    },
                   });
               }
               // Phase 3 : dérive des événements d'étape des appels d'outils
@@ -1191,10 +1201,25 @@ export class DotAgent extends AbstractAgent {
               if (event.type === EventType.TOOL_CALL_START) {
                 const start = event as ToolCallStartEvent;
                 const label = stepLabelForTool(start.toolCallName);
-                if (stepTracker.start(start.toolCallId, label).length)
+                // Les arguments ne sont pas dans TOOL_CALL_START (ils
+                // arrivent par TOOL_CALL_ARGS / le transcript) : le résumé
+                // typé est calculé côté client depuis `message.toolCalls[]`
+                // — le serveur ne transmet ici que l'identité de l'appel.
+                const started = stepTracker.start(
+                  start.toolCallId,
+                  label,
+                  start.toolCallName,
+                );
+                if (started.length)
                   subscriber.next({
                     type: EventType.STEP_STARTED,
                     stepName: label,
+                    metadata: {
+                      ndStep: {
+                        toolCallId: start.toolCallId,
+                        toolName: start.toolCallName,
+                      },
+                    },
                   });
               } else if (event.type === EventType.TOOL_CALL_END) {
                 const end = event as ToolCallEndEvent;
@@ -1202,6 +1227,12 @@ export class DotAgent extends AbstractAgent {
                   subscriber.next({
                     type: EventType.STEP_FINISHED,
                     stepName: step.stepName,
+                    metadata: {
+                      ndStep: {
+                        toolCallId: step.toolCallId,
+                        toolName: step.toolName,
+                      },
+                    },
                   });
               }
               subscriber.next(
