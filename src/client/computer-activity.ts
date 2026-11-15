@@ -11,6 +11,8 @@ export interface TerminalRun {
   command: string;
   /** Issue d'une action terminée (jamais sur un exec). */
   outcome?: 'succeeded' | 'failed';
+  /** Occurrences coalescées d'une même action consécutive (défaut 1). */
+  count?: number;
   startedAt: number;
   running: boolean;
   exitCode?: number;
@@ -24,6 +26,8 @@ export interface TerminalRun {
 
 /** Journal borné : les longues sessions ne font pas grossir le DOM. */
 export const TERMINAL_RUN_CAP = 200;
+/** Fenêtre de fusion de deux actions identiques consécutives (2 min). */
+export const ACTION_MERGE_WINDOW_MS = 120_000;
 /** Garde-fou d'affichage par run (le serveur borne déjà à 8 Ko). */
 export const TERMINAL_OUTPUT_CAP = 20000;
 
@@ -67,6 +71,25 @@ export function appendActivityRun(
   event: ComputerActivityEvent,
 ): TerminalRun[] {
   if (event.action === 'action') {
+    // Rafale d'actions identiques (clics, frappes…) : une seule ligne avec
+    // un compteur, sinon le journal défile sans rien dire.
+    const last = runs[runs.length - 1];
+    if (
+      last &&
+      last.kind === 'action' &&
+      last.command === event.name &&
+      last.actor === event.actor &&
+      event.at - last.startedAt < ACTION_MERGE_WINDOW_MS
+    ) {
+      const next = [...runs];
+      next[next.length - 1] = {
+        ...last,
+        count: (last.count ?? 1) + 1,
+        outcome: event.outcome,
+        startedAt: event.at,
+      };
+      return next;
+    }
     // Action terminée : une ligne, sans sortie (le shell a son propre flux).
     const run: TerminalRun = {
       key: `${event.at}-${event.actor}-${runs.length}`,

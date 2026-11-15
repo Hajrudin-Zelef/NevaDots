@@ -192,3 +192,29 @@ it('état vide : explique que les actions du Dot arrivent ici', () => {
   });
   expect(JSON.stringify(renderer!.toJSON())).toContain('actions du Dot');
 });
+
+it('une rafale d’actions identiques affiche un compteur ×N', () => {
+  const runs = [
+    {
+      key: 'a1',
+      kind: 'action' as const,
+      actor: 'agent' as const,
+      command: 'click',
+      outcome: 'succeeded' as const,
+      count: 4,
+      startedAt: Date.now(),
+      running: false,
+      stdout: '',
+      stderr: '',
+    },
+  ];
+  let renderer: ReactTestRenderer;
+  act(() => {
+    renderer = create(
+      createElement(ComputerTerminalRunList, { runs, transcript: true }),
+    );
+  });
+  const json = JSON.stringify(renderer!.toJSON());
+  expect(json).toContain('Clic');
+  expect(json).toContain('×4');
+});

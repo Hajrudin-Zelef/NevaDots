@@ -129,6 +129,9 @@ function ComputerActionRow({ run }: { run: TerminalRun }) {
         <Icon size={14} />
       </span>
       <span className="computer-action-label">{label}</span>
+      {(run.count ?? 1) > 1 && (
+        <span className="computer-action-count">{`×${run.count}`}</span>
+      )}
       <span className={`computer-terminal-actor ${run.actor}`}>
         {run.actor === 'agent' ? 'Dot' : 'Vous'}
       </span>

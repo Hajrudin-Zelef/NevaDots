@@ -80,6 +80,14 @@ function contentSha(text: string): string {
 }
 /** Abonné au flux d'activité live d'un Dot. En mémoire, mono-processus. */
 export type ComputerActivityListener = (event: ComputerActivityEvent) => void;
+
+/** Actions d'observation pures : jamais dans le journal (bruit de boucle). */
+const OBSERVATION_ACTIONS = new Set([
+  'snapshot',
+  'screenshot',
+  'read',
+  'scroll',
+]);
 /**
  * How long to wait on a single action once its computer is running. Above the
  * computer's own `NAVIGATION_TIMEOUT_MS` (30s) so a slow page cannot trip it,
@@ -604,9 +612,15 @@ export class ComputerService {
     }
   }
   /**
-   * Une ligne du journal par action terminée (navigation, fichier, capture,
-   * git…). `exec` est exclu : il a son propre flux `start`/`chunk`/`end` qui
-   * défile — sans cette exclusion il apparaîtrait deux fois.
+   * Une ligne du journal par action terminée (navigation, fichier, git…).
+   *
+   * Deux exclusions, sinon le journal devient illisible :
+   * - `exec` a son propre flux `start`/`chunk`/`end` (il apparaîtrait deux fois) ;
+   * - les actions d'**observation** (`snapshot`, `screenshot`, `read`, `scroll`)
+   *   sont appelées en boucle par l'agent (une capture par itération de
+   *   vision) : elles noyaient les commandes et les éditions sous des
+   *   « Capture d'écran » en cascade. L'écran reste visible dans l'onglet
+   *   Navigateur, en direct.
    */
   private emitAction(
     id: string,
@@ -614,7 +628,7 @@ export class ComputerService {
     actor: 'owner' | 'agent',
     outcome: 'succeeded' | 'failed',
   ): void {
-    if (action === 'exec') return;
+    if (action === 'exec' || OBSERVATION_ACTIONS.has(action)) return;
     this.emitActivity({
       dotId: id,
       action: 'action',

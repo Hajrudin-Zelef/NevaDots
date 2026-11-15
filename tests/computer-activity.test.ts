@@ -4,10 +4,12 @@ import { ComputerService } from '../src/server/computer-service.js';
 import { computerRoutes } from '../src/server/computer-routes.js';
 import { mountScoped } from './scoped-mount.js';
 import type {
+  ComputerActionEvent,
   ComputerActivityEvent,
   ComputerExecEvent,
 } from '../src/shared/computer-types.js';
 import {
+  ACTION_MERGE_WINDOW_MS,
   appendActivityRun,
   parseActivityChunk,
 } from '../src/client/computer-activity';
@@ -316,4 +318,43 @@ it('journal : un exec reste dépliable avec sa sortie, une action non', () => {
     running: false,
   });
   expect(runs[0].stdout).toBe('a.txt');
+});
+
+it('journal : une rafale d’actions identiques devient une ligne avec compteur', () => {
+  const click = (at: number): ComputerActionEvent => ({
+    dotId: 'd',
+    action: 'action',
+    phase: 'action',
+    at,
+    actor: 'agent',
+    name: 'click',
+    outcome: 'succeeded',
+  });
+  let runs = appendActivityRun([], click(1));
+  runs = appendActivityRun(runs, click(2));
+  runs = appendActivityRun(runs, click(3));
+  expect(runs).toHaveLength(1);
+  expect(runs[0]).toMatchObject({ kind: 'action', command: 'click', count: 3 });
+  // Une action différente ouvre une nouvelle ligne.
+  runs = appendActivityRun(runs, { ...click(4), name: 'files_edit' });
+  expect(runs).toHaveLength(2);
+  // Hors fenêtre de fusion, même une action identique repart à zéro.
+  runs = appendActivityRun(runs, click(4 + ACTION_MERGE_WINDOW_MS + 1));
+  expect(runs).toHaveLength(3);
+});
+
+it('journal : les captures d’écran ne sont pas émises (bruit de boucle)', async () => {
+  const f = fixture();
+  const seen: ComputerActivityEvent[] = [];
+  const stop = f.service.subscribeActivity(f.id, (event) => seen.push(event));
+  // `files_list` est une action utile : une ligne.
+  await f.service.action(f.id, 'files_list', { path: '' }, 'agent');
+  // `screenshot` est une observation : aucune ligne (le transport du test
+  // refuse l'appel, ce qui n'a pas d'importance ici).
+  await expect(
+    f.service.action(f.id, 'screenshot', {}, 'agent'),
+  ).rejects.toThrow();
+  stop();
+  expect(seen.map((event) => event.action)).toEqual(['action']);
+  expect(seen[0]).toMatchObject({ name: 'files_list' });
 });
