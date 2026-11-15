@@ -60,13 +60,12 @@ export class StepTracker {
   private counts = new Map<string, number>();
   private byCall = new Map<string, { label: string; toolName: string }>();
   /** Premier appel de chaque libellé actif (représentant de l'événement). */
-  private firstCall = new Map<string, { toolCallId: string; toolName: string }>();
+  private firstCall = new Map<
+    string,
+    { toolCallId: string; toolName: string }
+  >();
 
-  start(
-    toolCallId: string,
-    label: string,
-    toolName = '',
-  ): StepProtocolEvent[] {
+  start(toolCallId: string, label: string, toolName = ''): StepProtocolEvent[] {
     this.byCall.set(toolCallId, { label, toolName });
     const active = (this.counts.get(label) ?? 0) + 1;
     this.counts.set(label, active);

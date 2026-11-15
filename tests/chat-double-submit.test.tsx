@@ -231,9 +231,7 @@ async function attachTextFile(
   const file = new File([content], name, { type: 'text/plain' });
   const input = root.root
     .findAllByType('input')
-    .find(
-      (node) => node.props.type === 'file' && node.props.multiple === true,
-    );
+    .find((node) => node.props.type === 'file' && node.props.multiple === true);
   if (!input) throw new Error('input fichier introuvable');
   await act(async () => {
     input.props.onChange({ target: { files: [file], value: '' } });
@@ -249,7 +247,9 @@ async function attachTextFile(
 
 function readHistory(): { prompt: string; mode: string }[] {
   const raw = (
-    globalThis as unknown as { localStorage: { getItem: (k: string) => string | null } }
+    globalThis as unknown as {
+      localStorage: { getItem: (k: string) => string | null };
+    }
   ).localStorage.getItem('nevadots:prompt-history');
   return raw ? (JSON.parse(raw) as { prompt: string; mode: string }[]) : [];
 }
@@ -262,7 +262,10 @@ async function openQuote(root: ReturnType<typeof create>, text: string) {
   await act(async () => {});
 }
 
-async function setQuoteComment(root: ReturnType<typeof create>, comment: string) {
+async function setQuoteComment(
+  root: ReturnType<typeof create>,
+  comment: string,
+) {
   await act(async () => {
     root.root
       .findByProps({ 'aria-label': 'Commentaire sur la citation' })
@@ -318,7 +321,9 @@ it('échec du tour → brouillon restauré, entrée d’historique retirée', as
   const composer = root.root.findByType(Composer);
   expect(composer.props.text).toBe('à restaurer');
   const historyRaw = (
-    globalThis as unknown as { localStorage: { getItem: (k: string) => string | null } }
+    globalThis as unknown as {
+      localStorage: { getItem: (k: string) => string | null };
+    }
   ).localStorage.getItem('nevadots:prompt-history');
   const history = historyRaw ? (JSON.parse(historyRaw) as unknown[]) : [];
   expect(history).toHaveLength(0);
@@ -378,8 +383,8 @@ it('échec du tour avec quote : carte + commentaire restaurés, brouillon restau
   expect(quoteCardOpen(root)).toBe(true);
   expect(quoteCardText(root)).toBe('texte cité');
   expect(
-    root.root.findByProps({ 'aria-label': 'Commentaire sur la citation' })
-      .props.value,
+    root.root.findByProps({ 'aria-label': 'Commentaire sur la citation' }).props
+      .value,
   ).toBe('à garder');
   expect(readHistory()).toHaveLength(0);
 });

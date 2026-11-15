@@ -195,9 +195,7 @@ function HookProbe({
   agent: unknown;
   onResult: (value: ReturnType<typeof useAgentSteps>) => void;
 }) {
-  const result = useAgentSteps(
-    agent as Parameters<typeof useAgentSteps>[0],
-  );
+  const result = useAgentSteps(agent as Parameters<typeof useAgentSteps>[0]);
   onResult(result);
   return null;
 }

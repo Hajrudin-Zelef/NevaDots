@@ -169,10 +169,7 @@ export function ComputerToolCard({
         const delay =
           failures === 0
             ? SCREEN_POLL_MS
-            : Math.min(
-                SCREEN_POLL_MS * 2 ** failures,
-                SCREEN_BACKOFF_MAX_MS,
-              );
+            : Math.min(SCREEN_POLL_MS * 2 ** failures, SCREEN_BACKOFF_MAX_MS);
         timer = setTimeout(() => void refresh(), delay);
       }
     };

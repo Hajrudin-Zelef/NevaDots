@@ -153,9 +153,10 @@ export function enqueueQueuedFront(
   return [createQueuedMessage(text, meta), ...queue];
 }
 
-export function dequeueQueued(
-  queue: QueuedMessage[],
-): { next: QueuedMessage | undefined; rest: QueuedMessage[] } {
+export function dequeueQueued(queue: QueuedMessage[]): {
+  next: QueuedMessage | undefined;
+  rest: QueuedMessage[];
+} {
   const [next, ...rest] = queue;
   return { next, rest };
 }

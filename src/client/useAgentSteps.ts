@@ -48,8 +48,7 @@ function stepIdentity(event: unknown): {
   return {
     toolCallId:
       typeof toolCallId === 'string' && toolCallId ? toolCallId : undefined,
-    toolName:
-      typeof toolName === 'string' && toolName ? toolName : undefined,
+    toolName: typeof toolName === 'string' && toolName ? toolName : undefined,
   };
 }
 
@@ -59,10 +58,7 @@ function toolMessagesByCall(
   const map = new Map<string, Message & { role: 'tool' }>();
   for (const message of messages) {
     if (message.role === 'tool') {
-      map.set(
-        message.toolCallId,
-        message as Message & { role: 'tool' },
-      );
+      map.set(message.toolCallId, message as Message & { role: 'tool' });
     }
   }
   return map;
@@ -284,8 +280,7 @@ export function useAgentSteps(agent: AbstractAgent | null) {
           const enriched = enrichStepFromTranscript(next[at], messages);
           next[at] = {
             ...enriched,
-            status:
-              enriched.status === 'running' ? 'done' : enriched.status,
+            status: enriched.status === 'running' ? 'done' : enriched.status,
           };
           return next;
         });

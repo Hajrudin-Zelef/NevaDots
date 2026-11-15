@@ -111,9 +111,7 @@ export function useAttachments(scope: string) {
   scopeRef.current = scope;
   const [restoring, setRestoring] = useState(true);
   /** Noms des fichiers refusés car déjà joints (toast « doublon »). */
-  const [duplicateNotice, setDuplicateNotice] = useState<string[] | null>(
-    null,
-  );
+  const [duplicateNotice, setDuplicateNotice] = useState<string[] | null>(null);
   const duplicateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -123,10 +121,7 @@ export function useAttachments(scope: string) {
     setDuplicateNotice(names);
     if (duplicateTimer.current !== undefined)
       clearTimeout(duplicateTimer.current);
-    duplicateTimer.current = setTimeout(
-      () => setDuplicateNotice(null),
-      3500,
-    );
+    duplicateTimer.current = setTimeout(() => setDuplicateNotice(null), 3500);
   };
 
   useEffect(

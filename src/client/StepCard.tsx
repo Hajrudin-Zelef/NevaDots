@@ -98,7 +98,13 @@ export function stepCardTitle(steps: AgentStep[]): string {
   for (const step of steps) {
     const verb = step.verb ?? 'Utilisé';
     if (!counts.has(verb)) {
-      counts.set(verb, { files: 0, searches: 0, pages: 0, commands: 0, others: 0 });
+      counts.set(verb, {
+        files: 0,
+        searches: 0,
+        pages: 0,
+        commands: 0,
+        others: 0,
+      });
       order.push(verb);
     }
     const entry = counts.get(verb);
@@ -115,9 +121,13 @@ export function stepCardTitle(steps: AgentStep[]): string {
   }
   return order
     .map((verb) => {
-      const { files, searches, pages, commands, others } = counts.get(
-        verb,
-      ) ?? { files: 0, searches: 0, pages: 0, commands: 0, others: 0 };
+      const { files, searches, pages, commands, others } = counts.get(verb) ?? {
+        files: 0,
+        searches: 0,
+        pages: 0,
+        commands: 0,
+        others: 0,
+      };
       const total = steps.filter((s) => (s.verb ?? 'Utilisé') === verb).length;
       const parts: string[] = [];
       if (files > 0) parts.push(`${files} fichier${files > 1 ? 's' : ''}`);
@@ -176,9 +186,7 @@ export function StepCard({
           )}
         </span>
         <span className="step-card-title">
-          {live && current
-            ? `${current.label}…`
-            : stepCardTitle(steps)}
+          {live && current ? `${current.label}…` : stepCardTitle(steps)}
         </span>
         <span
           className="step-card-count"
@@ -210,9 +218,7 @@ export function StepCard({
                     <OctagonX size={13} />
                   </span>
                   <span className="step-card-step-text">
-                    <span className="step-card-step-label">
-                      {first.label}
-                    </span>
+                    <span className="step-card-step-label">{first.label}</span>
                     <span className="step-card-step-subtitle">{summary}</span>
                   </span>
                   {first.error && <CopyButton text={first.error} />}
@@ -227,9 +233,7 @@ export function StepCard({
                     <AlertTriangle size={13} />
                   </span>
                   <span className="step-card-step-text">
-                    <span className="step-card-step-label">
-                      {first.label}
-                    </span>
+                    <span className="step-card-step-label">{first.label}</span>
                     <span className="step-card-step-subtitle">
                       Interrompu
                       {first.subtitle ? ` · ${first.subtitle}` : ''}
@@ -239,10 +243,7 @@ export function StepCard({
               );
             }
             return (
-              <li
-                key={group.key}
-                className={`step-card-step ${group.status}`}
-              >
+              <li key={group.key} className={`step-card-step ${group.status}`}>
                 <span className="step-card-step-icon" aria-hidden="true">
                   {group.status === 'done' ? (
                     <Check size={13} />

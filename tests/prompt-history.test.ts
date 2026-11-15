@@ -26,7 +26,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const entry = (prompt: string, mode: 'chat' | 'home' = 'chat'): PromptHistoryEntry => ({
+const entry = (
+  prompt: string,
+  mode: 'chat' | 'home' = 'chat',
+): PromptHistoryEntry => ({
   prompt,
   mode,
 });
@@ -62,7 +65,11 @@ it('cap 200 entrées au total', () => {
 
 it('cap 100 entrées avec pièces jointes (les autres restent)', () => {
   for (let i = 0; i < MAX_PROMPT_HISTORY_WITH_ATTACHMENTS + 10; i++) {
-    pushPromptHistory({ prompt: `avec-${i}`, mode: 'chat', attachments: ['f.txt'] });
+    pushPromptHistory({
+      prompt: `avec-${i}`,
+      mode: 'chat',
+      attachments: ['f.txt'],
+    });
   }
   for (let i = 0; i < 5; i++) pushPromptHistory(entry(`sans-${i}`));
   const loaded = loadPromptHistory();

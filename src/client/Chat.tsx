@@ -198,13 +198,8 @@ export function Chat({
   }, [thread.id, contextAttempt]);
   // Lot 5, étape 2 : brouillon persisté (`nevadots:draft:thread:<id>`),
   // chargé au montage, sauvé à chaque frappe, vidé après envoi réussi.
-  const {
-    draft,
-    draftRef,
-    setDraft,
-    clearDraft,
-    restoreDraft,
-  } = usePromptDraft(`thread:${thread.id}`);
+  const { draft, draftRef, setDraft, clearDraft, restoreDraft } =
+    usePromptDraft(`thread:${thread.id}`);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   /** Citation structurée (Lot 5, étape 6) : carte au-dessus du textarea,
    *  avec son champ commentaire — remplace le préfixe `> citation`. */
@@ -752,9 +747,7 @@ export function Chat({
     const historyEntry: PromptHistoryEntry = {
       prompt: meta?.historyPrompt ?? text,
       mode: 'chat',
-      ...(meta?.attachments?.length
-        ? { attachments: meta.attachments }
-        : {}),
+      ...(meta?.attachments?.length ? { attachments: meta.attachments } : {}),
     };
     // Une entrée sans texte utilisateur (citation seule, sans brouillon ni
     // commentaire) n'a rien à rappeler : on ne la pousse pas.
@@ -910,9 +903,7 @@ export function Chat({
     const quoteAtSubmit = quoteRef.current;
     const sourceAtSubmit = source;
     if (
-      (!draftAtSubmit.trim() &&
-        !quoteAtSubmit &&
-        !attachments.items.length) ||
+      (!draftAtSubmit.trim() && !quoteAtSubmit && !attachments.items.length) ||
       !loaded ||
       !contextReady ||
       paused
@@ -921,10 +912,7 @@ export function Chat({
     sendingRef.current = true;
     void (async () => {
       try {
-        const userText = [
-          draftAtSubmit.trim(),
-          quoteAtSubmit?.comment.trim(),
-        ]
+        const userText = [draftAtSubmit.trim(), quoteAtSubmit?.comment.trim()]
           .filter(Boolean)
           .join('\n\n');
         const quoted = quoteAtSubmit
@@ -946,9 +934,7 @@ export function Chat({
           // message, et la carte est consommée — sinon elle s'appliquerait
           // au message d'après (mauvaise attribution).
           stopAllSpeech();
-          setQueued((current) =>
-            enqueueQueuedFront(current, finalText, meta),
-          );
+          setQueued((current) => enqueueQueuedFront(current, finalText, meta));
           if (
             meta.quote &&
             quoteRef.current?.text === meta.quote.text &&
@@ -965,9 +951,7 @@ export function Chat({
       } catch (error) {
         // prepareSend a échoué (timeout, upload, rattachement) :
         // erreur visible, brouillon conservé.
-        setError(
-          error instanceof Error ? error.message : 'Envoi impossible.',
-        );
+        setError(error instanceof Error ? error.message : 'Envoi impossible.');
       } finally {
         sendingRef.current = false;
       }
@@ -1322,8 +1306,7 @@ export function Chat({
   const fallbackStepsByMessageId = useMemo(() => {
     const byId = new Map<string, AgentStep[]>();
     for (const message of agent.messages) {
-      if (message.role !== 'assistant' || !message.toolCalls?.length)
-        continue;
+      if (message.role !== 'assistant' || !message.toolCalls?.length) continue;
       if (history.some((entry) => entry.messageId === message.id)) continue;
       byId.set(
         message.id,
@@ -1379,8 +1362,7 @@ export function Chat({
             // Pendant le run, le tour courant est couvert par le bloc
             // live : on ne double pas sa carte. Le repli est mémoïsé
             // par message (voir `fallbackStepsByMessageId` ci-dessus).
-            const isCurrentTurn =
-              running && message.id === lastAssistant?.id;
+            const isCurrentTurn = running && message.id === lastAssistant?.id;
             const fallback = isCurrentTurn
               ? []
               : (fallbackStepsByMessageId.get(message.id) ?? []);
@@ -1698,14 +1680,11 @@ export function Chat({
                 : draft;
               const attachmentNames = attachments.items.map((a) => a.name);
               const text = await attachments.prepareSend(quoted);
-              void send(
-                `${source ? `From ${source}:\n\n` : ''}${text}`,
-                {
-                  attachments: attachmentNames,
-                  historyPrompt: userText,
-                  quote: quote ?? undefined,
-                },
-              );
+              void send(`${source ? `From ${source}:\n\n` : ''}${text}`, {
+                attachments: attachmentNames,
+                historyPrompt: userText,
+                quote: quote ?? undefined,
+              });
             } catch (error) {
               // prepareSend a échoué (timeout, upload, rattachement) :
               // erreur visible, brouillon conservé.

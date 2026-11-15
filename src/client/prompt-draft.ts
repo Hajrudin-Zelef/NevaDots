@@ -124,9 +124,7 @@ export function usePromptDraft(scope: string): PromptDraft {
   const [draft, setDraftState] = useState(() => loadDraft(scope));
   const scopeRef = useRef(scope);
   const draftRef = useRef(draft);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     scopeRef.current = scope;

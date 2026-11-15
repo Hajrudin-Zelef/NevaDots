@@ -111,15 +111,17 @@ it('n’envoie pas si le composer est vide ou occupé', () => {
 
 // --- Routeur de raccourcis (Lot 5, étape 4) : la règle d'envoi reste
 // verrouillée (Ctrl+Entrée envoie, Entrée seule = saut de ligne). ---
-function routeEvent(init: {
-  key?: string;
-  shiftKey?: boolean;
-  ctrlKey?: boolean;
-  metaKey?: boolean;
-  altKey?: boolean;
-  isComposing?: boolean;
-  keyCode?: number;
-} = {}) {
+function routeEvent(
+  init: {
+    key?: string;
+    shiftKey?: boolean;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    altKey?: boolean;
+    isComposing?: boolean;
+    keyCode?: number;
+  } = {},
+) {
   return {
     key: init.key ?? 'Enter',
     shiftKey: init.shiftKey ?? false,
@@ -146,7 +148,7 @@ it('routeur : Alt+Entrée → queue-front (tête de file)', () => {
   );
 });
 
-it('routeur : Mod+U → open-attachments, Mod+\' → toggle-source', () => {
+it("routeur : Mod+U → open-attachments, Mod+' → toggle-source", () => {
   expect(routeComposerKeyDown(routeEvent({ key: 'u', ctrlKey: true }))).toBe(
     'open-attachments',
   );
@@ -215,10 +217,17 @@ it('file : le snapshot (historique, pièces jointes, citation) voyage avec l’�
     attachments: ['doc.pdf'],
     quote: { text: 'texte cité', comment: 'mon commentaire' },
   };
-  const queue = enqueueQueued([], 'texte préparé [Citation : texte cité]', meta);
+  const queue = enqueueQueued(
+    [],
+    'texte préparé [Citation : texte cité]',
+    meta,
+  );
   expect(queue[0].historyPrompt).toBe('ma question\n\nmon commentaire');
   expect(queue[0].attachments).toEqual(['doc.pdf']);
-  expect(queue[0].quote).toEqual({ text: 'texte cité', comment: 'mon commentaire' });
+  expect(queue[0].quote).toEqual({
+    text: 'texte cité',
+    comment: 'mon commentaire',
+  });
   const { next } = dequeueQueued(queue);
   expect(next?.historyPrompt).toBe(meta.historyPrompt);
   expect(next?.quote).toEqual(meta.quote);

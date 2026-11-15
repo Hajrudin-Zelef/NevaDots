@@ -5,11 +5,7 @@ import {
   stripAnsiCodes,
   summarizeToolCall,
 } from '../src/shared/activity';
-import {
-  StepCard,
-  groupSteps,
-  stepCardTitle,
-} from '../src/client/StepCard';
+import { StepCard, groupSteps, stepCardTitle } from '../src/client/StepCard';
 import type { AgentStep } from '../src/client/useAgentSteps';
 
 function step(partial: Partial<AgentStep> & { id: string }): AgentStep {
@@ -165,12 +161,10 @@ it('titre : verbes dédupliqués + détail fichiers/commandes', () => {
     step({ id: 'd', verb: 'Exécuté', kind: 'command' }),
     step({ id: 'e', verb: 'Exécuté', kind: 'command' }),
   ];
-  expect(stepCardTitle(steps)).toBe(
-    'Exploré 3 fichiers · Exécuté 2 commandes',
+  expect(stepCardTitle(steps)).toBe('Exploré 3 fichiers · Exécuté 2 commandes');
+  expect(stepCardTitle([step({ id: 'x' }), step({ id: 'y' })])).toBe(
+    '2 outils',
   );
-  expect(
-    stepCardTitle([step({ id: 'x' }), step({ id: 'y' })]),
-  ).toBe('2 outils');
 });
 
 it('rend une ligne d’edit avec +N −N une seule fois', () => {
@@ -246,7 +240,13 @@ it('rend le titre verbe + lignes groupées une fois terminée', () => {
       steps={[
         step({ id: 'a', verb: 'Exploré', kind: 'file' }),
         step({ id: 'b', verb: 'Exploré', kind: 'file' }),
-        step({ id: 'c', verb: 'Exécuté', kind: 'command', label: 'Commande terminal', subtitle: 'ls' }),
+        step({
+          id: 'c',
+          verb: 'Exécuté',
+          kind: 'command',
+          label: 'Commande terminal',
+          subtitle: 'ls',
+        }),
       ]}
     />,
   );
@@ -291,9 +291,7 @@ it('distingue l’interruption de l’erreur', () => {
   const html = renderToStaticMarkup(
     <StepCard
       live
-      steps={[
-        step({ id: 's', label: 'Commande terminal', status: 'stopped' }),
-      ]}
+      steps={[step({ id: 's', label: 'Commande terminal', status: 'stopped' })]}
     />,
   );
   expect(html).toContain('Interrompu');

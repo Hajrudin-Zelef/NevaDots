@@ -44,8 +44,12 @@ function truncate(value: string, limit = RESULT_LIMIT): string {
 
 /** Supprime les séquences d'échappement ANSI (couleurs terminal). */
 export function stripAnsiCodes(value: string): string {
-  // eslint-disable-next-line no-control-regex
-  return value.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
+  /* eslint-disable no-control-regex -- les séquences ANSI sont, par
+     définition, des caractères de contrôle : c'est la cible du filtre. */
+  return value
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/\x1b\][^\x07]*\x07/g, '');
+  /* eslint-enable no-control-regex */
 }
 
 /** Première phrase d'un texte (résumé d'erreur), « Échec » si vide. */

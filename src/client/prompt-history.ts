@@ -25,10 +25,7 @@ function storageAvailable(): boolean {
   return typeof localStorage !== 'undefined';
 }
 
-function sameEntry(
-  a: PromptHistoryEntry,
-  b: PromptHistoryEntry,
-): boolean {
+function sameEntry(a: PromptHistoryEntry, b: PromptHistoryEntry): boolean {
   return (
     a.prompt === b.prompt &&
     a.mode === b.mode &&
@@ -75,9 +72,7 @@ export function loadPromptHistory(): PromptHistoryEntry[] {
       localStorage.getItem(PROMPT_HISTORY_KEY) ?? '[]',
     );
     if (!Array.isArray(parsed)) return [];
-    return normalizePromptHistory(
-      parsed.filter(isValidEntry),
-    );
+    return normalizePromptHistory(parsed.filter(isValidEntry));
   } catch {
     return [];
   }
