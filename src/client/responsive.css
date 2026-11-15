@@ -18,10 +18,11 @@
   display: contents;
 }
 
-/* Largeurs fluides (barre latérale et rail) */
+/* Largeurs fluides (barre latérale et rail) — la largeur de la sidebar
+   (`--nd-sidebar-w`, 240 px par défaut) est définie une seule fois dans
+   `tokens.css` ; App.tsx l'écrit en ligne quand l'utilisateur redimensionne. */
 :root {
   --nd-rail-w: clamp(320px, 30vw, 440px);
-  --nd-sidebar-w: clamp(216px, 19vw, 248px);
 }
 .template-app.app .sidebar {
   width: var(--nd-sidebar-w);
@@ -97,6 +98,13 @@
   .chat-workspace.split .chat-column {
     flex: 1 1 auto;
     min-width: 0;
+  }
+  /* Tiroir : pas de redimensionnement, pas de bouton flottant — la
+     topbar ouvre/ferme le tiroir, le bouton flottant ne sert qu'au
+     bureau replié. */
+  .template-app.app .sidebar-resize-handle,
+  .sidebar-float-button {
+    display: none;
   }
 }
 

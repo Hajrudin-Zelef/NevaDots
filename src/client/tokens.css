@@ -142,6 +142,9 @@ samp,
   /* Accent (défaut = bleu OpenCode ; piloté par data-palette). */
   --nd-accent: var(--nd-blue-600);
   --nd-accent-dark: var(--nd-blue-700);
+  /* Sidebar (Lot 2) : largeur d'état, source unique de vérité — la
+     largeur redimensionnée est écrite ici en ligne par App.tsx. */
+  --nd-sidebar-w: 240px;
 
   /* Élévations claires (anneau 0,5 px faisant office de bordure). */
   --nd-elevation-raised:

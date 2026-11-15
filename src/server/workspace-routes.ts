@@ -587,6 +587,24 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
   app.get('/conversations/:id/capture', (c) =>
     c.json(c.get('workspace').capture(c.req.param('id'))),
   );
+  // Renommage d'une conversation (Lot 2 du portage visuel OpenCode) : le
+  // titre local est la source affichée (le runtime CopilotKit local ne
+  // renvoie aucun nom — voir `WorkspaceStore.renameThread`).
+  app.patch('/conversations/:id', async (c) => {
+    const data = z
+      .object({ title: z.string().trim().min(1).max(120) })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success)
+      return c.json({ error: 'A conversation title is required.' }, 400);
+    try {
+      return c.json(
+        c.get('workspace').renameThread(c.req.param('id'), data.data.title),
+      );
+    } catch {
+      return c.json({ error: 'Conversation not found.' }, 404);
+    }
+  });
   // The client posts a finished turn's outcome + activity so the Muse-style
   // activity timeline can show conversations it never had open.
   app.post('/conversations/:id/activity', async (c) => {

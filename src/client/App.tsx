@@ -69,6 +69,13 @@ import {
   useTabs,
 } from './useTabs';
 import { WorkspaceDialog, type Dialog } from './WorkspaceDialog';
+import {
+  hasUnread,
+  loadSeen,
+  markSeen,
+  saveSeen,
+  type SeenMap,
+} from './read-state';
 
 function describeFailure(error: unknown, fallback: string) {
   return {
@@ -291,7 +298,95 @@ export function App() {
     return () => document.removeEventListener('keydown', key);
   }, [profileMenuOpen]);
   const [mobile, setMobile] = useState(false);
-  const [navCollapsed, setNavCollapsed] = useState(false);
+  // Sidebar (Lot 2) : bascule persistée (`mod+shift+b` + bouton flottant)
+  // et largeur redimensionnable (240 px par défaut, 136–640, persistée).
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => localStorage.getItem('nevadots-sidebar-collapsed') === 'closed',
+  );
+  const navCollapsedRef = useRef(navCollapsed);
+  useEffect(() => {
+    navCollapsedRef.current = navCollapsed;
+  });
+  const changeNavCollapsed = useCallback((collapsed: boolean) => {
+    setNavCollapsed(collapsed);
+    try {
+      localStorage.setItem(
+        'nevadots-sidebar-collapsed',
+        collapsed ? 'closed' : 'open',
+      );
+    } catch {
+      // Appliqué pour cette visite seulement.
+    }
+  }, []);
+  const readSidebarWidth = () => {
+    const raw = Number(localStorage.getItem('nevadots-sidebar-w'));
+    return Number.isFinite(raw) ? Math.min(640, Math.max(136, raw)) : 240;
+  };
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--nd-sidebar-w',
+      `${sidebarWidth}px`,
+    );
+    try {
+      localStorage.setItem('nevadots-sidebar-w', String(sidebarWidth));
+    } catch {
+      // Appliqué pour cette visite seulement.
+    }
+  }, [sidebarWidth]);
+  const resizeStart = useRef<{ x: number; width: number } | null>(null);
+  // mod+shift+b : basculer la sidebar (Lot 2). Note : Chrome réserve
+  // Ctrl+Maj+B à sa propre barre de favoris et peut avaler le raccourci —
+  // le bouton flottant et le bouton de la topbar restent les chemins fiables.
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === 'b'
+      ) {
+        event.preventDefault();
+        changeNavCollapsed(!navCollapsedRef.current);
+      }
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [changeNavCollapsed]);
+  // État lu / non-lu des sessions (Lot 2) : local, voir `read-state.ts`.
+  const [seen, setSeen] = useState<SeenMap>(loadSeen);
+  useEffect(() => {
+    saveSeen(seen);
+  }, [seen]);
+  // La conversation active est lue : une activité qui arrive pendant
+  // qu'on la regarde ne la rend pas non-lue.
+  useEffect(() => {
+    if (!selectedThread || !workspace) return;
+    const conversation = workspace.conversations.find(
+      (item) => item.id === selectedThread,
+    );
+    if (!conversation) return;
+    const last = conversation.updatedAt ?? conversation.createdAt;
+    setSeen((current) =>
+      (current[selectedThread] ?? 0) >= last
+        ? current
+        : markSeen(current, selectedThread),
+    );
+  }, [selectedThread, workspace]);
+  // Dialogue de confirmation (français) — remplace `window.confirm`.
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
+  useEffect(() => {
+    if (!confirm) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConfirm(null);
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [confirm]);
   // Leaving the compact range must close the off-canvas drawer, otherwise the
   // scrim would linger over a docked layout.
   useEffect(() => {
@@ -518,9 +613,115 @@ export function App() {
       startingGuard.current.release();
     }
   };
-  const deleteConversation = async (id: string) => {
-    if (!window.confirm('Delete this conversation? This cannot be undone.'))
-      return;
+  /** Renommage (Lot 2) : mise à jour optimiste (titre + `updatedAt` :
+   * la conversation remonte en tête de liste), PATCH avec timeout 15 s,
+   * puis `refresh()` ; en cas d'échec, `refresh()` restaure le titre et
+   * `false` est résolu pour que la ligne reste en édition. */
+  const renameConversation = async (
+    id: string,
+    title: string,
+  ): Promise<boolean> => {
+    if (!workspace?.conversations.some((item) => item.id === id)) return false;
+    const now = Date.now();
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            conversations: current.conversations.map((conversation) =>
+              conversation.id === id
+                ? { ...conversation, title, updatedAt: now }
+                : conversation,
+            ),
+          }
+        : current,
+    );
+    try {
+      await api<Conversation>(
+        `/conversations/${id}`,
+        'PATCH',
+        { title },
+        AbortSignal.timeout(15000),
+      );
+      await refresh();
+      return true;
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : 'Could not rename the conversation.',
+      );
+      await refresh();
+      return false;
+    }
+  };
+  /** Export (Lot 2) : un fichier Markdown (titre, Dot, dates, activité
+   * enregistrée) téléchargé localement. Sans transcript complet — celui-ci
+   * demanderait un endpoint messages dédié (V2). */
+  const exportConversation = (id: string) => {
+    const conversation = workspace?.conversations.find(
+      (item) => item.id === id,
+    );
+    if (!conversation || !workspace) return;
+    const dotName =
+      workspace.dots.find((dot) => dot.id === conversation.dotId)?.name ?? '';
+    const download = (events: unknown) => {
+      const lines = [
+        `# ${conversation.title}`,
+        '',
+        `- Dot : ${dotName}`,
+        `- Créée le ${new Date(conversation.createdAt).toLocaleString('fr-FR')}`,
+        `- Dernière activité : ${new Date(conversation.updatedAt ?? conversation.createdAt).toLocaleString('fr-FR')}`,
+        '',
+        '## Activité',
+        '',
+      ];
+      const list = Array.isArray(events) ? events : [];
+      if (list.length === 0) lines.push('Aucune activité enregistrée.');
+      else
+        for (const event of list) {
+          if (typeof event === 'object' && event !== null) {
+            const record = event as Record<string, unknown>;
+            const label =
+              typeof record.label === 'string'
+                ? record.label
+                : typeof record.text === 'string'
+                  ? record.text
+                  : JSON.stringify(event);
+            lines.push(`- ${label}`);
+          } else lines.push(`- ${String(event)}`);
+        }
+      lines.push('');
+      const slug =
+        conversation.title
+          .toLocaleLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 60) || 'conversation';
+      const url = URL.createObjectURL(
+        new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' }),
+      );
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${slug}.md`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    };
+    void api<{ events: unknown }>(`/conversations/${id}/activity`)
+      .then(({ events }) => download(events))
+      .catch(() => download(null));
+  };
+  const markConversationRead = (id: string) =>
+    setSeen((current) => markSeen(current, id));
+  const deleteConversation = (id: string) => {
+    const conversation = workspace?.conversations.find(
+      (item) => item.id === id,
+    );
+    setConfirm({
+      title: 'Supprimer cette conversation ?',
+      message: `« ${conversation?.title ?? 'Conversation'} » sera définitivement supprimée, avec son historique.`,
+      confirmLabel: 'Supprimer',
+      onConfirm: () => void performDeleteConversation(id),
+    });
+  };
+  const performDeleteConversation = async (id: string) => {
     setWorkspace((current) =>
       current
         ? {
@@ -547,9 +748,16 @@ export function App() {
       await refresh();
     }
   };
-  const deleteAllConversations = async () => {
-    if (!window.confirm('Delete ALL conversations? This cannot be undone.'))
-      return;
+  const deleteAllConversations = () => {
+    setConfirm({
+      title: 'Supprimer toutes les conversations ?',
+      message:
+        'Toutes les conversations seront définitivement supprimées, avec leur historique.',
+      confirmLabel: 'Tout supprimer',
+      onConfirm: () => void performDeleteAllConversations(),
+    });
+  };
+  const performDeleteAllConversations = async () => {
     setWorkspace((current) =>
       current ? { ...current, conversations: [] } : current,
     );
@@ -695,15 +903,6 @@ export function App() {
             <Settings2 size={15} />
           </button>
         </div>
-        <label className="conversation-search">
-          <Search size={15} />
-          <input
-            aria-label="Rechercher une conversation"
-            placeholder="Rechercher…"
-            value={conversationSearch}
-            onChange={(event) => setConversationSearch(event.target.value)}
-          />
-        </label>
         <div className="sidebar-list">
           <div className="spaces-heading nav-label">
             Dots
@@ -782,12 +981,14 @@ export function App() {
           <div className="conversation-list-label">Conversations</div>
           {configured ? (
             <ThreadList
-              dotId={dot.id}
               dots={workspace.dots}
               local={workspace.conversations}
               selected={view === 'chat' ? selectedThread : undefined}
+              previewThreadId={tabs.previewThreadId}
+              seen={seen}
               category={conversationCategory}
               search={conversationSearch}
+              onSearchChange={setConversationSearch}
               onSelect={(id) => {
                 // Garde page-sale D'ABORD : si l'utilisateur annule,
                 // l'onglet actif ne bascule pas (et ne persiste pas).
@@ -796,11 +997,16 @@ export function App() {
                   (item) => item.id === id,
                 );
                 if (conversation) setSelectedDot(conversation.dotId);
-                tabs.openTab(id);
+                // Clic = aperçu éphémère (Lot 2) ; double-clic = conserver.
+                tabs.openTab(id, { preview: true });
                 setPendingVoice(false);
                 setMobile(false);
               }}
-              onDelete={(id) => void deleteConversation(id)}
+              onKeepPreview={(id) => tabs.keepPreview(id)}
+              onRename={(id, title) => renameConversation(id, title)}
+              onExport={(id) => exportConversation(id)}
+              onMarkRead={(id) => markConversationRead(id)}
+              onDelete={(id) => deleteConversation(id)}
             />
           ) : (
             <div className="sidebar-empty">
@@ -949,7 +1155,51 @@ export function App() {
             </button>
           </div>
         </div>
+        <div
+          className="sidebar-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Redimensionner la barre latérale"
+          onPointerDown={(event) => {
+            resizeStart.current = { x: event.clientX, width: sidebarWidth };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const start = resizeStart.current;
+            if (!start) return;
+            setSidebarWidth(
+              Math.min(
+                640,
+                Math.max(136, start.width + (event.clientX - start.x)),
+              ),
+            );
+          }}
+          onPointerUp={() => {
+            resizeStart.current = null;
+          }}
+          onPointerCancel={() => {
+            resizeStart.current = null;
+          }}
+        />
       </aside>
+      {navCollapsed && (
+        <button
+          type="button"
+          className="sidebar-float-button"
+          aria-label={
+            hasUnread(workspace.conversations, seen)
+              ? 'Afficher la barre latérale (conversations non lues)'
+              : 'Afficher la barre latérale'
+          }
+          title="Afficher la barre latérale (Ctrl+Maj+B)"
+          onClick={() => changeNavCollapsed(false)}
+        >
+          <PanelLeft size={17} />
+          {hasUnread(workspace.conversations, seen) && (
+            <span className="sidebar-float-dot" aria-hidden="true" />
+          )}
+        </button>
+      )}
       <div className="workspace">
         <header className="topbar">
           <button
@@ -967,7 +1217,7 @@ export function App() {
               if (window.matchMedia('(max-width: 1024px)').matches) {
                 setMobile(!mobile);
               } else {
-                setNavCollapsed(!navCollapsed);
+                changeNavCollapsed(!navCollapsed);
               }
             }}
           >
@@ -1445,6 +1695,40 @@ export function App() {
           onOpenDialog={setDialog}
           mutate={mutate}
         />
+      )}
+      {confirm && (
+        <div className="modal-backdrop" onClick={() => setConfirm(null)}>
+          <div
+            className="modal confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="confirm-dialog-title">{confirm.title}</h2>
+            <p className="muted">{confirm.message}</p>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setConfirm(null)}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  const action = confirm.onConfirm;
+                  setConfirm(null);
+                  action();
+                }}
+              >
+                {confirm.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

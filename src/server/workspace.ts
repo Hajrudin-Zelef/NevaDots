@@ -855,6 +855,25 @@ export class WorkspaceStore {
       .run(id, JSON.stringify(input.activity ?? []), this.userId);
     return { ...thread, updatedAt: now, summary: input.summary };
   }
+  /** Renomme une conversation (Lot 2 du portage visuel OpenCode).
+   * Le titre local est la source affichée : le runtime CopilotKit local
+   * (`InMemoryAgentRunner.listThreads`) renvoie toujours `name: null`, donc
+   * aucun nom distant ne peut écraser ce titre. Le renommage met à jour
+   * `updatedAt` : la conversation remonte en tête de liste (« Aujourd'hui »).
+   * Lève une erreur si la conversation est inconnue ou le titre invalide. */
+  renameThread(id: string, title: string): Conversation {
+    const thread = this.requireThread(id);
+    const trimmed = title.trim();
+    if (!trimmed || trimmed.length > 120)
+      throw new Error('Conversation title must be 1-120 characters.');
+    const now = Date.now();
+    this.db
+      .prepare(
+        'UPDATE thread_bindings SET title=?, updatedAt=? WHERE id=? AND ownerId=?',
+      )
+      .run(trimmed, now, id, this.userId);
+    return { ...thread, title: trimmed, updatedAt: now };
+  }
   threadActivity(id: string): unknown {
     this.requireThread(id);
     const row = this.db

@@ -1148,7 +1148,7 @@ textarea::placeholder {
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 30;
-  width: 230px;
+  width: var(--nd-sidebar-w);
   padding: 15px 11px 10px;
   gap: 0;
   overflow: hidden;
@@ -1162,10 +1162,10 @@ textarea::placeholder {
 .template-app.app .workspace {
   display: flex;
   flex-direction: column;
-  width: calc(100% - 230px);
+  width: calc(100% - var(--nd-sidebar-w));
   height: 100dvh;
   min-height: 0;
-  margin-left: 230px;
+  margin-left: var(--nd-sidebar-w);
   overflow: hidden;
   background: var(--nd-bg);
   transition:
@@ -1414,17 +1414,15 @@ textarea::placeholder {
 }
 .template-app .thread-list .nav-item {
   min-width: 0;
+  min-height: 40px;
   padding: 6px 7px;
   border-radius: 6px;
   font-size: 12px;
 }
-.template-app .thread-list .nav-item > svg {
-  flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
-}
-.template-app .thread-summary {
-  min-width: 0;
+/* Barre de sélection 2 px (Lot 2) : la ligne active porte sa marque à
+   gauche, sans déplacer le contenu. */
+.template-app .thread-list .nav-item.active {
+  box-shadow: inset 2px 0 0 var(--nd-accent);
 }
 .template-app .thread-summary > span {
   display: block;
@@ -1433,13 +1431,13 @@ textarea::placeholder {
   white-space: nowrap;
 }
 .template-app .thread-summary small {
-  display: none;
-}
-.template-app .thread-list .thread-delete {
-  width: 25px;
-  height: 25px;
-  padding: 0;
-  opacity: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--nd-text-secondary);
+  font-size: 11px;
+  font-weight: 400;
 }
 .template-app .sidebar-empty,
 .template-app .sidebar-error {
@@ -1566,8 +1564,8 @@ textarea::placeholder {
 }
 .template-app .topbar {
   z-index: 1;
-  height: 42px;
-  min-height: 42px;
+  height: 36px;
+  min-height: 36px;
   justify-content: flex-end;
   padding: 0 14px;
   border: 0;
@@ -5795,4 +5793,197 @@ textarea::placeholder {
     width: 100%;
     justify-content: flex-end;
   }
+}
+
+/* ===========================================================================
+   Lot 2 — Sidebar 240 px + sessions groupées/triées + menu contextuel +
+   renommage (portage visuel OpenCode, réimplémentation propre).
+   =========================================================================== */
+
+/* --- Ligne de session 40 px : avatar 16 px, nom du Dot, point non-lu --- */
+.template-app .thread-list .thread-row-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+.template-app .thread-avatar {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+}
+.template-app .thread-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.template-app .thread-title {
+  font-weight: 500;
+}
+/* Aperçu éphémère (clic simple) : titre en italique jusqu'au double-clic. */
+.template-app .thread-row-button.preview .thread-title {
+  font-style: italic;
+}
+.template-app .thread-unread {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--nd-accent);
+}
+
+/* --- Renommage inline --- */
+.template-app .thread-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 0;
+}
+.template-app .thread-rename input {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 7px;
+  border: 1px solid var(--nd-border-focus);
+  border-radius: 6px;
+  background: var(--nd-bg-input);
+  color: var(--nd-text);
+  font-size: 12px;
+}
+.template-app .thread-rename-error {
+  display: block;
+  padding: 3px 2px 0;
+  color: var(--nd-danger);
+  font-size: 11px;
+}
+
+/* --- Recherche en tête de liste --- */
+.template-app .thread-search {
+  margin: 2px 0 6px;
+}
+.template-app .thread-search .thread-search-clear {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+}
+.template-app .thread-search-count {
+  padding: 0 5px 4px;
+  margin: 0;
+  color: var(--nd-text-secondary);
+  font-size: 11px;
+}
+
+/* --- Menu contextuel des sessions --- */
+.template-app .thread-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  border: 0;
+  background: transparent;
+}
+.template-app .thread-menu {
+  position: fixed;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--nd-border);
+  border-radius: 8px;
+  background: var(--nd-bg-input);
+  box-shadow: var(--nd-elevation-floating);
+}
+.template-app .thread-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--nd-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.template-app .thread-menu-item:hover:not(:disabled),
+.template-app .thread-menu-item:focus-visible {
+  background: var(--nd-bg-hover);
+  outline: 0;
+}
+.template-app .thread-menu-item:disabled {
+  color: var(--nd-text-faint);
+  cursor: default;
+}
+.template-app .thread-menu-item.danger {
+  color: var(--nd-danger);
+}
+
+/* --- Poignée de redimensionnement de la sidebar (136–640 px) --- */
+.template-app.app .sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+  touch-action: none;
+  background: transparent;
+}
+.template-app.app .sidebar-resize-handle:hover,
+.template-app.app .sidebar-resize-handle:active {
+  background: color-mix(in srgb, var(--nd-accent) 30%, transparent);
+}
+
+/* --- Bouton flottant (sidebar repliée) + point non-lu 7 px --- */
+.sidebar-float-button {
+  position: fixed;
+  top: 48px;
+  left: 12px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--nd-border);
+  border-radius: 8px;
+  background: var(--nd-bg-input);
+  color: var(--nd-text-secondary);
+  box-shadow: var(--nd-elevation-raised);
+  cursor: pointer;
+}
+.sidebar-float-button:hover {
+  background: var(--nd-bg-hover);
+  color: var(--nd-text);
+}
+.sidebar-float-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--nd-accent);
+}
+
+/* --- Dialogue de confirmation (français) --- */
+.confirm-dialog h2 {
+  font-size: 20px;
+}
+.confirm-dialog .muted {
+  margin: 8px 0 0;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
 }
