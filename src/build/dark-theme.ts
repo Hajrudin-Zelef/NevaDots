@@ -96,6 +96,72 @@ export function readablePair(text: string, background: string) {
   return { text: LIGHT_TEXT, background: next };
 }
 const named: Record<string, string> = { white: '#ffffff', black: '#000000' };
+// Tokens with an explicit dark value in src/client/tokens.css: the plugin
+// must never generate a flip twin for them. A twin of a palette rule
+// (`:root[data-palette='vert']` -> `:root[data-theme='dark'][data-palette='vert']`,
+// specificity 0,3,0) would otherwise beat the explicit
+// `:root[data-theme='dark']` block (0,2,0), and a twin of the light `:root`
+// would sit between the light rule and the explicit dark block. Tokens
+// defined with `var(--nd-grey-*)` need no twin anyway (no hex literal);
+// the hex-valued ones (borders in hex8, accent per palette) do.
+export const EXPLICIT_DARK_TOKENS = new Set([
+  // Palette brute (indépendante du thème : mêmes hex en clair et sombre).
+  // Sans cela, le plugin flipperait l'échelle elle-même (`--nd-grey-1100`
+  // deviendrait #d1d1d1 en sombre) et les tokens sémantiques définis par
+  // `var(--nd-grey-*)` résoudraient vers les valeurs flippées.
+  '--nd-grey-50',
+  '--nd-grey-100',
+  '--nd-grey-200',
+  '--nd-grey-300',
+  '--nd-grey-400',
+  '--nd-grey-500',
+  '--nd-grey-600',
+  '--nd-grey-700',
+  '--nd-grey-800',
+  '--nd-grey-900',
+  '--nd-grey-1000',
+  '--nd-grey-1100',
+  '--nd-grey-1200',
+  '--nd-blue-300',
+  '--nd-blue-400',
+  '--nd-blue-500',
+  '--nd-blue-600',
+  '--nd-blue-700',
+  '--nd-blue-800',
+  '--nd-bg-base',
+  '--nd-bg-deep',
+  '--nd-bg-layer-01',
+  '--nd-bg-layer-02',
+  '--nd-bg-layer-03',
+  '--nd-bg-layer-04',
+  '--nd-bg-inverse',
+  '--nd-bg-contrast',
+  '--nd-bg-accent',
+  '--nd-text-base',
+  '--nd-text-muted',
+  '--nd-text-faint',
+  '--nd-text-inverse',
+  '--nd-text-accent',
+  '--nd-text-accent-hover',
+  '--nd-icon-base',
+  '--nd-icon-muted',
+  '--nd-icon-faint',
+  '--nd-border-muted',
+  '--nd-border-base',
+  '--nd-border-strong',
+  '--nd-border-focus',
+  '--nd-overlay-hover',
+  '--nd-overlay-pressed',
+  '--nd-overlay-scrim',
+  '--nd-accent',
+  '--nd-accent-dark',
+  '--nd-scrollbar-thumb',
+  '--nd-scrollbar-thumb-hover',
+  '--nd-elevation-raised',
+  '--nd-elevation-floating',
+  '--nd-elevation-overlay',
+  '--nd-elevation-input',
+]);
 const colorToken = /#[0-9a-fA-F]{3,8}\b|\b(?:white|black)\b/g;
 export function darkValue(prop: string, value: string) {
   // Shadows stay shadows: keep their alpha, drop their tint.
@@ -228,7 +294,10 @@ export function darkTheme(): Plugin {
         // Fixed surfaces keep their light colors and get no dark rules.
         if (fixed) continue;
         const colors = rule.nodes.filter(
-          (node): node is Declaration => node.type === 'decl' && themed(node),
+          (node): node is Declaration =>
+            node.type === 'decl' &&
+            themed(node) &&
+            !EXPLICIT_DARK_TOKENS.has(node.prop),
         );
         if (!colors.length) continue;
         const dark = rule.clone({

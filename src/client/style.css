@@ -5,12 +5,14 @@
   font-synthesis: none;
   font-weight: 400;
   font-size: 15px;
-  --ink: #333641;
-  --muted: #8c8d97;
-  --line: #e9e8e6;
-  --blue: #7285d5;
-  --blue-dark: #5269bb;
-  --lavender: #eeeffa;
+  /* Alias vers les tokens (tokens.css) : des hex ici seraient flippés par
+     le plugin dark-theme et battraient le mapping en sombre. */
+  --ink: var(--nd-text);
+  --muted: var(--nd-text-secondary);
+  --line: var(--nd-border);
+  --blue: var(--nd-accent);
+  --blue-dark: var(--nd-accent-dark);
+  --lavender: color-mix(in srgb, var(--nd-accent) 12%, var(--nd-bg));
 }
 * {
   box-sizing: border-box;

@@ -6,6 +6,7 @@ import {
   darkSelector,
   darkTheme,
   darkValue,
+  EXPLICIT_DARK_TOKENS,
 } from '../src/build/dark-theme';
 import { resolveTheme } from '../src/client/theme';
 const run = (css: string) =>
@@ -192,4 +193,62 @@ it('checks text against a variable background in the same rule', () => {
     /\.template-app \.primary \{ background: var\(--accent\);/,
   );
   expect(contrast(text, darkColor('#242424'))).toBeGreaterThanOrEqual(4.5);
+});
+it('never flips the raw palette the semantic layer points to', () => {
+  const css = run(`
+    :root {
+      --nd-grey-1100: #161616;
+      --nd-blue-600: #3b5cf6;
+      --nd-bg: #ffffff;
+    }
+  `);
+  expect(css).not.toMatch(/data-theme='dark'\][^{]*\{[^}]*--nd-grey-1100/);
+  expect(css).not.toMatch(/data-theme='dark'\][^{]*\{[^}]*--nd-blue-600/);
+  expect(css).toMatch(/:root\[data-theme='dark'\] \{\s*--nd-bg: #1b1b1b;\s*\}/);
+});
+it('never flips tokens with an explicit dark value', () => {
+  const css = run(`
+    :root {
+      --nd-bg-base: #ffffff;
+      --nd-border-base: #0000001a;
+      --nd-accent: #3b5cf6;
+      --nd-bg: #ffffff;
+    }
+    :root[data-palette='vert'] { --nd-accent: #22c55e; }
+  `);
+  // No twin at all for the semantic tokens — the explicit
+  // :root[data-theme='dark'] block in tokens.css owns their dark values.
+  expect(css).not.toMatch(/data-theme='dark'\][^{]*\{[^}]*--nd-bg-base/);
+  expect(css).not.toMatch(/data-theme='dark'\][^{]*\{[^}]*--nd-border-base/);
+  expect(css).not.toMatch(/data-theme='dark'\][^{]*\{[^}]*--nd-accent/);
+  // A palette twin would beat the explicit dark block (specificity 0,3,0
+  // vs 0,2,0), so the palette rule gets no twin either.
+  expect(css).not.toMatch(/data-theme='dark'\]\[data-palette/);
+  // Non-explicit tokens still get their flip twin.
+  expect(css).toMatch(/:root\[data-theme='dark'\] \{\s*--nd-bg: #1b1b1b;\s*\}/);
+});
+it('explicit dark token set covers the semantic layer', () => {
+  for (const token of [
+    '--nd-bg-base',
+    '--nd-bg-deep',
+    '--nd-bg-layer-01',
+    '--nd-bg-layer-02',
+    '--nd-bg-layer-03',
+    '--nd-bg-layer-04',
+    '--nd-text-base',
+    '--nd-text-muted',
+    '--nd-text-faint',
+    '--nd-text-accent',
+    '--nd-border-muted',
+    '--nd-border-base',
+    '--nd-border-strong',
+    '--nd-accent',
+    '--nd-elevation-raised',
+    '--nd-elevation-floating',
+    '--nd-elevation-overlay',
+    '--nd-elevation-input',
+    '--nd-scrollbar-thumb',
+    '--nd-scrollbar-thumb-hover',
+  ])
+    expect(EXPLICIT_DARK_TOKENS.has(token)).toBe(true);
 });

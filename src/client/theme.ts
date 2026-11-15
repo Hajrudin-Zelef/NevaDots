@@ -12,7 +12,7 @@ export interface Palette {
 
 /** Palettes d'accent, reprises de l'UI cetas-lite. */
 export const PALETTES: Palette[] = [
-  { id: 'bleu', label: 'Bleu', color: '#3b87ce' },
+  { id: 'bleu', label: 'Bleu', color: '#3b5cf6' },
   { id: 'violet', label: 'Violet', color: '#8b5cf6' },
   { id: 'vert', label: 'Vert', color: '#22c55e' },
   { id: 'vert_pur', label: 'Vert pur', color: '#00e676' },
@@ -22,7 +22,7 @@ export const PALETTES: Palette[] = [
   { id: 'ocean', label: 'Ocean', color: '#2196f3' },
 ];
 
-export const DEFAULT_PALETTE = 'vert';
+export const DEFAULT_PALETTE = 'bleu';
 
 // The choice for this page, even if storage refuses to keep it.
 let chosen: ThemePreference | undefined;
@@ -71,7 +71,7 @@ export function resolveTheme(
 }
 
 const themeColor = (theme: ResolvedTheme) =>
-  theme === 'light' ? '#f8f7f4' : theme === 'hard_dark' ? '#0d0d0d' : '#1b1b1b';
+  theme === 'light' ? '#ffffff' : theme === 'hard_dark' ? '#0d0d0d' : '#161616';
 
 function apply() {
   const theme = resolveTheme(themePreference(), query().matches);
