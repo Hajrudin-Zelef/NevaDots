@@ -148,6 +148,7 @@ export class DotAgent extends AbstractAgent {
       let watcher: ReturnType<typeof setInterval> | undefined;
       let timedOut = false;
       let costExceeded = false;
+      let iterationsExhausted = false;
       let finished = false;
       let configurationFailure = false;
       let sessionNotesBefore: string | undefined;
@@ -176,16 +177,47 @@ export class DotAgent extends AbstractAgent {
         observe({ type: EventType.RUN_ERROR });
         this.abortRun();
       }, turnTimeLimitMs);
-      const timeLimitError = () => ({
-        type: EventType.RUN_ERROR,
-        message: `Ce tour a atteint la limite de temps (${formatDuration(turnTimeLimitMs)}) et a été arrêté. Découpe la demande ou réessaie.`,
-      });
       const maxTurnCostUsd =
         this.config.maxTurnCostUsd ?? DEFAULT_MAX_TURN_COST_USD;
-      const costLimitError = () => ({
-        type: EventType.RUN_ERROR,
-        message: `Ce tour a dépassé la limite de coût (${maxTurnCostUsd.toFixed(2)} $) et a été arrêté. Découpe la demande ou réessaie.`,
-      });
+      /** Ce qui a été consommé avant l'arrêt (« 42 tours, 0,87 $ estimés »). */
+      const consumed = (): string => {
+        const parts: string[] = [];
+        if (turnUsage.calls > 0)
+          parts.push(
+            `${turnUsage.calls} tour${turnUsage.calls > 1 ? 's' : ''}`,
+          );
+        const cost = estimateCostUsd(
+          turnUsage.resolvedModel ??
+            this.workspace.dot(this.dotId)?.model ??
+            '',
+          turnUsage.promptTokens,
+          turnUsage.completionTokens,
+          turnUsage.cachedTokens,
+        );
+        if (cost != null) parts.push(`${cost.toFixed(2)} $ estimés`);
+        return parts.join(', ');
+      };
+      const timeLimitError = () => {
+        const used = consumed();
+        return {
+          type: EventType.RUN_ERROR,
+          message: `Ce tour a atteint la limite de temps (${formatDuration(turnTimeLimitMs)})${used ? ` après ${used}` : ''} et a été arrêté. Dis « continue » pour reprendre, ou découpe la demande.`,
+        };
+      };
+      const costLimitError = () => {
+        const used = consumed();
+        return {
+          type: EventType.RUN_ERROR,
+          message: `Ce tour a dépassé la limite de coût (${maxTurnCostUsd.toFixed(2)} $)${used ? ` après ${used}` : ''} et a été arrêté. Dis « continue » pour reprendre, ou augmente AGENT_MAX_TURN_COST_USD.`,
+        };
+      };
+      const iterationsLimitError = () => {
+        const used = consumed();
+        return {
+          type: EventType.RUN_ERROR,
+          message: `Ce tour a atteint la limite de tours de modèle${used ? ` (${used})` : ''} et a été arrêté. Dis « continue » pour reprendre, ou découpe la demande.`,
+        };
+      };
       // Reasoning capture teardown hooks (assigned inside try when used).
       let closeReasoning: () => void = () => {};
       let restoreFetch: () => void = () => {};
@@ -1030,10 +1062,12 @@ export class DotAgent extends AbstractAgent {
               },
               agentLoopStrategy: (state) => {
                 const shouldContinue = loopStrategy(state);
-                if (!shouldContinue)
+                if (!shouldContinue) {
+                  iterationsExhausted = true;
                   console.warn(
                     `[agent] max iterations reached (${maxAgentIterations}) for dot ${dot.id}`,
                   );
+                }
                 return shouldContinue;
               },
               // Phase 5a : injecte les screenshots computer comme images.
@@ -1252,6 +1286,9 @@ export class DotAgent extends AbstractAgent {
               } else if (costExceeded && !finished) {
                 subscriber.next(costLimitError());
                 subscriber.complete();
+              } else if (iterationsExhausted) {
+                subscriber.next(iterationsLimitError());
+                subscriber.complete();
               } else subscriber.error(error);
             },
             complete: () => {
@@ -1266,6 +1303,14 @@ export class DotAgent extends AbstractAgent {
                 observe({ type: EventType.RUN_ERROR });
                 subscriber.next(
                   this.channel ? channelError() : costLimitError(),
+                );
+              } else if (iterationsExhausted) {
+                // Le modèle n'a pas rendu de réponse finale : le tour a été
+                // coupé par le plafond de tours, on le dit (avant : un
+                // simple console.warn, invisible pour l'utilisateur).
+                observe({ type: EventType.RUN_ERROR });
+                subscriber.next(
+                  this.channel ? channelError() : iterationsLimitError(),
                 );
               }
               subscriber.complete();

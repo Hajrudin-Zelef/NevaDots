@@ -210,7 +210,7 @@ it('continue au-delà de 5 tours d’outils dans le même message', async () => 
   );
 });
 
-it('s’arrête proprement au plafond de sécurité configuré', async () => {
+it('s’arrête au plafond de tours et le dit à l’utilisateur', async () => {
   const f = fixture(
     undefined,
     undefined,
@@ -227,10 +227,16 @@ it('s’arrête proprement au plafond de sécurité configuré', async () => {
     );
   const events = await lastValueFrom(f.agent.run(f.input).pipe(toArray()));
   expect(network).toHaveBeenCalledTimes(3);
-  expect(
-    events.filter((event) => event.type === EventType.RUN_ERROR),
-  ).toHaveLength(0);
-  expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
+  // Le tour est coupé sans réponse finale : l'utilisateur doit le savoir
+  // (avant : un simple console.warn, invisible côté interface).
+  const errors = events.filter(
+    (event) => event.type === EventType.RUN_ERROR,
+  ) as { message?: string }[];
+  expect(errors).toHaveLength(1);
+  expect(errors[0].message).toMatch(/limite de tours de modèle/i);
+  expect(errors[0].message).toMatch(/continue/i);
+  // Le flux se termine proprement (pas d'erreur de transport).
+  expect(events.at(-1)?.type).toBe(EventType.RUN_ERROR);
 });
 
 it('offers the canonical review tool and waits for the client without saving a page', async () => {
