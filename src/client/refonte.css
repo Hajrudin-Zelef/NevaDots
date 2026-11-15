@@ -4872,14 +4872,14 @@ textarea::placeholder {
 .tool-run-header {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   max-width: 100%;
-  padding: 3px 2px;
+  padding: 4px 2px;
   border: 0;
   border-radius: 6px;
   background: none;
   color: var(--nd-text-secondary);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   cursor: pointer;
   transition: color 0.15s ease;
@@ -4905,22 +4905,24 @@ textarea::placeholder {
 }
 .tool-run-list {
   position: relative;
-  margin: 6px 0 2px;
-  padding: 4px;
+  margin: 8px 0 4px;
+  padding: 6px;
   list-style: none;
   display: flex;
   flex-direction: column;
-  background: var(--nd-bg-hover);
-  border-radius: 12px;
+  border: 1px solid var(--nd-border);
+  border-radius: 14px;
+  /* Carte légèrement détachée du fond, dans les deux thèmes. */
+  background: color-mix(in srgb, var(--nd-text) 4%, var(--nd-bg));
 }
 .tool-run-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-size: 13px;
+  gap: 10px;
+  min-height: 46px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 15px;
 }
 .tool-run-row:hover {
   background: color-mix(in srgb, var(--nd-text) 4%, transparent);
@@ -4929,11 +4931,14 @@ textarea::placeholder {
   display: grid;
   place-items: center;
   flex: none;
+  width: 20px;
+  height: 20px;
   color: var(--nd-text-secondary);
 }
 .tool-run-name {
   flex: none;
   font-weight: 600;
+  font-size: 15px;
   color: var(--nd-text);
   white-space: nowrap;
 }
@@ -4945,7 +4950,7 @@ textarea::placeholder {
   text-overflow: ellipsis;
   color: var(--nd-text-secondary);
   font-family: var(--nd-font-mono);
-  font-size: 12px;
+  font-size: 14px;
 }
 .tool-run-diff {
   flex: none;
@@ -4981,14 +4986,20 @@ textarea::placeholder {
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 560px) {
+  .tool-run-header {
+    font-size: 14px;
+  }
   .tool-run-row {
-    min-height: 32px;
-    gap: 6px;
-    padding: 4px 8px;
-    font-size: 12px;
+    min-height: 42px;
+    gap: 8px;
+    padding: 6px 8px;
+    font-size: 14px;
+  }
+  .tool-run-name {
+    font-size: 14px;
   }
   .tool-run-preview {
-    font-size: 11px;
+    font-size: 12px;
   }
   .tool-run-pill {
     padding: 2px 9px 2px 3px;

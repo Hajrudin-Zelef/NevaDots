@@ -119,7 +119,7 @@ function ToolRunRow({ step }: { step: AgentStep }) {
     return (
       <li className="tool-run-row error" role="alert">
         <span className="tool-run-icon" aria-hidden="true">
-          <OctagonX size={15} />
+          <OctagonX size={17} />
         </span>
         <span className="tool-run-name">{label}</span>
         <span className="tool-run-preview">{summary || preview}</span>
@@ -132,7 +132,7 @@ function ToolRunRow({ step }: { step: AgentStep }) {
     return (
       <li className="tool-run-row stopped">
         <span className="tool-run-icon" aria-hidden="true">
-          <AlertTriangle size={15} />
+          <AlertTriangle size={17} />
         </span>
         <span className="tool-run-name">{label}</span>
         <span className="tool-run-preview">
@@ -146,7 +146,7 @@ function ToolRunRow({ step }: { step: AgentStep }) {
   return (
     <li className={`tool-run-row ${step.status}`}>
       <span className="tool-run-icon" aria-hidden="true">
-        <Icon size={15} />
+        <Icon size={18} />
       </span>
       <span className="tool-run-name">{label}</span>
       {preview && <span className="tool-run-preview">{preview}</span>}
