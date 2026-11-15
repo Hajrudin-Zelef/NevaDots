@@ -79,6 +79,39 @@ it('dérive les étapes du transcript : statut, résumé, matches, exit code', (
   expect(steps[1].subtitle).toContain('ls -la');
 });
 
+it('stepsFromTranscriptMessage : le contenu du résultat n’est parsé qu’une fois', () => {
+  const messages = transcript();
+  const toolContent = (messages[2] as unknown as { content: string }).content;
+  const parseSpy = vi.spyOn(JSON, 'parse');
+  const steps = stepsFromTranscriptMessage(
+    messages.find((m) => m.id === 'a1')!,
+    messages,
+  );
+  // Avant la déduplication, `describeToolOutcome` ET `summarizeToolCall`
+  // parsait chacun le contenu du résultat ; le résumé est désormais lu
+  // dans `outcome`, qui l'inclut déjà (`ToolOutcome` étend `ToolSummary`).
+  expect(
+    parseSpy.mock.calls.filter(([arg]) => arg === toolContent),
+  ).toHaveLength(1);
+  parseSpy.mockRestore();
+  // Comportement inchangé.
+  expect(steps).toHaveLength(2);
+  expect(steps[0]).toMatchObject({
+    toolName: 'search_web',
+    status: 'done',
+    verb: 'Exploré',
+    matchCount: 2,
+  });
+  expect(steps[0].subtitle).toContain('dette technique');
+  expect(steps[1]).toMatchObject({
+    toolName: 'computer_exec',
+    status: 'error',
+    verb: 'Exécuté',
+    exitCode: 1,
+  });
+  expect(steps[1].subtitle).toContain('ls -la');
+});
+
 it('un appel sans message de résultat est interrompu, pas une erreur', () => {
   const messages = transcript().filter((m) => m.id !== 't2');
   const assistant = messages.find((m) => m.id === 'a1')!;

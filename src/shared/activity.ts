@@ -57,12 +57,6 @@ export function firstSentence(value: string): string {
   return truncate(sentence, 200);
 }
 
-function basename(path: string): string {
-  const clean = path.replace(/\\/g, '/').replace(/\/+$/, '');
-  const last = clean.split('/').pop() ?? clean;
-  return last || clean;
-}
-
 function countLines(value: string | undefined): number | undefined {
   if (typeof value !== 'string' || !value) return undefined;
   return value.split('\n').length;

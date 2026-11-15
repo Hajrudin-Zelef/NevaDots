@@ -630,6 +630,14 @@ export function App() {
    *  n'est poussé qu'après création réussie ; en cas d'échec le brouillon
    *  est conservé tel quel. */
   const submitHomePrompt = () => {
+    // Garde vide (revue finale, Important 2) : Alt+Entrée sur un brouillon
+    // vide ne doit rien créer — sans elle, `prepareSend('')` → `''` →
+    // `newConversation('')` créait une « Conversation vocale » avec
+    // bascule voix. La garde est ici, pas dans `newConversation` : le
+    // bouton voix appelle `newConversation('')` directement, et c'est
+    // intentionnel. Seules les pièces jointes en attente autorisent un
+    // brouillon vide (comme le bouton d'envoi).
+    if (!promptRef.current.trim() && !attachments.items.length) return;
     void (async () => {
       try {
         const raw = promptRef.current;

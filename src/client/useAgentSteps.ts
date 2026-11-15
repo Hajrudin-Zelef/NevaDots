@@ -4,7 +4,6 @@ import type { Message, ToolCall } from '@ag-ui/core';
 import {
   computerToolResult,
   describeToolOutcome,
-  summarizeToolCall,
   type ActivityKind,
   type ToolVerb,
 } from '../shared/activity';
@@ -99,12 +98,11 @@ export function enrichStepFromTranscript(
   if (!call) return step;
   const params = computerToolResult(call.function.arguments);
   const toolMessage = toolMessagesByCall(messages).get(step.toolCallId);
+  // `describeToolOutcome` contient déjà le résumé typé (`ToolOutcome`
+  // étend `ToolSummary`) : un second `summarizeToolCall` ici re-parsait
+  // le contenu du résultat et recalculait le même résumé (revue finale,
+  // Important 4).
   const outcome = describeToolOutcome(call.function.name, params, toolMessage);
-  const summary = summarizeToolCall(
-    call.function.name,
-    params,
-    toolMessage ? computerToolResult(toolMessage.content) : undefined,
-  );
   let status: AgentStepStatus;
   if (toolMessage) {
     status =
@@ -124,11 +122,11 @@ export function enrichStepFromTranscript(
     label: step.label || outcome.label,
     kind: outcome.kind,
     verb: outcome.verb,
-    subtitle: summary.subtitle || undefined,
-    matchCount: summary.matchCount,
-    exitCode: summary.exitCode,
-    addedLines: summary.addedLines,
-    removedLines: summary.removedLines,
+    subtitle: outcome.subtitle || undefined,
+    matchCount: outcome.matchCount,
+    exitCode: outcome.exitCode,
+    addedLines: outcome.addedLines,
+    removedLines: outcome.removedLines,
     error: outcome.error || undefined,
     status,
   };
@@ -150,15 +148,13 @@ export function stepsFromTranscriptMessage(
   return (message.toolCalls as ToolCall[]).map((call) => {
     const params = computerToolResult(call.function.arguments);
     const toolMessage = toolMessages.get(call.id);
+    // Même remarque que `enrichStepFromTranscript` : le résumé est déjà
+    // dans `outcome`, pas de second `summarizeToolCall` (ni de second
+    // `JSON.parse` du contenu du résultat).
     const outcome = describeToolOutcome(
       call.function.name,
       params,
       toolMessage,
-    );
-    const summary = summarizeToolCall(
-      call.function.name,
-      params,
-      toolMessage ? computerToolResult(toolMessage.content) : undefined,
     );
     const status: AgentStepStatus = toolMessage
       ? outcome.status === 'ok'
@@ -175,11 +171,11 @@ export function stepsFromTranscriptMessage(
       toolCallId: call.id,
       kind: outcome.kind,
       verb: outcome.verb,
-      subtitle: summary.subtitle || undefined,
-      matchCount: summary.matchCount,
-      exitCode: summary.exitCode,
-      addedLines: summary.addedLines,
-      removedLines: summary.removedLines,
+      subtitle: outcome.subtitle || undefined,
+      matchCount: outcome.matchCount,
+      exitCode: outcome.exitCode,
+      addedLines: outcome.addedLines,
+      removedLines: outcome.removedLines,
       error: outcome.error || undefined,
     };
   });

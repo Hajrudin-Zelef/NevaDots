@@ -8,7 +8,7 @@ import { ConnectionActionCard } from './ConnectionActionCard';
 import { contextualMessage, type PageContext } from './page-context';
 import { api } from './api';
 import type { Page } from '../server/pages';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CopilotChatToolCallsView,
   useRenderTool,
@@ -60,7 +60,11 @@ import { Composer } from './Composer';
 import { stopAllSpeech } from './MessageActions';
 import { AttachmentBar, type AttachmentBarHandle } from './AttachmentBar';
 import { useAttachments } from './useAttachments';
-import { useAgentSteps, stepsFromTranscriptMessage } from './useAgentSteps';
+import {
+  useAgentSteps,
+  stepsFromTranscriptMessage,
+  type AgentStep,
+} from './useAgentSteps';
 import {
   distanceToEnd,
   hasOverflow,
@@ -890,20 +894,84 @@ export function Chat({
     setDraft(value);
   };
   /** Alt+Entrée : tête de file pendant un tour, envoi sinon (`steer`
-   *  hors périmètre — la file ne fait que prioriser). */
+   *  hors périmètre — la file ne fait que prioriser). Passe par le même
+   *  assemblage que `onSubmit` (`prepareSend` + citation + noms de pièces
+   *  jointes) : l'ancien chemin envoyait le brouillon brut, donc les
+   *  pièces jointes affichées n'étaient jamais uploadées et la carte de
+   *  citation restait ouverte pour le message suivant (revue finale,
+   *  Important 1). Même garde anti-double-submit que `onSubmit` (prise
+   *  synchrone de `sendingRef` avant `await prepareSend`, libération
+   *  dans `finally`). */
   const queueFront = () => {
-    const text = draftRef.current.trim();
-    if (!text || !loaded || !contextReady || paused) return;
-    stopAllSpeech();
-    if (running) {
-      setQueued((current) => enqueueQueuedFront(current, text));
-      clearDraft();
-      setSource('');
-      setSourceOpen(false);
-      resumeFollow();
+    if (sendingRef.current) return;
+    // Capture synchrone (comme la fermeture d'`onSubmit`) : le brouillon,
+    // la carte et la source ne doivent pas dériver pendant `prepareSend`.
+    const draftAtSubmit = draftRef.current;
+    const quoteAtSubmit = quoteRef.current;
+    const sourceAtSubmit = source;
+    if (
+      (!draftAtSubmit.trim() &&
+        !quoteAtSubmit &&
+        !attachments.items.length) ||
+      !loaded ||
+      !contextReady ||
+      paused
+    )
       return;
-    }
-    void send(text);
+    sendingRef.current = true;
+    void (async () => {
+      try {
+        const userText = [
+          draftAtSubmit.trim(),
+          quoteAtSubmit?.comment.trim(),
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+        const quoted = quoteAtSubmit
+          ? userText
+            ? `${userText}\n\n[Citation : ${quoteAtSubmit.text}]`
+            : `[Citation : ${quoteAtSubmit.text}]`
+          : draftAtSubmit;
+        const attachmentNames = attachments.items.map((a) => a.name);
+        const text = await attachments.prepareSend(quoted);
+        const finalText = `${sourceAtSubmit ? `From ${sourceAtSubmit}:\n\n` : ''}${text}`;
+        const meta = {
+          attachments: attachmentNames,
+          historyPrompt: userText,
+          quote: quoteAtSubmit ?? undefined,
+        };
+        if (running) {
+          // Comme la branche « en cours » de `send`, mais en tête de
+          // file : le snapshot (citation, pièces jointes) voyage avec le
+          // message, et la carte est consommée — sinon elle s'appliquerait
+          // au message d'après (mauvaise attribution).
+          stopAllSpeech();
+          setQueued((current) =>
+            enqueueQueuedFront(current, finalText, meta),
+          );
+          if (
+            meta.quote &&
+            quoteRef.current?.text === meta.quote.text &&
+            quoteRef.current?.comment === meta.quote.comment
+          )
+            setQuote(null);
+          clearDraft();
+          setSource('');
+          setSourceOpen(false);
+          resumeFollow();
+          return;
+        }
+        void send(finalText, meta);
+      } catch (error) {
+        // prepareSend a échoué (timeout, upload, rattachement) :
+        // erreur visible, brouillon conservé.
+        setError(
+          error instanceof Error ? error.message : 'Envoi impossible.',
+        );
+      } finally {
+        sendingRef.current = false;
+      }
+    })();
   };
   /** Mod+. / Maj+Mod+. : cycle entre les Dots (chip agent, étape 4). */
   const cycleDot = (direction: 1 | -1) => {
@@ -1243,6 +1311,33 @@ export function Chat({
   // Ligne de statut sous le tour (lot 3) : un seul libellé, dérivé des
   // messages — jamais empilé avec un autre signal « ça travaille ».
   const turnStatus = deriveTurnStatus(agent.messages, running);
+  // Repli transcript des blocs d'outils, mémoïsé par message (revue
+  // finale, Important 4) : `stepsFromTranscriptMessage` fait `JSON.parse`
+  // des arguments de chaque appel ; sans mémo, `renderTools` le relançait
+  // pour tous les messages à chaque rendu — y compris chaque token en
+  // streaming et chaque frappe au composer. La carte n'est recalculée que
+  // quand `agent.messages` (nouveau tour, résultat d'outil arrivé) ou
+  // l'historique enregistré change. Le tour courant reste exclu au rendu
+  // (couvert par le bloc live) — ce test, bon marché, n'est pas mémoïsé.
+  const fallbackStepsByMessageId = useMemo(() => {
+    const byId = new Map<string, AgentStep[]>();
+    for (const message of agent.messages) {
+      if (message.role !== 'assistant' || !message.toolCalls?.length)
+        continue;
+      if (history.some((entry) => entry.messageId === message.id)) continue;
+      byId.set(
+        message.id,
+        stepsFromTranscriptMessage(message, agent.messages).filter(
+          (step) =>
+            step.toolName &&
+            !step.toolName.startsWith('computer_') &&
+            step.toolName !== pageReviewTool.name &&
+            step.toolName !== connectionActionTool.name,
+        ),
+      );
+    }
+    return byId;
+  }, [agent.messages, history]);
   return (
     <div className={`live-chat ${visible.length ? 'in-conversation' : ''}`}>
       {pageContext && (
@@ -1282,18 +1377,13 @@ export function Chat({
             // Placement lot 3 inchangé : tout reste dans `renderTools`,
             // après le bloc live et avant la bulle (voir ChatTranscript).
             // Pendant le run, le tour courant est couvert par le bloc
-            // live : on ne double pas sa carte.
+            // live : on ne double pas sa carte. Le repli est mémoïsé
+            // par message (voir `fallbackStepsByMessageId` ci-dessus).
             const isCurrentTurn =
               running && message.id === lastAssistant?.id;
             const fallback = isCurrentTurn
               ? []
-              : stepsFromTranscriptMessage(message, agent.messages).filter(
-                  (step) =>
-                    step.toolName &&
-                    !step.toolName.startsWith('computer_') &&
-                    step.toolName !== pageReviewTool.name &&
-                    step.toolName !== connectionActionTool.name,
-                );
+              : (fallbackStepsByMessageId.get(message.id) ?? []);
             return (
               <>
                 {fallback.length > 0 && (

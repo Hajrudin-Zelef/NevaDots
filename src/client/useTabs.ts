@@ -6,8 +6,17 @@ import { useEffect, useReducer } from 'react';
 // onglets { threadId, draftId? } + recentKey + pile des fermés (limite 100,
 // restauration à l'index d'origine) + onglet aperçu éphémère. Réimplémenté
 // en React avec nos propres noms et notre propre structure — aucun code
-// OpenCode repris. La bande d'onglets visuelle, elle, arrive au Lot 2 ;
-// ce lot ne fournit que le socle structurel (store + routes en hash).
+// OpenCode repris.
+//
+// État du strip visuel (revue finale, Important 5 — trou du PLAN, pas un
+// oubli d'implémentation) : AUCUN composant ne rend de bande d'onglets.
+// En attendant un lot dédié « bande d'onglets » (décision utilisateur),
+// `closeTab` n'est appelé que par la suppression (avec `keepClosed: false`,
+// donc rien n'entre jamais dans la pile des fermés) et `closeAllTabs` que
+// par « tout supprimer » — `mod+shift+t` (`restoreClosedTab`) ne peut donc
+// rien restaurer en pratique. Ne pas brancher de strip ici : c'est un
+// nouveau lot, pas un correctif. La liste `tabs`, elle, est capée à 64
+// (même politique que la liste des sessions) pour borner le `localStorage`.
 //
 // Resynchronisation : `refresh()` (polling 3 s dans App.tsx) écrase
 // `workspace` ; le hook reçoit la liste courante des conversations et
@@ -36,6 +45,10 @@ export interface TabsStoreState {
 }
 
 export const MAX_CLOSED_TABS = 100;
+
+/** Cap de la liste des onglets (même politique que les 64 sessions
+ *  affichées) : borne le `localStorage`, comme la pile des fermés. */
+export const MAX_TABS = 64;
 
 export const TABS_STORAGE_KEY = 'nevadots-tabs';
 export const TABS_RECENT_KEY = 'nevadots-tabs-recent';
@@ -103,7 +116,8 @@ function parseTab(value: unknown): Tab | undefined {
   return tab;
 }
 
-/** Valide et déduplique (premier gagnant) la liste persistée. */
+/** Valide et déduplique (premier gagnant) la liste persistée ; capée
+ *  aux 64 plus récents (voir `MAX_TABS`). */
 export function parseTabs(value: unknown): Tab[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -115,7 +129,7 @@ export function parseTabs(value: unknown): Tab[] {
       tabs.push(tab);
     }
   }
-  return tabs;
+  return tabs.slice(-MAX_TABS);
 }
 
 /** Valide la pile des fermés ; capée aux 100 plus récents. */
@@ -163,7 +177,12 @@ export function loadTabsState(initialActiveThreadId?: string): TabsStoreState {
   } else {
     activeThreadId = tabs[0]?.threadId;
   }
-  return { tabs, activeThreadId, previewThreadId: undefined, closed };
+  return {
+    tabs: capTabs(tabs, activeThreadId),
+    activeThreadId,
+    previewThreadId: undefined,
+    closed,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +193,21 @@ function insertAt<T>(list: T[], index: number, item: T): T[] {
   const next = [...list];
   next.splice(Math.min(Math.max(index, 0), next.length), 0, item);
   return next;
+}
+
+/** Cap de la liste : retire les plus anciens, jamais l'onglet actif
+ *  (ni celui qui vient d'être ouvert/restauré, qui est l'actif). */
+function capTabs(tabs: Tab[], activeThreadId?: string): Tab[] {
+  if (tabs.length <= MAX_TABS) return tabs;
+  const overflow = tabs.length - MAX_TABS;
+  let removed = 0;
+  return tabs.filter((tab) => {
+    if (removed < overflow && tab.threadId !== activeThreadId) {
+      removed++;
+      return false;
+    }
+    return true;
+  });
 }
 
 export function tabsReducer(
@@ -225,11 +259,12 @@ export function tabsReducer(
         tabs = [...state.tabs, tab];
       }
       if (preview) previewThreadId = threadId;
+      const activeThreadId = background ? state.activeThreadId : threadId;
       return {
         ...state,
-        tabs,
+        tabs: capTabs(tabs, activeThreadId),
         previewThreadId,
-        activeThreadId: background ? state.activeThreadId : threadId,
+        activeThreadId,
       };
     }
     case 'close': {
@@ -276,7 +311,10 @@ export function tabsReducer(
         closed,
         tabs: alreadyOpen
           ? state.tabs
-          : insertAt(state.tabs, entry.index, entry.tab),
+          : capTabs(
+              insertAt(state.tabs, entry.index, entry.tab),
+              entry.tab.threadId,
+            ),
         activeThreadId: entry.tab.threadId,
       };
     }

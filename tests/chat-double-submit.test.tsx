@@ -4,6 +4,31 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 
+// Uploads mockés : seul `/api/attachments` répond (fichier prêt) ; tout
+// autre `fetch` (ex. journal computer) échoue comme sans réseau — les
+// appelants l'encaissent déjà aujourd'hui.
+const fetchMock = vi.hoisted(() =>
+  vi.fn(async (url: string) => {
+    if (url === '/api/attachments')
+      return {
+        ok: true,
+        json: async () => ({
+          attachments: [
+            {
+              id: 'srv-1',
+              name: 'notes.txt',
+              size: 12,
+              mime: 'text/plain',
+              category: 'text',
+            },
+          ],
+        }),
+      };
+    throw new Error(`fetch non mocké en test : ${url}`);
+  }),
+);
+vi.stubGlobal('fetch', fetchMock);
+
 // Stockages en mémoire (certains modules les touchent au chargement ; Node n'en a pas).
 {
   const makeStore = () => {
@@ -54,6 +79,10 @@ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 
 const runAgent = vi.hoisted(() => vi.fn());
 const addMessage = vi.hoisted(() => vi.fn());
+// Transcript courant du `useAgent` mocké — vide par défaut ; les tests
+// qui en ont besoin y poussent leurs messages (réinitialisé après chaque
+// test, voir `afterEach`).
+const mockMessages = vi.hoisted(() => [] as unknown[]);
 
 vi.mock('@copilotkit/react-core/v2', () => ({
   CopilotChatToolCallsView: () => null,
@@ -61,7 +90,7 @@ vi.mock('@copilotkit/react-core/v2', () => ({
   useHumanInTheLoop: () => {},
   useAgent: () => ({
     agent: {
-      messages: [],
+      messages: mockMessages,
       addMessage,
       subscribe: () => ({ unsubscribe: () => {} }),
     },
@@ -121,6 +150,7 @@ const roots: ReturnType<typeof create>[] = [];
 afterEach(() => {
   while (roots.length) roots.pop()?.unmount();
   vi.clearAllMocks();
+  mockMessages.length = 0;
   runAgent.mockResolvedValue({ newMessages: [] });
   // Chaque test repart d'un historique / de brouillons vides.
   (
@@ -178,6 +208,43 @@ function submitForm(root: ReturnType<typeof create>) {
     props: { onSubmit: (event: { preventDefault: () => void }) => void };
   };
   form.props.onSubmit({ preventDefault: () => {} });
+}
+
+/** Simule Alt+Entrée : appelle directement `onQueueFront` du composer. */
+async function queueFront(root: ReturnType<typeof create>) {
+  await act(async () => {
+    root.root.findByType(Composer).props.onQueueFront?.();
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+}
+
+/** Ajoute un fichier texte via l'input caché d'AttachmentBar, et attend
+ *  la fin de l'upload (le bouton d'envoi cesse d'être désactivé par
+ *  `attachments.uploading`). */
+async function attachTextFile(
+  root: ReturnType<typeof create>,
+  name = 'notes.txt',
+  content = 'contenu joint',
+) {
+  const file = new File([content], name, { type: 'text/plain' });
+  const input = root.root
+    .findAllByType('input')
+    .find(
+      (node) => node.props.type === 'file' && node.props.multiple === true,
+    );
+  if (!input) throw new Error('input fichier introuvable');
+  await act(async () => {
+    input.props.onChange({ target: { files: [file], value: '' } });
+  });
+  for (let i = 0; i < 40; i++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    if (!root.root.findByType(Composer).props.submitDisabled) return;
+  }
+  throw new Error("l'upload de la pièce jointe ne s'est pas terminé");
 }
 
 function readHistory(): { prompt: string; mode: string }[] {
@@ -420,4 +487,142 @@ it('tour en file : une quote fraîche posée en attendant survit à l’exécuti
   // La carte fraîche est toujours là.
   expect(quoteCardOpen(root)).toBe(true);
   expect(quoteCardText(root)).toBe('citation B');
+});
+
+// --- Vague de correction finale : Alt+Entrée via prepareSend (Important 1) ---
+
+it('Alt+Entrée hors tour avec pièces jointes + citation : tout part avec le message, carte consommée', async () => {
+  runAgent.mockResolvedValue({
+    newMessages: [{ role: 'assistant', content: 'ok' }],
+  });
+  const root = await mountChat();
+  await attachTextFile(root);
+  await openQuote(root, 'texte cité');
+  await setQuoteComment(root, 'mon commentaire');
+  await typeDraft(root, 'ma question');
+  await queueFront(root);
+  expect(addMessage).toHaveBeenCalledTimes(1);
+  const content = sentContents()[0];
+  expect(content).toContain('ma question');
+  expect(content).toContain('mon commentaire');
+  expect(content).toContain('[Citation : texte cité]');
+  expect(content).toContain('[Fichier : notes.txt');
+  expect(content).toContain('contenu joint');
+  // Carte consommée, brouillon vidé.
+  expect(quoteCardOpen(root)).toBe(false);
+  expect(root.root.findByType(Composer).props.text).toBe('');
+  // L'historique retient le texte utilisateur + les noms de pièces jointes.
+  const history = readHistory() as unknown as {
+    prompt: string;
+    mode: string;
+    attachments?: string[];
+  }[];
+  expect(history).toHaveLength(1);
+  expect(history[0].prompt).toBe('ma question\n\nmon commentaire');
+  expect(history[0].attachments).toEqual(['notes.txt']);
+  // Pièces jointes consommées : plus rien en attente.
+  const pendingRaw = (
+    globalThis as unknown as {
+      localStorage: { getItem: (k: string) => string | null };
+    }
+  ).localStorage.getItem('nevadots:attachments:thread:thread-1');
+  expect(pendingRaw ? JSON.parse(pendingRaw) : []).toEqual([]);
+});
+
+it('Alt+Entrée pendant un tour avec citation : le message en file porte la citation, pas le message suivant', async () => {
+  let resolveFirst!: (value: unknown) => void;
+  runAgent.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveFirst = resolve;
+      }),
+  );
+  runAgent.mockResolvedValue({
+    newMessages: [{ role: 'assistant', content: 'ok' }],
+  });
+  const root = await mountChat();
+  await typeDraft(root, 'premier');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  expect(addMessage).toHaveBeenCalledTimes(1);
+  // Tour 1 en cours : Alt+Entrée avec citation → tête de file.
+  await openQuote(root, 'citation une');
+  await setQuoteComment(root, 'commentaire un');
+  await typeDraft(root, 'deuxième');
+  await queueFront(root);
+  // Carte consommée à la mise en file, rien envoyé de plus pour l'instant.
+  expect(quoteCardOpen(root)).toBe(false);
+  expect(addMessage).toHaveBeenCalledTimes(1);
+  expect(
+    root.root.findAllByProps({ className: 'chat-bubble user pending' }),
+  ).toHaveLength(1);
+  // Fin du tour 1 : le message en file s'exécute avec sa citation.
+  await act(async () => {
+    resolveFirst({ newMessages: [{ role: 'assistant', content: 'ok' }] });
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  expect(addMessage).toHaveBeenCalledTimes(2);
+  const second = sentContents()[1];
+  expect(second).toContain('deuxième');
+  expect(second).toContain('commentaire un');
+  expect(second).toContain('[Citation : citation une]');
+  expect(second.split('[Citation').length - 1).toBe(1);
+  // Message suivant : une carte fraîche ne récupère pas l'ancienne citation.
+  await openQuote(root, 'citation B');
+  await typeDraft(root, 'troisième');
+  await act(async () => {
+    submitForm(root);
+  });
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  await act(async () => {});
+  expect(addMessage).toHaveBeenCalledTimes(3);
+  const third = sentContents()[2];
+  expect(third).toContain('[Citation : citation B]');
+  expect(third).not.toContain('citation une');
+});
+
+// --- Vague de correction finale : repli outils mémoïsé (Important 4) ---
+
+it('repli outils mémoïsé : une frappe au composer ne re-parse pas les arguments', async () => {
+  const argsJson = JSON.stringify({ query: 'dette technique' });
+  mockMessages.push(
+    { id: 'u1', role: 'user', content: 'Cherche' },
+    {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      toolCalls: [
+        {
+          id: 'call-search',
+          type: 'function',
+          function: { name: 'search_web', arguments: argsJson },
+        },
+      ],
+    },
+    {
+      id: 't1',
+      role: 'tool',
+      toolCallId: 'call-search',
+      content: JSON.stringify({ results: [{}, {}] }),
+    },
+  );
+  const parseSpy = vi.spyOn(JSON, 'parse');
+  const countArgsParses = () =>
+    parseSpy.mock.calls.filter(([arg]) => arg === argsJson).length;
+  const root = await mountChat();
+  // Le repli a bien parsé les arguments une fois au montage.
+  expect(countArgsParses()).toBeGreaterThan(0);
+  const afterMount = countArgsParses();
+  await typeDraft(root, 'taper');
+  await act(async () => {});
+  expect(countArgsParses()).toBe(afterMount);
+  parseSpy.mockRestore();
 });

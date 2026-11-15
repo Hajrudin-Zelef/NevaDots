@@ -19,6 +19,7 @@ import {
   EMPTY_TABS_STATE,
   isRestoreClosedTabKey,
   MAX_CLOSED_TABS,
+  MAX_TABS,
   nextTabAfterClose,
   parseClosedTabs,
   parseConversationHash,
@@ -64,6 +65,16 @@ it('parseClosedTabs : capé aux 100 plus récents', () => {
   expect(
     parseClosedTabs([{ tab: { threadId: 'a' }, index: -2 }])[0].index,
   ).toBe(0);
+});
+
+it('parseTabs : capé aux 64 plus récents (borne localStorage)', () => {
+  const pile = Array.from({ length: 70 }, (_, i) => ({
+    threadId: `t${i}`,
+  }));
+  const parsed = parseTabs(pile);
+  expect(parsed).toHaveLength(MAX_TABS);
+  expect(parsed[0].threadId).toBe('t6');
+  expect(parsed[MAX_TABS - 1].threadId).toBe('t69');
 });
 
 it('nextTabAfterClose : le suivant, sinon le précédent, sinon rien', () => {
@@ -113,6 +124,48 @@ const stateWith = (ids: string[], active?: string): TabsStoreState => ({
   ...EMPTY_TABS_STATE,
   tabs: ids.map((threadId) => ({ threadId })),
   activeThreadId: active,
+});
+
+it('open : la liste est capée à 64, les plus anciens partent, l’actif survit', () => {
+  let state = EMPTY_TABS_STATE;
+  for (let i = 0; i < 65; i++) {
+    state = tabsReducer(state, { type: 'open', threadId: `t${i}` });
+  }
+  expect(state.tabs).toHaveLength(MAX_TABS);
+  expect(state.tabs[0].threadId).toBe('t1');
+  expect(state.tabs[MAX_TABS - 1].threadId).toBe('t64');
+  expect(state.activeThreadId).toBe('t64');
+  // L'onglet actif ancien survit au cap quand il reste l'actif
+  // (ouverture en arrière-plan) : on retire les plus anciens non-actifs
+  // d'abord.
+  const oldActive = stateWith(
+    Array.from({ length: 64 }, (_, i) => `t${i}`),
+    't0',
+  );
+  const capped = tabsReducer(oldActive, {
+    type: 'open',
+    threadId: 't64',
+    background: true,
+  });
+  expect(capped.tabs).toHaveLength(MAX_TABS);
+  expect(capped.activeThreadId).toBe('t0');
+  expect(capped.tabs.some((tab) => tab.threadId === 't0')).toBe(true);
+  expect(capped.tabs.some((tab) => tab.threadId === 't1')).toBe(false);
+  expect(capped.tabs.some((tab) => tab.threadId === 't64')).toBe(true);
+});
+
+it('restore : la liste reste capée à 64', () => {
+  let state = stateWith(
+    Array.from({ length: 64 }, (_, i) => `t${i}`),
+    't63',
+  );
+  state = tabsReducer(state, { type: 'close', threadId: 't0' });
+  state = tabsReducer(state, { type: 'open', threadId: 't64' });
+  expect(state.tabs).toHaveLength(MAX_TABS);
+  state = tabsReducer(state, { type: 'restore' });
+  expect(state.tabs).toHaveLength(MAX_TABS);
+  expect(state.tabs.some((tab) => tab.threadId === 't0')).toBe(true);
+  expect(state.activeThreadId).toBe('t0');
 });
 
 it('open : ajoute et active ; rouvrir active sans dupliquer', () => {
