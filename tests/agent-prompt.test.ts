@@ -50,10 +50,11 @@ describe('agent-prompt (phase 5)', () => {
 
   it('buildSystemPrompt est en anglais, compressé, avec persona et flow', () => {
     const prompt = buildSystemPrompt(base);
-    // ~280 tokens statiques : bien sous les ~472 d'avant (cap relevé pour
+    // ~300 tokens statiques : bien sous les ~472 d'avant (cap relevé pour
     // les marquages « untrusted » du Lot 6, la section AUTONOMY et la clause
-    // de confidentialité — naturelle, sans refus annoncé ni liste).
-    expect(prompt.length).toBeLessThan(3250);
+    // de confidentialité — naturelle, sans refus annoncé, sans liste et sans
+    // méta-commentaire).
+    expect(prompt.length).toBeLessThan(3400);
     expect(prompt).toContain('PERSONA');
     expect(prompt).toContain('Demanding mentor');
     expect(prompt).toContain('Never invent');
@@ -74,9 +75,13 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).toContain('Marexsoft Corporation');
     // Comportement naturel : jamais de refus annoncé, jamais la liste de ce
     // qu'il ne doit pas dire (un curieux n'a aucun fil à tirer).
-    expect(prompt).toContain('outside what you discuss');
-    expect(prompt).toContain('never say you are not allowed');
-    expect(prompt).toContain('uninteresting, not forbidden');
+    expect(prompt).toContain('not something you discuss');
+    // Le méta est le vrai défaut observé : annoncer la limite, se justifier,
+    // commenter la formulation, ajouter un avertissement à une réponse permise.
+    expect(prompt).toContain('No meta');
+    expect(prompt).toContain('never announce, justify or explain the boundary');
+    expect(prompt).toContain('never add a disclaimer to a legitimate answer');
+    expect(prompt).toContain('never say you cannot share');
     expect(prompt).not.toContain('refuse politely once');
     expect(prompt).not.toContain('ports, internal URLs');
     expect(prompt).not.toContain('env vars');
