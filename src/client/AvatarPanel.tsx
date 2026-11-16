@@ -13,15 +13,19 @@ import {
 const OPTIONS: { value: AvatarQualitySetting; label: string; hint: string }[] =
   [
     { value: 'auto', label: 'Auto', hint: 'selon la connexion et l’appareil' },
-    { value: 'low', label: 'Bas · 12 fps', hint: 'connexions faibles' },
-    { value: 'standard', label: 'Standard · 15 fps', hint: 'équilibré' },
-    { value: 'high', label: 'Haut · 30 fps', hint: 'connexions rapides' },
+    { value: 'low', label: 'Basse · ≈ 0,2 Mo', hint: 'connexions faibles' },
+    {
+      value: 'standard',
+      label: 'Standard · ≈ 0,5 Mo',
+      hint: 'équilibré',
+    },
+    { value: 'high', label: 'Haute · ≈ 0,7 Mo', hint: 'connexions rapides' },
   ];
 
 const QUALITY_LABEL: Record<AvatarQuality, string> = {
-  low: 'Bas · 12 fps',
-  standard: 'Standard · 15 fps',
-  high: 'Haut · 30 fps',
+  low: 'Basse · ≈ 0,2 Mo',
+  standard: 'Standard · ≈ 0,5 Mo',
+  high: 'Haute · ≈ 0,7 Mo',
 };
 
 /**

@@ -223,7 +223,7 @@ app.use('/*', async (c, next) => {
 });
 // Phase B (comptes) : porte serveur — sans session valide, le serveur ne
 // sert que /login (jamais le JS de l'app, jamais les avatars). Les chemins
-// publics (/login, /reset, /health, /logo.png, /fonts/*, /api/*) sont
+// publics (/login, /reset, /health, /logo.webp, /fonts/*, /api/*) sont
 // exemptés dans la porte elle-même.
 app.use('/*', createStaticGate(auth));
 // Compress only hashed static assets. Scoped to /assets/* so the SSE endpoint

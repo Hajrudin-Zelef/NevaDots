@@ -18,7 +18,7 @@ it('sert le manifest, les icônes d’app et assetlinks sans session', async () 
     '/app-icon-512.png',
     '/app-icon-maskable-512.png',
     '/.well-known/assetlinks.json',
-    '/logo.png',
+    '/logo.webp',
     '/health',
   ]) {
     const response = await app.request(path);

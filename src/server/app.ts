@@ -137,14 +137,14 @@ function authPage(
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>NevaDots — ${esc(title)}</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1115;color:#e8eaed;font-family:system-ui,-apple-system,sans-serif}main{width:min(92vw,380px)}img{display:block;width:72px;height:72px;margin:0 auto 16px}h1{text-align:center;font-size:22px;margin:0 0 8px}p.sub{text-align:center;color:#9aa0a6;margin:0 0 24px}p.msg{text-align:center;color:#f28b82;min-height:20px}p.msg.ok{color:#81c995}form{display:grid;gap:14px}label{display:grid;gap:6px;font-size:14px}input{padding:11px 12px;border:1px solid #3c4043;border-radius:8px;background:#1f2126;color:#e8eaed;font-size:16px}button{padding:12px;border:0;border-radius:8px;background:#8ab4f8;color:#0f1115;font-size:16px;font-weight:600;cursor:pointer}p.links{text-align:center;margin:16px 0 0}a{color:#8ab4f8}</style>
-</head><body><main><img src="/logo.png" alt="" /><h1>${esc(title)}</h1>
+</head><body><main><img src="/logo.webp" alt="" /><h1>${esc(title)}</h1>
 <p class="sub">NevaDots</p>
 <p class="msg${reset === '1' ? ' ok' : ''}" role="alert">${esc(message)}</p>
 ${form}</main></body></html>`;
 }
 
 /** Phase B : porte pour le statique (index.ts, avant serveStatic).
- *  Chemins publics : /login, /reset, /health, /logo.png, /fonts/*, /api/*
+ *  Chemins publics : /login, /reset, /health, /logo.webp, /fonts/*, /api/*
  *  (l'API a sa propre auth). Sans session → redirection /login pour les
  *  navigations, 401 pour les sous-ressources (JS/CSS). */
 export function createStaticGate(auth: AuthStore | undefined) {
@@ -155,7 +155,7 @@ export function createStaticGate(auth: AuthStore | undefined) {
       path === '/reset' ||
       path === '/bootstrap' ||
       path === '/health' ||
-      path === '/logo.png' ||
+      path === '/logo.webp' ||
       // PWA / TWA : le manifest, les icônes d'application et le fichier
       // de vérification Android DOIVENT être lisibles sans session
       // (Chrome les récupère avant toute connexion, et Play/assetlinks
