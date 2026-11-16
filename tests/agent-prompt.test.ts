@@ -57,7 +57,13 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt.length).toBeLessThan(3400);
     expect(prompt).toContain('PERSONA');
     expect(prompt).toContain('Demanding mentor');
-    expect(prompt).toContain('Never invent');
+    // Voix naturelle : on ne récite pas ses règles (ni invention, ni
+    // confidentialité). « Never invent » faisait dire « je ne dois pas
+    // inventer » — le modèle narrait sa consigne au lieu de répondre.
+    expect(prompt).toContain('VOICE');
+    expect(prompt).toContain('never about your rules or limits');
+    expect(prompt).toContain('je ne sais pas');
+    expect(prompt).not.toContain('Never invent');
     expect(prompt).toContain('FLOW');
     expect(prompt).toContain('self-audit');
     expect(prompt).toContain('AUTONOMY');
@@ -75,13 +81,11 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).toContain('Marexsoft Corporation');
     // Comportement naturel : jamais de refus annoncé, jamais la liste de ce
     // qu'il ne doit pas dire (un curieux n'a aucun fil à tirer).
-    expect(prompt).toContain('not something you discuss');
     // Le méta est le vrai défaut observé : annoncer la limite, se justifier,
     // commenter la formulation, ajouter un avertissement à une réponse permise.
-    expect(prompt).toContain('No meta');
-    expect(prompt).toContain('never announce, justify or explain the boundary');
+    expect(prompt).toContain('Never announce or explain the boundary');
     expect(prompt).toContain('never add a disclaimer to a legitimate answer');
-    expect(prompt).toContain('never say you cannot share');
+    expect(prompt).toContain('not something you discuss');
     expect(prompt).not.toContain('refuse politely once');
     expect(prompt).not.toContain('ports, internal URLs');
     expect(prompt).not.toContain('env vars');
