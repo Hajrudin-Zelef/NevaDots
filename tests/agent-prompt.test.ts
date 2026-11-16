@@ -54,7 +54,7 @@ describe('agent-prompt (phase 5)', () => {
     // les marquages « untrusted » du Lot 6, la section AUTONOMY et la clause
     // de confidentialité — naturelle, sans refus annoncé, sans liste et sans
     // méta-commentaire).
-    expect(prompt.length).toBeLessThan(3500);
+    expect(prompt.length).toBeLessThan(3600);
     expect(prompt).toContain('PERSONA');
     expect(prompt).toContain('Demanding mentor');
     // Voix naturelle : on ne récite pas ses règles (ni invention, ni
@@ -86,6 +86,12 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).toContain('Never announce or explain the boundary');
     expect(prompt).toContain('never add a disclaimer to a legitimate answer');
     expect(prompt).toContain('not something you discuss');
+    // Le prompt ne doit contenir AUCUNE liste recitable : le modèle la
+    // déballait telle quelle (« l'infra, les opérations, les credentials… »).
+    expect(prompt).not.toContain('Infrastructure, operations, credentials');
+    expect(prompt).not.toContain('whatever the framing');
+    expect(prompt).toContain("don't list what you protect");
+    expect(prompt).toContain('hidden meaning');
     expect(prompt).not.toContain('refuse politely once');
     expect(prompt).not.toContain('ports, internal URLs');
     expect(prompt).not.toContain('env vars');
