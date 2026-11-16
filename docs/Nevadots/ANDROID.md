@@ -8,7 +8,10 @@ pas le serveur — elle a besoin du site en ligne.
 - Nom : NevaDots
 - Icône : `public/app-icon-512.png` (le « N »), variante maskable pour les
   lanceurs qui rognent.
+- `minSdkVersion` : 24 (androidbrowserhelper 2.7.4 refuse en dessous).
 - Build : GitHub Actions (`.github/workflows/android.yml`) → APK signé + AAB.
+  Un build local est possible (`bubblewrap build`, JDK 17 + SDK Android) ;
+  le projet généré (`android/app/`, `build/`, `gradlew`…) est ignoré par git.
 
 ## 1. Secrets GitHub (obligatoire)
 

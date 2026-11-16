@@ -1,0 +1,18 @@
+# Projet Android généré par Bubblewrap (`bubblewrap build`) : ne jamais
+# committer les sorties ni la clé de signature.
+/app/
+/build/
+/gradle/
+/gradlew
+/gradlew.bat
+/gradle.properties
+/build.gradle
+/settings.gradle
+/manifest-checksum.txt
+/store_icon.png
+*.apk
+*.aab
+*.keystore
+*.jks
+/.gradle/
+*.idsig
