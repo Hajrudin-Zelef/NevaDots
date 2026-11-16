@@ -54,7 +54,7 @@ describe('agent-prompt (phase 5)', () => {
     // les marquages « untrusted » du Lot 6, la section AUTONOMY et la clause
     // de confidentialité — naturelle, sans refus annoncé, sans liste et sans
     // méta-commentaire).
-    expect(prompt.length).toBeLessThan(3400);
+    expect(prompt.length).toBeLessThan(3500);
     expect(prompt).toContain('PERSONA');
     expect(prompt).toContain('Demanding mentor');
     // Voix naturelle : on ne récite pas ses règles (ni invention, ni
