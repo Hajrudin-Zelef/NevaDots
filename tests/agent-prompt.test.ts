@@ -50,9 +50,10 @@ describe('agent-prompt (phase 5)', () => {
 
   it('buildSystemPrompt est en anglais, compressé, avec persona et flow', () => {
     const prompt = buildSystemPrompt(base);
-    // ~250 tokens statiques : bien sous les ~472 d'avant (cap relevé pour
-    // les marquages « untrusted » du Lot 6 et la section AUTONOMY).
-    expect(prompt.length).toBeLessThan(3000);
+    // ~280 tokens statiques : bien sous les ~472 d'avant (cap relevé pour
+    // les marquages « untrusted » du Lot 6, la section AUTONOMY et la clause
+    // de confidentialité — naturelle, sans refus annoncé ni liste).
+    expect(prompt.length).toBeLessThan(3250);
     expect(prompt).toContain('PERSONA');
     expect(prompt).toContain('Demanding mentor');
     expect(prompt).toContain('Never invent');
@@ -71,7 +72,15 @@ describe('agent-prompt (phase 5)', () => {
     expect(prompt).toContain('SECURITY');
     expect(prompt).toContain('Hajrudin Zelef KMA');
     expect(prompt).toContain('Marexsoft Corporation');
-    expect(prompt).toContain('Never disclose infrastructure details');
+    // Comportement naturel : jamais de refus annoncé, jamais la liste de ce
+    // qu'il ne doit pas dire (un curieux n'a aucun fil à tirer).
+    expect(prompt).toContain('outside what you discuss');
+    expect(prompt).toContain('never say you are not allowed');
+    expect(prompt).toContain('uninteresting, not forbidden');
+    expect(prompt).not.toContain('refuse politely once');
+    expect(prompt).not.toContain('ports, internal URLs');
+    expect(prompt).not.toContain('env vars');
+    expect(prompt).not.toContain('file paths');
     // Date seule (pas de timestamp) : préfixe stable pour le cache provider.
     // Jour en toutes lettres + ISO : le Dot sait en permanence quel jour on est.
     expect(prompt).toMatch(/Date: .+ \(\d{4}-\d{2}-\d{2}\) —/);
