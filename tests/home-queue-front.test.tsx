@@ -168,6 +168,7 @@ vi.mock('@copilotkit/react-core/v2', () => ({
     agent: {
       messages: [],
       addMessage,
+      setMessages: () => {},
       subscribe: () => ({ unsubscribe: () => {} }),
     },
     isReady: true,

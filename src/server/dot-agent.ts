@@ -23,6 +23,12 @@ import {
 import { magicCompactMessages } from './magic-compaction.js';
 import { modelSupportsTools } from './model-capabilities.js';
 import { classifyModelError } from './model-errors.js';
+import {
+  retargetChatCompletions,
+  sameChatTarget,
+  shouldFailover,
+  type ChatTarget,
+} from './model-failover.js';
 import { AbstractAgent } from '@ag-ui/client';
 import {
   type BaseEvent,
@@ -652,7 +658,8 @@ export class DotAgent extends AbstractAgent {
               turnUsage.resolvedModel = info.resolvedModel;
             // Modèle réellement servi (routeurs) s'il diffère de l'alias
             // demandé ; coût calculé sur le servi quand il est connu.
-            const servedModel = info.resolvedModel ?? model;
+            // `effectiveTarget` suit une bascule à chaud en cours de tour.
+            const servedModel = info.resolvedModel ?? effectiveTarget.model;
             // Une ligne par appel modèle (y compris sans reasoning).
             // messageId opportuniste (souvent null : l'adaptateur n'a
             // pas encore émis les ids) — le RUN_FINISHED relie (F9).
@@ -661,9 +668,10 @@ export class DotAgent extends AbstractAgent {
               this.store.recordUsage({
                 ts: Date.now(),
                 dotId: dot.id,
-                model,
+                model: effectiveTarget.model,
                 resolvedModel:
-                  info.resolvedModel && info.resolvedModel !== model
+                  info.resolvedModel &&
+                  info.resolvedModel !== effectiveTarget.model
                     ? info.resolvedModel
                     : null,
                 messageId: servedIds.length
@@ -707,7 +715,7 @@ export class DotAgent extends AbstractAgent {
             cachedTokens: number | null;
             durationMs: number;
           }) => {
-            const stats = buildReasoningStats(model, {
+            const stats = buildReasoningStats(effectiveTarget.model, {
               promptTokens:
                 turnUsage.calls > 0
                   ? turnUsage.promptTokens
@@ -759,6 +767,64 @@ export class DotAgent extends AbstractAgent {
           isChatCompletions,
           reasoningHooks,
         );
+        // Bascule à chaud : le tour est parti avec `model` / `baseUrl`,
+        // mais le Dot peut changer de modèle en cours de route (modèle en
+        // erreur API, quota épuisé…). On relit la cible courante à chaque
+        // requête et on réécrit celle-ci vers elle : le tour continue avec
+        // le nouveau modèle, sur le même historique, sans rupture visible.
+        let effectiveTarget: ChatTarget = {
+          providerId: provider?.id ?? null,
+          model: model ?? '',
+          apiKey: apiKey ?? '',
+          baseUrl,
+        };
+        const currentTarget = (): ChatTarget | null => {
+          const current = this.workspace.dot(this.dotId);
+          if (!current) return null;
+          const explicit = findProvider(
+            this.config.providers,
+            current.provider,
+          );
+          const target =
+            explicit ??
+            findProvider(this.config.providers, fallbackDefault?.provider) ??
+            defaultProvider(this.config.providers);
+          const key = target?.apiKey ?? this.config.apiKey;
+          const base =
+            target?.baseUrl ??
+            this.config.baseUrl ??
+            'https://api.openai.com/v1';
+          const name =
+            current.model ??
+            (explicit ? explicit.models[0] : fallbackDefault?.model) ??
+            this.config.model ??
+            target?.models[0];
+          return key && name
+            ? {
+                providerId: target?.id ?? null,
+                model: name,
+                apiKey: key,
+                baseUrl: base,
+              }
+            : null;
+        };
+        /** Réécrit la requête si le Dot a changé de modèle depuis le départ. */
+        const moveToCurrentModel = (init?: RequestInit) => {
+          const target = currentTarget();
+          if (!target || sameChatTarget(target, effectiveTarget)) return null;
+          const moved = retargetChatCompletions(init, target);
+          return moved ? { ...moved, target } : null;
+        };
+        const failureText = async (response: Response) => {
+          const body = await response
+            .clone()
+            .text()
+            .catch(() => '');
+          return `${response.status} ${body}`
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 600);
+        };
         // Classify provider/model HTTP failures into actionable messages while
         // preserving abort signals and non-model errors untouched.
         globalThis.fetch = (async (
@@ -771,19 +837,40 @@ export class DotAgent extends AbstractAgent {
               : input instanceof URL
                 ? input.href
                 : input.url;
+          // Requête de modèle ? (calculé AVANT une éventuelle réécriture,
+          // qui change l'URL du provider).
+          const isModelCall = isChatCompletions(url);
+          let requestInput: RequestInfo | URL = input;
+          let requestInit = init;
+          if (isModelCall) {
+            const moved = moveToCurrentModel(requestInit);
+            if (moved) {
+              requestInput = moved.url;
+              requestInit = moved.init;
+              effectiveTarget = moved.target;
+            }
+          }
           try {
-            const response = await reasoningFetch(input as never, init);
-            if (isChatCompletions(url) && !response.ok) {
-              const body = await response
-                .clone()
-                .text()
-                .catch(() => '');
-              throw new Error(
-                `${response.status} ${body}`
-                  .replace(/\s+/g, ' ')
-                  .trim()
-                  .slice(0, 600),
-              );
+            const response = await reasoningFetch(
+              requestInput as never,
+              requestInit,
+            );
+            if (isModelCall && !response.ok) {
+              // Échec du provider : si le Dot a changé de modèle, on
+              // rejoue la MÊME requête (même historique) sur le nouveau.
+              const moved = shouldFailover(response.status)
+                ? moveToCurrentModel(requestInit)
+                : null;
+              if (moved) {
+                effectiveTarget = moved.target;
+                const retried = await reasoningFetch(
+                  moved.url as never,
+                  moved.init,
+                );
+                if (retried.ok) return retried;
+                throw new Error(await failureText(retried));
+              }
+              throw new Error(await failureText(response));
             }
             return response;
           } catch (requestError) {
@@ -791,7 +878,21 @@ export class DotAgent extends AbstractAgent {
               Boolean(init?.signal?.aborted) ||
               (requestError instanceof Error &&
                 requestError.name === 'AbortError');
-            if (!isChatCompletions(url) || aborted) throw requestError;
+            if (!isModelCall || aborted) throw requestError;
+            // Panne réseau (DNS, connexion refusée, flux coupé) : si le
+            // Dot a changé de modèle, le nouveau provider est peut-être
+            // joignable — on rejoue une fois avant d'abandonner.
+            const moved = moveToCurrentModel(requestInit);
+            if (moved) {
+              effectiveTarget = moved.target;
+              try {
+                return await reasoningFetch(moved.url as never, moved.init);
+              } catch (retryError) {
+                throw new Error(classifyModelError(retryError), {
+                  cause: retryError,
+                });
+              }
+            }
             throw new Error(classifyModelError(requestError), {
               cause: requestError,
             });
@@ -1130,7 +1231,7 @@ export class DotAgent extends AbstractAgent {
                   !finished &&
                   turnUsage.calls > 0
                 ) {
-                  const stats = buildReasoningStats(model, {
+                  const stats = buildReasoningStats(effectiveTarget.model, {
                     promptTokens: turnUsage.promptTokens,
                     completionTokens: turnUsage.completionTokens,
                     cachedTokens: turnUsage.cachedTokens,
@@ -1179,21 +1280,23 @@ export class DotAgent extends AbstractAgent {
                           beforeNotes: before,
                           userText: userTurnText,
                           assistantText: reply,
-                          model,
-                          baseUrl,
-                          apiKey: apiKey ?? '',
+                          // Cible courante : le résumé suit une bascule
+                          // de modèle faite pendant le tour.
+                          model: effectiveTarget.model,
+                          baseUrl: effectiveTarget.baseUrl,
+                          apiKey: effectiveTarget.apiKey,
                           fetchImpl: previousFetch,
                           onUsage: (usage) => {
                             try {
                               this.store.recordUsage({
                                 ts: Date.now(),
                                 dotId: dot.id,
-                                model,
+                                model: effectiveTarget.model,
                                 promptTokens: usage.promptTokens,
                                 completionTokens: usage.completionTokens,
                                 cachedTokens: 0,
                                 costUsd: estimateCostUsd(
-                                  model,
+                                  effectiveTarget.model,
                                   usage.promptTokens,
                                   usage.completionTokens,
                                   0,

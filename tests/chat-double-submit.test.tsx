@@ -79,6 +79,7 @@ vi.stubGlobal('fetch', fetchMock);
 
 const runAgent = vi.hoisted(() => vi.fn());
 const addMessage = vi.hoisted(() => vi.fn());
+const setMessages = vi.hoisted(() => vi.fn());
 // Transcript courant du `useAgent` mocké — vide par défaut ; les tests
 // qui en ont besoin y poussent leurs messages (réinitialisé après chaque
 // test, voir `afterEach`).
@@ -92,6 +93,7 @@ vi.mock('@copilotkit/react-core/v2', () => ({
     agent: {
       messages: mockMessages,
       addMessage,
+      setMessages,
       subscribe: () => ({ unsubscribe: () => {} }),
     },
     isReady: true,
@@ -318,6 +320,11 @@ it('échec du tour → brouillon restauré, entrée d’historique retirée', as
   // addMessage a bien eu lieu (un seul envoi), mais le tour a échoué
   // (aucune réponse) : le brouillon revient dans le composer.
   expect(addMessage).toHaveBeenCalledTimes(1);
+  // Aucune réponse : le message optimiste est retiré du transcript, sinon
+  // changer de modèle puis renvoyer créerait une bulle utilisateur en double.
+  const last = setMessages.mock.calls.at(-1)?.[0] as
+    Array<{ content?: unknown }> | undefined;
+  expect(last).toEqual([]);
   const composer = root.root.findByType(Composer);
   expect(composer.props.text).toBe('à restaurer');
   const historyRaw = (

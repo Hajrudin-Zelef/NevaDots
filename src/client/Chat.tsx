@@ -731,22 +731,35 @@ export function Chat({
   useEffect(() => {
     if (!isReady) return;
     let active = true;
+    // Le `connect` rejoue tous les événements du thread. Sans remise à
+    // zéro, AG-UI ré-applique les deltas sur des messages déjà présents
+    // (`TEXT_MESSAGE_CONTENT` s'ajoute, seul le START se déduplique) : la
+    // réponse apparaît alors en double. Le replay serveur redevient donc
+    // la seule source de vérité du transcript.
+    const previousMessages = agent.messages;
+    agent.setMessages([]);
     void copilotkit
       .connectAgent({ agent })
       .then(() => {
         if (active) setLoaded(true);
       })
       .catch((e) => {
-        if (active)
-          setError(
-            e instanceof Error ? e.message : 'Conversation could not connect.',
-          );
+        if (!active) return;
+        // Replay impossible : on rend à l'écran ce qu'il affichait avant.
+        if (!agent.messages.length) agent.setMessages(previousMessages);
+        setError(
+          e instanceof Error ? e.message : 'Conversation could not connect.',
+        );
       });
     return () => {
       active = false;
     };
   }, [agent, copilotkit, isReady]);
-  const executeTurn = async (): Promise<boolean> => {
+  const executeTurn = async (): Promise<{
+    ok: boolean;
+    /** Au moins une réponse assistant non vide a été produite. */
+    answered: boolean;
+  }> => {
     setError('');
     runError.current = '';
     stopRequestedRef.current = false;
@@ -766,7 +779,7 @@ export function Chat({
             'Le modèle n’a produit aucune réponse. Réessaie, ou choisis un autre modèle dans le sélecteur.',
         );
       onSaved();
-      return true;
+      return { ok: true, answered: true };
     } catch (e) {
       setError(
         runError.current ||
@@ -774,7 +787,7 @@ export function Chat({
             ? e.message
             : 'Le tour a échoué. Votre conversation reste enregistrée.'),
       );
-      return false;
+      return { ok: false, answered: false };
     } finally {
       setRunning(false);
     }
@@ -800,8 +813,9 @@ export function Chat({
     // Une entrée sans texte utilisateur (citation seule, sans brouillon ni
     // commentaire) n'a rien à rappeler : on ne la pousse pas.
     const historyPushed = historyEntry.prompt.trim() !== '';
+    const userMessageId = crypto.randomUUID();
     agent.addMessage({
-      id: crypto.randomUUID(),
+      id: userMessageId,
       role: 'user',
       content: contextualMessage(text, pageContext),
     });
@@ -823,14 +837,23 @@ export function Chat({
     setSourceOpen(false);
     // L'envoi est un geste explicite : il ré-attache le suivi en bas.
     resumeFollow();
-    const ok = await executeTurn();
-    if (!ok) {
+    const turn = await executeTurn();
+    if (!turn.ok) {
       // Échec du tour : l'entrée d'historique est retirée et le brouillon
       // restauré si le composer n'a pas changé depuis l'envoi ; la carte
       // de citation est restaurée sauf si une autre carte est ouverte
       // entre-temps (comparaison sur l'état courant via `quoteRef`, pas
       // sur la valeur capturée à l'envoi — l'ancien test `quote === null`
       // ne pouvait jamais être vrai quand `sentQuote` existait).
+      //
+      // Aucune réponse produite (modèle en erreur, clé morte, quota) : le
+      // message optimiste est retiré. Changer de modèle puis renvoyer ne
+      // crée donc pas de bulle utilisateur en double — le tour repart
+      // proprement sur le nouveau modèle, avec le même historique.
+      if (!turn.answered)
+        agent.setMessages(
+          agent.messages.filter((message) => message.id !== userMessageId),
+        );
       if (historyPushed) removePromptHistoryEntry(historyEntry);
       if (draftRef.current === '') restoreDraft(sentDraft);
       if (sentQuote && !quoteRef.current) setQuote(sentQuote);
@@ -1175,8 +1198,13 @@ export function Chat({
     });
   }, [agent.messages, voice.status, flash, paused, running, reasonPanel?.live]);
   const mascotState = useRunMascotState();
-  const visible = agent.messages.filter(
-    (message) =>
+  // Un id ne peut apparaître qu'une fois : un message rejoué (reconnexion,
+  // replay serveur) ne doit jamais produire deux bulles identiques.
+  const seenMessageIds = new Set<string>();
+  const visible: typeof agent.messages = [];
+  for (const message of agent.messages) {
+    if (seenMessageIds.has(message.id)) continue;
+    const shown =
       !isInternalVoiceReceipt(message) &&
       ['user', 'assistant'].includes(message.role) &&
       ((typeof message.content === 'string' && message.content.trim()) ||
@@ -1185,8 +1213,11 @@ export function Chat({
           // seulement les outils computer / page / connexion — sinon
           // les tours « recherche seule » n'affichent jamais leurs
           // blocs d'outils (repli transcript, étape 6).
-          (message.toolCalls?.length ?? 0) > 0)),
-  );
+          (message.toolCalls?.length ?? 0) > 0));
+    if (!shown) continue;
+    seenMessageIds.add(message.id);
+    visible.push(message);
+  }
   // Live activity feed (commands, websites, files, searches) + collapsed bubbles.
   // Dérivé dans RunStatusModel (miroir via `useRunActivity`).
   const activity = useRunActivity();
@@ -1500,10 +1531,18 @@ export function Chat({
             <button
               onClick={() => {
                 setError('');
+                // Même règle qu'au montage : le replay serveur reconstruit
+                // le transcript, il ne se superpose pas à l'existant.
+                const previousMessages = agent.messages;
+                agent.setMessages([]);
                 void copilotkit
                   .connectAgent({ agent })
                   .then(() => setLoaded(true))
-                  .catch((e) => setError(e.message));
+                  .catch((e) => {
+                    if (!agent.messages.length)
+                      agent.setMessages(previousMessages);
+                    setError(e.message);
+                  });
               }}
             >
               Reconnect
