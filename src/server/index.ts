@@ -289,3 +289,14 @@ const shutdown = createShutdown({
 });
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+// Stabilité : une promesse rejetée (outil, flux SSE, écriture best-effort) ne
+// doit jamais tuer le process au milieu d'un tour. On journalise et on
+// continue ; une exception non rattrapée, elle, laisse le process dans un
+// état inconnu : on tente un arrêt propre (stores fermés) et systemd relance.
+process.on('unhandledRejection', (reason) => {
+  console.error('[process] unhandledRejection:', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('[process] uncaughtException:', error);
+  void shutdown();
+});

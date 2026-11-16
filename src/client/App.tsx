@@ -37,6 +37,7 @@ import type {
   WorkspaceState,
 } from '../shared/types';
 import { api, ApiError, sessionTransport } from './api';
+import { sameJson } from './stable-json';
 import {
   logoutSession,
   refreshSessionStatus,
@@ -122,7 +123,7 @@ function useMetrics() {
     // Only poll a visible tab: keeps the UI fluid and the box calm when hidden.
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void load();
-    }, 3000);
+    }, 15000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -481,8 +482,11 @@ export function App() {
         api<State>('/state'),
         api<WorkspaceState>('/workspace'),
       ]);
-      setState(s);
-      setWorkspace(w);
+      // Polling toutes les 3 s : la réponse est presque toujours identique.
+      // Remplacer l'état par un équivalent re-rendrait toute l'app (et le
+      // chat) pour rien — on garde l'objet précédent s'il est équivalent.
+      setState((previous) => (sameJson(previous, s) ? previous : s));
+      setWorkspace((previous) => (sameJson(previous, w) ? previous : w));
       setSelectedDot((previous) => previous || w.dots[0]?.id || '');
       setNotices((current) => applyRefreshResult(current, { ok: true }));
     } catch (e) {
@@ -524,7 +528,7 @@ export function App() {
     load();
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') load();
-    }, 3000);
+    }, 10000);
     return () => {
       active = false;
       clearInterval(timer);

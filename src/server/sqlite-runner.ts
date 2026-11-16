@@ -4,8 +4,11 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   InMemoryAgentRunner,
   ɵGLOBAL_STORE,
+  type AgentRunnerConnectRequest,
   type AgentRunnerRunRequest,
 } from '@copilotkit/runtime/v2';
+import { EventType, type BaseEvent } from '@ag-ui/core';
+import { ReplaySubject } from 'rxjs';
 
 /** A completed run as the internal store keeps it (events already compacted). */
 interface PersistedRun {
@@ -17,11 +20,25 @@ interface PersistedRun {
   createdAt: number;
 }
 
+interface ThreadSubject {
+  subscribe(observer: {
+    next?: (event: unknown) => void;
+    error?: (error: unknown) => void;
+    complete?: () => void;
+  }): { unsubscribe(): void };
+}
+
+interface ThreadState {
+  historicRuns: PersistedRun[];
+  messagesSnapshot: unknown[];
+  isRunning?: boolean;
+  stopRequested?: boolean;
+  subject?: ThreadSubject | null;
+}
+
 interface GlobalThreadStore {
   getOrCreate(threadId: string): unknown;
-  peek(
-    threadId: string,
-  ): { historicRuns: PersistedRun[]; messagesSnapshot: unknown[] } | undefined;
+  peek(threadId: string): ThreadState | undefined;
   appendRun(threadId: string, run: PersistedRun): void;
 }
 
@@ -62,6 +79,8 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
         created_at INTEGER NOT NULL,
         user_id TEXT
       );
+      CREATE INDEX IF NOT EXISTS runner_runs_thread
+        ON runner_runs(thread_id, seq);
     `);
     // Migration C2 : les bases créées avant C2 n'ont pas user_id.
     for (const table of ['runner_runs', 'runner_threads']) {
@@ -193,6 +212,32 @@ export class SqliteAgentRunner extends InMemoryAgentRunner {
         createdAt,
         owner,
       );
+  }
+
+  /**
+   * Connexion d'un client à un thread.
+   *
+   * La bibliothèque rejoue **tous** les événements passés : coûteux sur un
+   * long historique (des milliers d'événements, gros résultats d'outils) et
+   * non idempotent côté client (les deltas de texte s'ajoutent aux messages
+   * déjà présents → réponse en double). On émet donc un `MESSAGES_SNAPSHOT`
+   * — remplacement par id, idempotent — puis on relaie le run en cours.
+   */
+  override connect(request: AgentRunnerConnectRequest) {
+    const subject = new ReplaySubject<BaseEvent>(Infinity);
+    subject.next({
+      type: EventType.MESSAGES_SNAPSHOT,
+      messages: this.getThreadMessages(request.threadId),
+    } as unknown as BaseEvent);
+    const store = globalStore.peek(request.threadId);
+    if (store?.subject && (store.isRunning || store.stopRequested)) {
+      store.subject.subscribe({
+        next: (event) => subject.next(event as BaseEvent),
+        error: (error) => subject.error(error),
+        complete: () => subject.complete(),
+      });
+    } else subject.complete();
+    return subject.asObservable();
   }
 
   override run(request: AgentRunnerRunRequest) {
