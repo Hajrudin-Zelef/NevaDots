@@ -136,3 +136,86 @@ describe('rag client (fail-open)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('rag logs (aucune erreur silencieuse)', () => {
+  beforeEach(() => clearRagCache());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('journalise un HTTP non 2xx', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ detail: 'nope' }, 500)),
+    );
+    await searchRag('question', config);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('HTTP 500'));
+  });
+
+  it('journalise une erreur réseau', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('ECONNREFUSED');
+      }),
+    );
+    await searchRag('question', config);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('erreur réseau'));
+  });
+
+  it('journalise un timeout', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+          }),
+      ),
+    );
+    const pending = searchRag('lent', { ...config, ragTimeoutMs: 300 });
+    await vi.advanceTimersByTimeAsync(300);
+    await pending;
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('timeout après 300 ms'),
+    );
+  });
+
+  it('journalise une réponse inattendue', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ covered: 'oui', hits: [] })),
+    );
+    await searchRag('question', config);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('réponse inattendue'),
+    );
+  });
+
+  it('journalise un succès couvert', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          corpusVersion: 'v1',
+          covered: true,
+          hits: [{ title: 'T', path: 'p', snippet: 'S' }],
+        }),
+      ),
+    );
+    await searchRag('question', config);
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining('couvert: 1 extrait'),
+    );
+  });
+});

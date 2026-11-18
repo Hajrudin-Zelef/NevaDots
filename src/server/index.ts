@@ -129,6 +129,13 @@ const config: PlatformConfig = {
   slackDotId: process.env.SLACK_DOT_ID || undefined,
   runtimeUrl: `http://${host === '::1' ? '[::1]' : '127.0.0.1'}:${port}/api/copilotkit`,
 };
+if (config.ragUrl) {
+  console.log(
+    `[corpus] RAG configuré: ${config.ragUrl} (timeout ${config.ragTimeoutMs ?? 300} ms, clé ${config.ragKey ? 'présente' : 'absente'})`,
+  );
+} else {
+  console.log('[corpus] RAG désactivé (RAG_URL vide)');
+}
 const platform = new Platform(store, workspace, config);
 const researchConfig = {
   mode: 'live' as const,

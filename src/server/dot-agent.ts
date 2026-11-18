@@ -1035,17 +1035,38 @@ export class DotAgent extends AbstractAgent {
             }
             if (ragDocuments === null) {
               ragDocuments = [];
-              if (
-                dot.documentsEnabled &&
-                this.config.ragUrl &&
-                userTurnText.trim()
-              ) {
-                const rag = await searchRag(
-                  userTurnText,
-                  this.config,
-                  controller.signal,
-                );
-                if (rag.covered) ragDocuments = rag.hits;
+              if (dot.documentsEnabled) {
+                if (!this.config.ragUrl) {
+                  console.warn(
+                    `[corpus] ${dot.name}: documentsEnabled mais RAG_URL absent — aucun corpus`,
+                  );
+                } else if (userTurnText.trim()) {
+                  try {
+                    const rag = await searchRag(
+                      userTurnText,
+                      this.config,
+                      controller.signal,
+                    );
+                    if (rag.covered) {
+                      ragDocuments = rag.hits;
+                      console.info(
+                        `[corpus] ${dot.name}: ${rag.hits.length} extrait(s) injecté(s) (version ${rag.corpusVersion})`,
+                      );
+                    } else {
+                      console.debug(
+                        `[corpus] ${dot.name}: pas d'injection (non couvert)`,
+                      );
+                    }
+                  } catch (error) {
+                    console.error(
+                      `[corpus] ${dot.name}: pré-recherche échouée: ${error instanceof Error ? error.message : String(error)}`,
+                    );
+                  }
+                } else {
+                  console.debug(
+                    `[corpus] ${dot.name}: tour sans texte — pas de pré-recherche`,
+                  );
+                }
               }
             }
             const prompt = buildSystemPrompt({
