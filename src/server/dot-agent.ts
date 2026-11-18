@@ -170,6 +170,9 @@ export class DotAgent extends AbstractAgent {
         resolvedModel: null as string | null,
       };
       const userTurnText = lastUserText(input.messages);
+      // Pré-recherche RAG : dernier + avant-dernier message utilisateur, pour
+      // résoudre le sujet des questions de suivi (voir ragQueryText).
+      const ragQuery = ragQueryText(input.messages);
       // Phase 3 : associe chaque appel d'outil à son libellé d'étape
       // (TOOL_CALL_END ne porte pas le nom de l'outil). Le compteur
       // garantit un protocole équilibré même en cas d'appels parallèles.
@@ -1040,10 +1043,10 @@ export class DotAgent extends AbstractAgent {
                   console.warn(
                     `[corpus] ${dot.name}: documentsEnabled mais RAG_URL absent — aucun corpus`,
                   );
-                } else if (userTurnText.trim()) {
+                } else if (ragQuery.trim()) {
                   try {
                     const rag = await searchRag(
-                      userTurnText,
+                      ragQuery,
                       this.config,
                       controller.signal,
                     );
@@ -1488,21 +1491,47 @@ export class DotAgent extends AbstractAgent {
   }
 }
 
+function messageText(message: RunAgentInput['messages'][number]): string {
+  if (typeof message.content === 'string') return message.content;
+  if (Array.isArray(message.content))
+    return message.content
+      .map((part) =>
+        typeof part === 'string'
+          ? part
+          : typeof (part as { text?: unknown })?.text === 'string'
+            ? (part as { text: string }).text
+            : '',
+      )
+      .join(' ');
+  return '';
+}
+
 function lastUserText(messages: RunAgentInput['messages']): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role !== 'user') continue;
-    if (typeof message.content === 'string') return message.content;
-    if (Array.isArray(message.content))
-      return message.content
-        .map((part) =>
-          typeof part === 'string'
-            ? part
-            : typeof (part as { text?: unknown })?.text === 'string'
-              ? (part as { text: string }).text
-              : '',
-        )
-        .join(' ');
+    const text = messageText(message);
+    if (text) return text;
   }
   return '';
+}
+
+/**
+ * Texte de pré-recherche RAG : le dernier message utilisateur précédé de
+ * l'avant-dernier. Résout le sujet des questions de suivi (« il est sorti
+ * quand ? » après « GLM-5.3 est parmi les meilleurs ? »). Borné à 800 car.
+ */
+function ragQueryText(messages: RunAgentInput['messages']): string {
+  const texts: string[] = [];
+  for (
+    let index = messages.length - 1;
+    index >= 0 && texts.length < 2;
+    index -= 1
+  ) {
+    const message = messages[index];
+    if (message.role !== 'user') continue;
+    const text = messageText(message);
+    if (text) texts.unshift(text);
+  }
+  return texts.join(' ').slice(0, 800);
 }
