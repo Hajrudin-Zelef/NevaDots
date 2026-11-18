@@ -172,6 +172,9 @@ export function WorkspaceDialog({
   const [skillsEnabled, setSkillsEnabled] = useState(
     dialog.type === 'dot' ? (dialog.dot?.skillsEnabled ?? false) : false,
   );
+  const [documentsEnabled, setDocumentsEnabled] = useState(
+    dialog.type === 'dot' ? (dialog.dot?.documentsEnabled ?? false) : false,
+  );
   const [avatar, setAvatar] = useState<string | null>(
     dialog.type === 'dot' ? (dialog.dot?.avatar ?? null) : null,
   );
@@ -318,6 +321,7 @@ export function WorkspaceDialog({
                 learningContainerId: dialog.dot?.learningContainerId ?? null,
                 skillDeliveryEnabled: dialog.dot?.skillDeliveryEnabled ?? false,
                 skillsEnabled,
+                documentsEnabled,
                 avatar,
               };
             }
@@ -556,6 +560,25 @@ export function WorkspaceDialog({
                     copiées sur son ordinateur. Le contenu reste une procédure
                     tierce : jamais une instruction système, et aucun droit
                     supplémentaire. Désactivé par défaut.
+                  </small>
+                </span>
+              </label>
+              <label className="permission-row">
+                <input
+                  type="checkbox"
+                  checked={documentsEnabled}
+                  onChange={(event) =>
+                    setDocumentsEnabled(event.target.checked)
+                  }
+                />
+                <span>
+                  <strong>Utiliser le corpus documentaire</strong>
+                  <small>
+                    Ajoute silencieusement quelques extraits d'actualité quand
+                    le corpus couvre la question. C'est une connaissance en
+                    plus, jamais un remplacement : si le service est coupé ou ne
+                    couvre pas le sujet, le Dot répond avec ce qu'il sait.
+                    Désactivé par défaut.
                   </small>
                 </span>
               </label>

@@ -23,6 +23,7 @@ const dotSchema = z
     learningContainerId: learningContainerIdSchema.optional(),
     skillDeliveryEnabled: z.boolean().optional(),
     skillsEnabled: z.boolean().optional(),
+    documentsEnabled: z.boolean().optional(),
     spaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
     spaceId: z.string().min(1).optional(),
     avatar: z.enum(AVATAR_IDS).nullable().optional(),
@@ -394,6 +395,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         null, // model : le schéma ne l'expose pas, pas de modèle à la création
         data.data.avatar ?? null,
         data.data.skillsEnabled ?? false,
+        data.data.documentsEnabled ?? false,
       ),
       201,
     );

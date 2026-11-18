@@ -77,6 +77,7 @@ export class WorkspaceStore {
       ['dots', 'learningContainerId', 'TEXT'],
       ['dots', 'skillDeliveryEnabled', 'INTEGER NOT NULL DEFAULT 0'],
       ['dots', 'skillsEnabled', 'INTEGER NOT NULL DEFAULT 0'],
+      ['dots', 'documentsEnabled', 'INTEGER NOT NULL DEFAULT 0'],
       ['dots', 'provider', 'TEXT'],
       ['dots', 'model', 'TEXT'],
       ['dots', 'reasoningEffort', 'TEXT'],
@@ -517,6 +518,7 @@ export class WorkspaceStore {
       memoryAllowed: !!row.memoryAllowed,
       skillDeliveryEnabled: !!row.skillDeliveryEnabled,
       skillsEnabled: !!row.skillsEnabled,
+      documentsEnabled: !!row.documentsEnabled,
       provider: row.provider == null ? null : String(row.provider),
       model: row.model == null ? null : String(row.model),
       reasoningEffort:
@@ -618,6 +620,7 @@ export class WorkspaceStore {
     model: string | null = null,
     avatar: string | null = null,
     skillsEnabled = false,
+    documentsEnabled = false,
   ): Dot {
     const userId = this.requireUser();
     // Phase E : nombre max de Dots + modèle autorisé pour ce compte.
@@ -651,6 +654,7 @@ export class WorkspaceStore {
       learningContainerId,
       skillDeliveryEnabled,
       skillsEnabled,
+      documentsEnabled,
       model,
       avatar,
       createdAt: Date.now(),
@@ -659,7 +663,7 @@ export class WorkspaceStore {
     try {
       this.db
         .prepare(
-          'INSERT INTO dots (id, user_id, spaceId, name, instructions, researchAllowed, memoryAllowed, createdAt, learningContainerId, skillDeliveryEnabled, skillsEnabled, model, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO dots (id, user_id, spaceId, name, instructions, researchAllowed, memoryAllowed, createdAt, learningContainerId, skillDeliveryEnabled, skillsEnabled, documentsEnabled, model, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
         .run(
           dot.id,
@@ -673,6 +677,7 @@ export class WorkspaceStore {
           learningContainerId,
           +skillDeliveryEnabled,
           +skillsEnabled,
+          +documentsEnabled,
           model,
           avatar,
         );
@@ -703,6 +708,7 @@ export class WorkspaceStore {
       current.model ?? null,
       current.avatar ?? null,
       current.skillsEnabled ?? false,
+      current.documentsEnabled ?? false,
     );
     if (current.contextBudget != null)
       this.setDotContextBudget(copy.id, current.contextBudget);
@@ -735,6 +741,7 @@ export class WorkspaceStore {
       learningContainerId?: string | null;
       skillDeliveryEnabled?: boolean;
       skillsEnabled?: boolean;
+      documentsEnabled?: boolean;
       avatar?: string | null;
     },
   ): Dot {
@@ -751,12 +758,14 @@ export class WorkspaceStore {
     const skillDeliveryEnabled =
       patch.skillDeliveryEnabled ?? current.skillDeliveryEnabled ?? false;
     const skillsEnabled = patch.skillsEnabled ?? current.skillsEnabled ?? false;
+    const documentsEnabled =
+      patch.documentsEnabled ?? current.documentsEnabled ?? false;
     validateLearningSettings(learningContainerId, skillDeliveryEnabled);
     this.db.exec('BEGIN');
     try {
       this.db
         .prepare(
-          'UPDATE dots SET name=?, instructions=?, researchAllowed=?, memoryAllowed=?, learningContainerId=?, skillDeliveryEnabled=?, skillsEnabled=? WHERE id=? AND user_id=?',
+          'UPDATE dots SET name=?, instructions=?, researchAllowed=?, memoryAllowed=?, learningContainerId=?, skillDeliveryEnabled=?, skillsEnabled=?, documentsEnabled=? WHERE id=? AND user_id=?',
         )
         .run(
           patch.name,
@@ -766,6 +775,7 @@ export class WorkspaceStore {
           learningContainerId,
           +skillDeliveryEnabled,
           +skillsEnabled,
+          +documentsEnabled,
           id,
           this.userId,
         );

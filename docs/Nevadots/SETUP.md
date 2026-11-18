@@ -77,6 +77,17 @@ S'ils sont absents (par ex. image Docker sans ces binaires), les outils ne se br
 
 `WEB_SEARCH_PROVIDER=parallel` (défaut) envoie les requêtes/URLs à un service tiers (clé `PARALLEL_API_KEY` optionnelle pour plus de quota) ; `browser` utilise le lecteur de pages isolé (`BROWSER_URL` + `BROWSER_SECRET`, service séparé, navigation read-only sans JS) ; `disabled` coupe les outils de recherche.
 
+## Corpus documentaire (RAG)
+
+Service de retrieval séparé (`websearch_agent`, `/rag/search`). NevaDots ne fait que la **pré-recherche** et l'**injection** ; l'index et la couverture restent dans le service.
+
+- `RAG_URL` : base du service (ex. `http://10.10.10.103:4500`). Vide = fonction désactivée.
+- `RAG_KEY` : clé client `ws_…` avec le scope `read` (obligatoire côté service, 401 sinon).
+- `RAG_TIMEOUT_MS` : timeout de la pré-recherche (défaut `300`).
+- Activation **par Dot** : `documentsEnabled` (Réglages → Dot → Automatisation), **OFF par défaut**.
+
+Fail-open absolu : service coupé, lent, en erreur ou question non couverte → le Dot répond avec sa connaissance propre. Le corpus est une connaissance supplémentaire, jamais une dépendance ; il n'ampute pas la connaissance native du modèle.
+
 ## Ordinateurs persistants par Dot
 
 Un conteneur par Dot avec navigateur, fichiers et shell optionnel : voir [COMPUTERS.md](COMPUTERS.md).

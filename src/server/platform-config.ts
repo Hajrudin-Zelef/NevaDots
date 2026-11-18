@@ -45,6 +45,12 @@ export interface PlatformConfig extends WebConfig {
   computerNamespace?: string;
   browserUrl?: string;
   browserSecret?: string;
+  /** Service corpus (websearch_agent) : retrieval `/rag/search`. */
+  ragUrl?: string;
+  /** Clé client `ws_…` présentée au service corpus. */
+  ragKey?: string;
+  /** Timeout de la pré-recherche corpus (défaut 300 ms). */
+  ragTimeoutMs?: number;
   voiceKey?: string;
   voiceModel?: string;
   voiceName: string;

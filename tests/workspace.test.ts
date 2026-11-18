@@ -229,6 +229,41 @@ it('skills locaux : flag par Dot, politique admin et usage', () => {
   store.close();
 });
 
+it('corpus documentaire : flag par Dot OFF par défaut, copié et modifiable', () => {
+  const store = new WorkspaceStore(':memory:', 'owner');
+  const space = store.createSpace('Design', 'Design decisions');
+  const dot = store.createDot(space.id, 'Scout', 'Be concise', false, true);
+  expect(dot.documentsEnabled).toBe(false);
+  expect(store.dot(dot.id)?.documentsEnabled).toBe(false);
+
+  const enabled = store.createDot(
+    space.id,
+    'Leo',
+    'Be concise',
+    false,
+    true,
+    [space.id],
+    null,
+    false,
+    null,
+    null,
+    false,
+    true,
+  );
+  expect(store.dot(enabled.id)?.documentsEnabled).toBe(true);
+  expect(store.duplicateDot(enabled.id)?.documentsEnabled).toBe(true);
+
+  const updated = store.updateDot(enabled.id, {
+    name: 'Leo',
+    instructions: 'Be concise',
+    researchAllowed: false,
+    memoryAllowed: true,
+    documentsEnabled: false,
+  });
+  expect(updated.documentsEnabled).toBe(false);
+  store.close();
+});
+
 it('remonte les anciens paliers de contexte 8K/16K à 32K au démarrage', () => {
   const db = new DatabaseSync(':memory:');
   try {

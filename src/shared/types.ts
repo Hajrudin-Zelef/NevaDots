@@ -182,6 +182,13 @@ export interface Dot {
    */
   skillsEnabled?: boolean;
   /**
+   * Corpus RAG (websearch_agent `/rag/search`) : autorise la pré-recherche
+   * silencieuse et l'injection de quelques extraits dans le prompt. OFF par
+   * défaut ; le corpus reste une connaissance supplémentaire, jamais une
+   * dépendance (fail-open).
+   */
+  documentsEnabled?: boolean;
+  /**
    * Per-Dot provider id (see the server provider registry); null/undefined
    * uses the server default provider.
    */

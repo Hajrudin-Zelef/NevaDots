@@ -21,6 +21,7 @@ import {
   type ChatMessage,
 } from './context-compaction.js';
 import { magicCompactMessages } from './magic-compaction.js';
+import { searchRag, type RagHit } from './rag.js';
 import { modelSupportsTools } from './model-capabilities.js';
 import { classifyModelError } from './model-errors.js';
 import {
@@ -1007,6 +1008,9 @@ export class DotAgent extends AbstractAgent {
         const allGroupTools = Object.values(groupSet.groups).flat();
         const externalServices =
           this.config.externalAccounts?.callableServices() ?? [];
+        // Corpus : une seule recherche par tour, fail-open (jamais bloquant).
+        // null = pas encore tenté ; [] = tenté sans couverture.
+        let ragDocuments: RagHit[] | null = null;
         this.inner = new BuiltInAgent({
           type: 'tanstack',
           factory: async (ctx) => {
@@ -1027,6 +1031,21 @@ export class DotAgent extends AbstractAgent {
                 // Le cerveau de session ne doit jamais casser un tour.
                 sessionNotesBefore = '';
                 sessionNotes = '';
+              }
+            }
+            if (ragDocuments === null) {
+              ragDocuments = [];
+              if (
+                dot.documentsEnabled &&
+                this.config.ragUrl &&
+                userTurnText.trim()
+              ) {
+                const rag = await searchRag(
+                  userTurnText,
+                  this.config,
+                  controller.signal,
+                );
+                if (rag.covered) ragDocuments = rag.hits;
               }
             }
             const prompt = buildSystemPrompt({
@@ -1053,6 +1072,7 @@ export class DotAgent extends AbstractAgent {
                 toolsAllowed && toolGroupRuntime ? groupSet.available : [],
               replyStyle: initialSettings.replyStyle,
               replyLanguage: initialSettings.replyLanguage,
+              documents: ragDocuments ?? [],
             });
             // Phase 9 : stratégie de compaction par Dot (défaut : native).
             const compact =
