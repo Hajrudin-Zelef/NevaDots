@@ -1517,21 +1517,26 @@ function lastUserText(messages: RunAgentInput['messages']): string {
 }
 
 /**
- * Texte de pré-recherche RAG : le dernier message utilisateur précédé de
- * l'avant-dernier. Résout le sujet des questions de suivi (« il est sorti
- * quand ? » après « GLM-5.3 est parmi les meilleurs ? »). Borné à 800 car.
+ * Texte de pré-recherche RAG : dernier + avant-dernier message utilisateur,
+ * précédés du début du dernier message assistant (qui nomme le sujet en cours).
+ * Résout les questions de suivi même quand le sujet date de plusieurs tours
+ * (« il est sorti quand ? », « et lui ? »). Borné à 900 caractères.
  */
 function ragQueryText(messages: RunAgentInput['messages']): string {
-  const texts: string[] = [];
-  for (
-    let index = messages.length - 1;
-    index >= 0 && texts.length < 2;
-    index -= 1
-  ) {
+  const userTexts: string[] = [];
+  let assistantText = '';
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message.role !== 'user') continue;
-    const text = messageText(message);
-    if (text) texts.unshift(text);
+    if (message.role === 'user' && userTexts.length < 2) {
+      const text = messageText(message);
+      if (text) userTexts.unshift(text);
+    } else if (message.role === 'assistant' && !assistantText) {
+      assistantText = messageText(message);
+    }
+    if (userTexts.length >= 2 && assistantText) break;
   }
-  return texts.join(' ').slice(0, 800);
+  return [assistantText.slice(0, 150), ...userTexts]
+    .join(' ')
+    .trim()
+    .slice(0, 900);
 }
