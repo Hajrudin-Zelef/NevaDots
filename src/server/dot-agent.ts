@@ -1562,22 +1562,23 @@ function lastUserText(messages: RunAgentInput['messages']): string {
 }
 
 /**
- * Texte de pré-recherche RAG : les 3 derniers messages utilisateur, sans le
- * message assistant. Le sujet des questions de suivi est ainsi conservé sur
- * plusieurs tours, sans la dilution des saluts/réponses de l'assistant.
- * Borné à 900 caractères.
+ * Texte de pré-recherche RAG : les 3 derniers messages utilisateur, plus le
+ * premier message substantiel (ancre de sujet) pour que le sujet survive quand
+ * la conversation dérive sur plusieurs tours. Sans le message assistant (ses
+ * saluts/réponses diluent la requête). Borné à 1200 caractères.
  */
 function ragQueryText(messages: RunAgentInput['messages']): string {
-  const texts: string[] = [];
-  for (
-    let index = messages.length - 1;
-    index >= 0 && texts.length < 3;
-    index -= 1
-  ) {
-    const message = messages[index];
+  const userTexts: string[] = [];
+  let anchor = '';
+  for (const message of messages) {
     if (message.role !== 'user') continue;
-    const text = messageText(message);
-    if (text) texts.unshift(text);
+    const text = messageText(message).trim();
+    if (!text) continue;
+    if (!anchor && text.split(/\s+/).length >= 4) anchor = text;
+    userTexts.push(text);
   }
-  return texts.join(' ').slice(0, 900);
+  const recent = userTexts.slice(-3);
+  const parts =
+    anchor && !recent.includes(anchor) ? [anchor, ...recent] : recent;
+  return parts.join(' ').slice(0, 1200);
 }
