@@ -70,7 +70,7 @@ describe('provider registry (buildProviders)', () => {
       'kimi-k3',
     ]);
     const cetas = findProvider(providers, 'cetas');
-    expect(cetas?.baseUrl).toBe('https://nevallm.neva-ci.pro/v1');
+    expect(cetas?.baseUrl).toBe('https://nevallm.neva-ci.pro/v1/byok');
     expect(cetas?.apiKey).toBe('ct');
     expect(cetas?.models).toEqual(['auto']);
     expect(defaultProvider(providers)?.id).toBe('opencode');
@@ -99,14 +99,9 @@ describe('provider registry (buildProviders)', () => {
       'https://nevallm.neva-ci.pro/v1',
     );
     expect(findProvider(providers, 'cetas')?.baseUrl).toBe(
-      'https://nevallm.neva-ci.pro/v1',
+      'https://nevallm.neva-ci.pro/v1/byok',
     );
-    expect(findProvider(providers, 'cetas')?.models).toEqual([
-      'auto',
-      'deepseek-chat',
-      'free/deepseek-v4.1-flash',
-      'glm-5.3-flash',
-    ]);
+    expect(findProvider(providers, 'cetas')?.models).toEqual(['auto']);
     expect(defaultProvider(providers)?.id).toBe('opencode');
   });
 
