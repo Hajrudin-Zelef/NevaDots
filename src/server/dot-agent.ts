@@ -70,6 +70,7 @@ import {
 import { StepTracker, stepLabelForTool } from './agent-steps.js';
 import { pickAutoReasoningEffort } from './reasoning-effort.js';
 import { buildSystemPrompt } from './agent-prompt.js';
+import { captureExplicitMemory } from './memory-capture.js';
 import { suggestSkills } from './skills-routing.js';
 import { injectAttachedImages } from './attached-images.js';
 import { screenshotMiddleware } from './screenshot-middleware.js';
@@ -597,6 +598,20 @@ export class DotAgent extends AbstractAgent {
           initialSettings.memoryAllowed && dot.memoryAllowed
             ? this.store.memories().map((memory) => memory.text)
             : [];
+        // Mémoire explicite (« retiens que… ») : déterministe, sans modèle.
+        // Le fait est enregistré avec sa provenance et visible dès ce tour.
+        const explicitMemory =
+          initialSettings.memoryAllowed && dot.memoryAllowed
+            ? captureExplicitMemory(userTurnText)
+            : null;
+        const savedMemory = explicitMemory
+          ? this.store.learnMemory({
+              text: explicitMemory,
+              threadId: input.threadId,
+              messageId: lastUserMessageId(input.messages),
+            })
+          : null;
+        if (savedMemory) memories.push(savedMemory.text);
         // Un Dot est une surface publique : il ne reçoit jamais le cerveau
         // Operator de développement (`.operator`/`~/.operator`). Seules les
         // mémoires SQLite, explicitement autorisées, sont injectées.
@@ -1137,6 +1152,7 @@ export class DotAgent extends AbstractAgent {
                   ? suggestSkills(userTurnText)
                   : [],
               toolsAvailable: toolsAllowed,
+              memorySaved: savedMemory !== null,
               lazyToolGroups:
                 toolsAllowed && toolGroupRuntime ? groupSet.available : [],
               replyStyle: initialSettings.replyStyle,
@@ -1559,6 +1575,17 @@ function lastUserText(messages: RunAgentInput['messages']): string {
     if (text) return text;
   }
   return '';
+}
+
+/** Id du dernier message utilisateur non vide (provenance d'une mémoire). */
+function lastUserMessageId(messages: RunAgentInput['messages']): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== 'user' || !messageText(message)) continue;
+    const id = (message as { id?: unknown }).id;
+    return typeof id === 'string' && id ? id : null;
+  }
+  return null;
 }
 
 /**

@@ -2,6 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { safeJsonParse } from './safe-json.js';
+import {
+  MEMORY_LIMIT,
+  MEMORY_MAX_CHARS,
+  normalizeMemoryText,
+} from './memory-capture.js';
 import { dirname } from 'node:path';
 import type {
   Action,
@@ -60,7 +65,16 @@ export class Store {
       CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, prompt TEXT NOT NULL, status TEXT NOT NULL, intervalSeconds INTEGER, nextRunAt INTEGER, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, error TEXT, lease TEXT, leaseUntil INTEGER, user_id TEXT);
       CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, taskId TEXT NOT NULL, status TEXT NOT NULL, startedAt INTEGER NOT NULL, finishedAt INTEGER, result TEXT, error TEXT, user_id TEXT);
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, taskId TEXT NOT NULL, runId TEXT, text TEXT NOT NULL, createdAt INTEGER NOT NULL, user_id TEXT);
-      CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, text TEXT NOT NULL, createdAt INTEGER NOT NULL, user_id TEXT);
+      CREATE TABLE IF NOT EXISTS memories (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        createdAt INTEGER NOT NULL,
+        user_id TEXT,
+        source TEXT NOT NULL DEFAULT 'manual',
+        threadId TEXT,
+        messageId TEXT,
+        origin TEXT NOT NULL DEFAULT 'settings'
+      );
       CREATE TABLE IF NOT EXISTS attachment_users (attachmentId TEXT PRIMARY KEY, userId TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, model TEXT NOT NULL, promptTokens INTEGER, completionTokens INTEGER, costUsd REAL);
       CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, ts INTEGER NOT NULL, user_id TEXT, username TEXT, dotId TEXT, threadId TEXT, messageId TEXT NOT NULL, vote INTEGER NOT NULL, comment TEXT, model TEXT);
@@ -100,6 +114,21 @@ export class Store {
       this.db.exec('ALTER TABLE usage ADD COLUMN messageId TEXT');
     } catch {
       // Column already present — nothing to do.
+    }
+    // Mémoire explicite (2026-11-19) : provenance d'une note apprise en chat.
+    for (const [column, definition] of [
+      ['source', "TEXT NOT NULL DEFAULT 'manual'"],
+      ['threadId', 'TEXT'],
+      ['messageId', 'TEXT'],
+      ['origin', "TEXT NOT NULL DEFAULT 'settings'"],
+    ] as const) {
+      if (
+        !this.db
+          .prepare('PRAGMA table_info(memories)')
+          .all()
+          .some((row) => row.name === column)
+      )
+        this.db.exec(`ALTER TABLE memories ADD COLUMN ${column} ${definition}`);
     }
     // settings : singleton (id=1) -> une ligne par compte (userId).
     const settingsSql = this.db
@@ -600,9 +629,60 @@ export class Store {
       throw new Error('Memory not found.');
     this.db
       .prepare(
-        'INSERT INTO memories VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET text=excluded.text',
+        'INSERT INTO memories(id, text, createdAt, user_id) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET text=excluded.text',
       )
       .run(id, text, Date.now(), userId);
+    const row = this.db
+      .prepare('SELECT * FROM memories WHERE id=? AND user_id=?')
+      .get(id, userId) as Record<string, unknown> | undefined;
+    const { user_id, ...rest } = row ?? {};
+    return {
+      ...(rest as unknown as Memory),
+      userId: typeof user_id === 'string' ? user_id : userId,
+    } as unknown as Memory;
+  }
+  /**
+   * Mémoire apprise en chat (« retiens que… »). Déterministe : le texte est
+   * déjà extrait et filtré par `captureExplicitMemory`. Renvoie `null` si le
+   * texte est invalide, déjà connu (déduplication normalisée) ou si le compte
+   * a atteint `MEMORY_LIMIT` — on ne supprime jamais une mémoire existante.
+   */
+  learnMemory(input: {
+    text: string;
+    threadId?: string | null;
+    messageId?: string | null;
+  }): Memory | null {
+    const userId = this.requireUser();
+    const text = input.text.trim();
+    if (!text || text.length > MEMORY_MAX_CHARS) return null;
+    const comparable = normalizeMemoryText(text);
+    if (!comparable) return null;
+    const known = this.db
+      .prepare('SELECT text FROM memories WHERE user_id=?')
+      .all(userId) as Array<{ text: string }>;
+    if (known.some((row) => normalizeMemoryText(row.text) === comparable))
+      return null;
+    const count = (
+      this.db
+        .prepare('SELECT count(*) AS n FROM memories WHERE user_id=?')
+        .get(userId) as { n: number }
+    ).n;
+    if (count >= MEMORY_LIMIT) return null;
+    const id = randomUUID();
+    this.db
+      .prepare(
+        'INSERT INTO memories(id, text, createdAt, user_id, source, threadId, messageId, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        id,
+        text,
+        Date.now(),
+        userId,
+        'explicit',
+        input.threadId ?? null,
+        input.messageId ?? null,
+        'chat',
+      );
     const row = this.db
       .prepare('SELECT * FROM memories WHERE id=? AND user_id=?')
       .get(id, userId) as Record<string, unknown> | undefined;

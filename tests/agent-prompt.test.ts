@@ -303,6 +303,13 @@ describe('agent-prompt (corpus documents)', () => {
     );
   });
 
+  it('accuse réception d’une mémoire enregistrée, sans la répéter', () => {
+    const prompt = buildSystemPrompt({ ...base, memorySaved: true });
+    expect(prompt).toContain('durable fact from the user message');
+    expect(prompt).toContain('Acknowledge it in one short sentence');
+    expect(buildSystemPrompt(base)).not.toContain('durable fact');
+  });
+
   it('borne le volume des extraits injectés', () => {
     const huge = {
       title: 'Titre',

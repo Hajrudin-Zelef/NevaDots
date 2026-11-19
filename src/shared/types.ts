@@ -139,6 +139,14 @@ export interface Memory {
   userId: string;
   text: string;
   createdAt: number;
+  /** `manual` (Réglages) ou `explicit` (demande en chat). */
+  source?: 'manual' | 'explicit';
+  /** Conversation d'origine d'une mémoire apprise. */
+  threadId?: string | null;
+  /** Message d'origine d'une mémoire apprise. */
+  messageId?: string | null;
+  /** Surface d'origine : `settings` ou `chat`. */
+  origin?: 'settings' | 'chat';
 }
 export interface Detail {
   task: Task;
