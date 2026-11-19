@@ -303,10 +303,11 @@ describe('agent-prompt (corpus documents)', () => {
     );
   });
 
-  it('accuse réception d’une mémoire enregistrée, sans la répéter', () => {
+  it('accuse réception en reformulant le fait (pour voir une faute de frappe)', () => {
     const prompt = buildSystemPrompt({ ...base, memorySaved: true });
     expect(prompt).toContain('durable fact from the user message');
-    expect(prompt).toContain('Acknowledge it in one short sentence');
+    expect(prompt).toContain('Restate that fact in one short sentence');
+    expect(prompt).toContain('catch a typo');
     expect(buildSystemPrompt(base)).not.toContain('durable fact');
   });
 
