@@ -113,6 +113,9 @@ const config: PlatformConfig = {
   ragUrl: process.env.RAG_URL,
   ragKey: process.env.RAG_KEY,
   ragTimeoutMs: positiveInt(process.env.RAG_TIMEOUT_MS),
+  ttftTimeoutMs: positiveInt(process.env.AGENT_TTFT_TIMEOUT_MS),
+  fallbackModel: process.env.AGENT_FALLBACK_MODEL,
+  fallbackProvider: process.env.AGENT_FALLBACK_PROVIDER,
   computerSupervisorUrl: process.env.COMPUTER_SUPERVISOR_URL,
   computerSupervisorToken: process.env.COMPUTER_SUPERVISOR_TOKEN,
   computerToken: process.env.COMPUTER_TOKEN,
@@ -135,6 +138,13 @@ if (config.ragUrl) {
   );
 } else {
   console.log('[corpus] RAG désactivé (RAG_URL vide)');
+}
+if (config.ttftTimeoutMs && config.fallbackModel) {
+  console.log(
+    `[model] bascule TTFT: > ${config.ttftTimeoutMs} ms → ${config.fallbackModel} (${config.fallbackProvider ?? 'provider courant'})`,
+  );
+} else {
+  console.log('[model] bascule TTFT désactivée');
 }
 const platform = new Platform(store, workspace, config);
 const researchConfig = {

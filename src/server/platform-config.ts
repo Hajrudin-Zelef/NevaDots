@@ -51,6 +51,15 @@ export interface PlatformConfig extends WebConfig {
   ragKey?: string;
   /** Timeout de la pré-recherche corpus (défaut 300 ms). */
   ragTimeoutMs?: number;
+  /** Timeout du premier token avant bascule vers le modèle de secours (ms).
+   * 0/absent = désactivé. Env AGENT_TTFT_TIMEOUT_MS. */
+  ttftTimeoutMs?: number;
+  /** Modèle de secours quand le premier token dépasse le timeout.
+   * Env AGENT_FALLBACK_MODEL. */
+  fallbackModel?: string;
+  /** Provider du modèle de secours (défaut : provider courant).
+   * Env AGENT_FALLBACK_PROVIDER. */
+  fallbackProvider?: string;
   voiceKey?: string;
   voiceModel?: string;
   voiceName: string;

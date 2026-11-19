@@ -22,6 +22,7 @@ import {
 } from './context-compaction.js';
 import { magicCompactMessages } from './magic-compaction.js';
 import { searchRag, type RagHit } from './rag.js';
+import { readFirstChunk, rebuildResponse } from './ttft.js';
 import { modelSupportsTools } from './model-capabilities.js';
 import { classifyModelError } from './model-errors.js';
 import {
@@ -819,6 +820,33 @@ export class DotAgent extends AbstractAgent {
           const moved = retargetChatCompletions(init, target);
           return moved ? { ...moved, target } : null;
         };
+        /**
+         * Modèle de secours quand le premier token dépasse `ttftTimeoutMs`.
+         * `AGENT_FALLBACK_MODEL` (+ `AGENT_FALLBACK_PROVIDER` optionnel).
+         * Absent = pas de bascule TTFT.
+         */
+        const ttftTimeoutMs = this.config.ttftTimeoutMs ?? 0;
+        const fallbackTarget = (): ChatTarget | null => {
+          const fallbackModel = this.config.fallbackModel?.trim();
+          if (!fallbackModel) return null;
+          const providerId =
+            this.config.fallbackProvider?.trim() ||
+            effectiveTarget.providerId ||
+            undefined;
+          const target =
+            findProvider(this.config.providers, providerId) ??
+            findProvider(this.config.providers, fallbackDefault?.provider) ??
+            defaultProvider(this.config.providers);
+          const key = target?.apiKey ?? this.config.apiKey;
+          const base = target?.baseUrl ?? this.config.baseUrl;
+          if (!key || !base) return null;
+          return {
+            providerId: target?.id ?? null,
+            model: fallbackModel,
+            apiKey: key,
+            baseUrl: base,
+          };
+        };
         const failureText = async (response: Response) => {
           const body = await response
             .clone()
@@ -875,6 +903,23 @@ export class DotAgent extends AbstractAgent {
                 throw new Error(await failureText(retried));
               }
               throw new Error(await failureText(response));
+            }
+            if (isModelCall && response.ok && ttftTimeoutMs > 0) {
+              const fallback = fallbackTarget();
+              if (fallback && !sameChatTarget(fallback, effectiveTarget)) {
+                const first = await readFirstChunk(response, ttftTimeoutMs);
+                if (first.kind === 'timeout') {
+                  console.warn(
+                    `[model] premier token > ${ttftTimeoutMs} ms — bascule vers ${fallback.model}`,
+                  );
+                  const moved = retargetChatCompletions(requestInit, fallback);
+                  if (moved) {
+                    effectiveTarget = fallback;
+                    return reasoningFetch(moved.url as never, moved.init);
+                  }
+                }
+                return rebuildResponse(response, first);
+              }
             }
             return response;
           } catch (requestError) {
