@@ -269,7 +269,7 @@ export function WorkspaceDialog({
         : dialog.type === 'settings'
           ? 'Paramètres'
           : dialog.type === 'memory'
-            ? 'Something to remember.'
+            ? 'Quelque chose à retenir.'
             : 'Let your Dot keep time.';
   // Phase F (menu avatar) : Profil et FAQ = petits modaux dédiés.
   if (dialog.type === 'profile') return <ProfileDialog onClose={onClose} />;
@@ -392,8 +392,8 @@ export function WorkspaceDialog({
                   : dialog.type === 'space'
                     ? 'What belongs here?'
                     : dialog.type === 'memory'
-                      ? 'Preference or context'
-                      : 'Task to revisit'}
+                      ? 'Préférence ou contexte'
+                      : 'Tâche à revoir'}
               </label>
               <textarea
                 id="entity-text"
@@ -1375,8 +1375,9 @@ export function WorkspaceDialog({
           )}
           {dialog.type === 'memory' && (
             <p className="muted">
-              Memories are explicit preferences, not automatic learning. Avoid
-              secrets; enabled memories go to your model provider.
+              Une mémoire est une préférence explicite, pas un apprentissage
+              automatique. N'y mets pas de secret : une mémoire activée part
+              vers le fournisseur du modèle.
             </p>
           )}
           {error && (
@@ -1392,7 +1393,7 @@ export function WorkspaceDialog({
             )
           ) : (
             <button className="primary full" disabled={busy}>
-              {busy ? 'Saving…' : 'Save'}
+              {busy ? 'Enregistrement…' : 'Enregistrer'}
             </button>
           )}
         </form>

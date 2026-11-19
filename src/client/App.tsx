@@ -996,7 +996,7 @@ export function App() {
             }}
           >
             <BookOpen size={15} />
-            Compétences
+            Mémoire
           </button>
         </nav>
         <button
@@ -1751,13 +1751,11 @@ export function App() {
               <div>
                 <span className="eyebrow">YOUR WORKSPACE</span>
                 <h1>
-                  {view === 'memories'
-                    ? 'Memories'
-                    : 'A little follow-through.'}
+                  {view === 'memories' ? 'Mémoire' : 'A little follow-through.'}
                 </h1>
                 <p>
                   {view === 'memories'
-                    ? 'Preferences you choose to share with your Dots.'
+                    ? 'Préférences que tu partages avec tes Dots.'
                     : 'Scheduled turns run on the server in their original conversation.'}
                 </p>
               </div>
@@ -1767,7 +1765,7 @@ export function App() {
                   onClick={() => setDialog({ type: 'memory' })}
                 >
                   <Plus size={15} />
-                  Add memory
+                  Ajouter une mémoire
                 </button>
               )}
             </div>
@@ -1781,8 +1779,8 @@ export function App() {
                       <div>
                         <small>
                           {state.settings.memoryAllowed
-                            ? 'Available to permitted Dots'
-                            : 'Memory use disabled'}
+                            ? 'Disponible pour les Dots autorisés'
+                            : 'Mémoire désactivée'}
                         </small>
                         <button
                           className="icon-button"
@@ -1807,10 +1805,10 @@ export function App() {
                 {!state.memories.length && (
                   <div className="large-empty">
                     <Mascot />
-                    <h2>A little context goes a long way.</h2>
+                    <h2>Un peu de contexte change tout.</h2>
                     <p>
-                      Add a preference like “Keep my research briefs short.” You
-                      can change or remove it anytime.
+                      Ajoute une préférence comme « Garde mes synthèses courtes
+                      ». Tu peux la modifier ou la supprimer à tout moment.
                     </p>
                   </div>
                 )}
