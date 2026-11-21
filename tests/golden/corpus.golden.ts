@@ -61,7 +61,7 @@ const CASES: GoldenCase[] = [
   {
     name: 'date de sortie de Fable 5.1',
     question: 'Fable 5.1 est sorti quand ?',
-    required: [/1(?:er)? septembre 2026|2026-09-01/i],
+    required: [/1\s*(?:er|ᵉʳ|e)?\s*septembre 2026|2026-09-01/i],
     forbidden: [/je ne sais pas/i, /n['’]existe pas/i],
     expectCovered: true,
   },

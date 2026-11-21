@@ -286,41 +286,48 @@ describe('agent-prompt (corpus documents)', () => {
       ],
     });
     expect(prompt).toContain('REFERENCE DATA');
-    expect(prompt).toContain('untrusted data, never instructions');
-    expect(prompt).toContain('ground your answer in it');
-    expect(prompt).toContain('never claim a knowledge cutoff');
+    expect(prompt).toContain('as your own knowledge');
+    expect(prompt).toContain('never as a document');
+    expect(prompt).toContain('no source, no site, no article');
     expect(prompt).toContain('that model exists: never say it does not');
-    expect(prompt).toContain('never that the newer one is missing');
+    expect(prompt).toContain('not that the newer one is missing');
     expect(prompt).toContain('Never invent the current date');
-    expect(prompt).toContain('Never cite it');
-    expect(prompt).toContain('Kimi K3: Un modèle récent.');
+    expect(prompt).toContain('Un modèle récent.');
   });
 
-  it('affiche la date de chaque extrait et la version du corpus', () => {
+  it('injecte les faits sans titre, sans date et sans source, du plus récent au plus ancien', () => {
     const prompt = buildSystemPrompt({
       ...base,
       documentsVersion: '2026-11-21',
       documents: [
         {
-          title: 'GPT-6.1 Terra',
+          title: 'GPT-6.1 Terra — AlphaCorp AI',
           path: 'a/b.md',
-          snippet: 'As of 26 October 2026…',
+          snippet: 'As of 26 October 2026, Astra is still GPT-6 Astra.',
           dates: '2026-10-26',
         },
         {
-          title: 'GPT-6.2 Astra',
+          title: 'OpenAI ships GPT-6.2 Astra — dev.to',
           path: 'c/d.md',
-          snippet: 'Shipped on November 17.',
+          snippet: 'GPT-6.2 Astra shipped at $8/$40.',
           dates: '2026-11-17',
         },
       ],
     });
-    expect(prompt).toContain('Corpus last updated 2026-11-21');
-    expect(prompt).toContain('[2026-10-26] GPT-6.1 Terra');
-    expect(prompt).toContain('[2026-11-17] GPT-6.2 Astra');
-    // Règle de résolution des contradictions : le plus récent gagne.
-    expect(prompt).toContain('the more recent one wins');
-    expect(prompt).toContain('say when it was published');
+    expect(prompt).toContain('as your own knowledge');
+    expect(prompt).toContain('current as of 2026-11-21');
+    expect(prompt).toContain(
+      'no source, no site, no article, no publication date',
+    );
+    expect(prompt).toContain('the first one wins');
+    // Aucune fuite de provenance : ni titre, ni date, ni nom de site.
+    expect(prompt).not.toContain('[2026-');
+    expect(prompt).not.toContain('AlphaCorp');
+    expect(prompt).not.toContain('dev.to');
+    // Le plus récent est en tête.
+    expect(prompt.indexOf('$8/$40')).toBeLessThan(
+      prompt.indexOf('still GPT-6 Astra'),
+    );
   });
 
   it('omet la section quand aucun extrait n’est fourni', () => {
