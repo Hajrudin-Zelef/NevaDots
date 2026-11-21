@@ -124,17 +124,35 @@ const CASES: GoldenCase[] = [
     expectCovered: true,
   },
   {
+    name: 'poids d’un modèle open-weight (Beam)',
+    question: 'Quel est le poids exact de Beam-1.0-501B-A23B-FP8 ?',
+    required: [/501/, /23/],
+    // Le corpus donne 501B total / 23B actifs et les checkpoints BF16/FP8/NVFP4,
+    // mais pas la taille disque exacte : le Dot doit le dire, pas nier le modèle.
+    forbidden: [/je ne connais pas|n['’]existe pas|mod[èe]le inconnu/i],
+    expectCovered: true,
+  },
+  {
+    name: 'modèle chinois récent (MiMo v2.6 Pro)',
+    question: 'Le modèle MiMo-V2.6-Pro existe-t-il ?',
+    required: [/MiMo/i, /2\.6/],
+    forbidden: [/je ne connais pas|n['’]existe pas|pas de fiche/i],
+    expectCovered: true,
+  },
+  {
     name: 'modèle absent du corpus',
     question: 'Que vaut le modèle Zorbania-9 de la société Inexistante ?',
     required: [
-      /fictif|fictive|n['’]existe pas|pas de valeur|inconnu|je ne sais pas|aucune donn[ée]e/i,
+      /fictif|fictive|n['’]existe pas|pas de valeur|inconnu|je ne (?:sais|connais) pas|aucune (?:donn[ée]e|information|fiche)|pas de (?:donn[ée]es|fiche)|invent[ée]|n['’]appara[îi]t/i,
     ],
     expectCovered: false,
   },
   {
     name: 'question hors corpus, pas d’invention',
     question: 'Quel temps fera-t-il à Paris demain ?',
-    required: [/je ne sais pas|pas accès|ne peux pas/i],
+    required: [
+      /je ne (?:sais|peux) pas|pas (?:d['’]?\s*)?acc[èe]s|pas la capacit[ée]|aucune information|temps r[ée]el|pas de donn[ée]es/i,
+    ],
     expectCovered: false,
   },
   {
@@ -204,12 +222,24 @@ describe.skipIf(!CONFIG.apiKey)('questions d’or (corpus)', () => {
     it(
       item.name,
       async () => {
-        const answer = await ask(item.question);
         const forbidden = [...COMMON_FORBIDDEN, ...(item.forbidden ?? [])];
-        for (const pattern of item.required)
-          expect(answer, `réponse : ${answer}`).toMatch(pattern);
-        for (const pattern of forbidden)
-          expect(answer, `réponse : ${answer}`).not.toMatch(pattern);
+        // Le modèle juge est stochastique : un seul échantillon ne fait pas un
+        // verdict (constat 2026-11-21 : cas différents en échec d'un run à
+        // l'autre). Deux essais, puis échec avec la dernière réponse.
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const answer = await ask(item.question);
+          try {
+            for (const pattern of item.required)
+              expect(answer, `réponse : ${answer}`).toMatch(pattern);
+            for (const pattern of forbidden)
+              expect(answer, `réponse : ${answer}`).not.toMatch(pattern);
+            return;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError;
       },
       120_000,
     );

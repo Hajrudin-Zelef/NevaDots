@@ -64,8 +64,12 @@ export function slimDocuments(hits: RagHit[], corpusVersion?: string): string {
     'for a 6.2 figure), and attach every price or benchmark to the version the facts attach it to. ' +
     'Reuse their numbers and prices exactly when the answer needs them; never invent the current date, ' +
     'never suggest searching the web, never tell the user to go check somewhere else. ' +
-    'Be decisive: give the recommendation and the figure that decides, state the assumption you made ' +
-    'rather than asking, then stop.';
+    'Be decisive: give the recommendation and the figure that decides. If a detail is missing, ';
+  ('state the assumption you made and answer anyway — never end your answer with a question, ');
+  ('and never ask which use case or budget the user has before answering. ');
+  ('If a fact names the model family but not the exact suffix asked, it is the same model: answer ');
+  ('with what the facts give (sizes, architecture, checkpoints) and say the missing figure is not ');
+  ('published — never reply that you do not know the model.');
   const ordered = [...hits].sort((a, b) =>
     (b.dates ?? '').localeCompare(a.dates ?? ''),
   );

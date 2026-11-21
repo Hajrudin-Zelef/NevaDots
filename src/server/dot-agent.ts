@@ -21,7 +21,7 @@ import {
   type ChatMessage,
 } from './context-compaction.js';
 import { magicCompactMessages } from './magic-compaction.js';
-import { searchRag, type RagHit } from './rag.js';
+import { EMPTY_RAG, searchRag, type RagHit } from './rag.js';
 import { readFirstChunk, rebuildResponse } from './ttft.js';
 import { modelSupportsTools } from './model-capabilities.js';
 import { classifyModelError } from './model-errors.js';
@@ -1107,11 +1107,27 @@ export class DotAgent extends AbstractAgent {
                   );
                 } else if (ragQuery.trim()) {
                   try {
-                    const rag = await searchRag(
-                      ragQuery,
-                      this.config,
-                      controller.signal,
-                    );
+                    // Question courante d'abord : le contexte assemble
+                    // (ancre + 3 derniers messages) sert de repli. Sinon, en
+                    // changeant de sujet, l'ancien theme garde le classement
+                    // BM25 et les faits du nouveau sujet ne sont jamais
+                    // injectes (constate le 2026-11-21 : Beam/MiMo absents).
+                    const currentQuery = userTurnText.trim();
+                    let rag =
+                      currentQuery && currentQuery !== ragQuery.trim()
+                        ? await searchRag(
+                            currentQuery,
+                            this.config,
+                            controller.signal,
+                          )
+                        : EMPTY_RAG;
+                    if (!rag.covered && ragQuery.trim() !== currentQuery) {
+                      rag = await searchRag(
+                        ragQuery,
+                        this.config,
+                        controller.signal,
+                      );
+                    }
                     if (rag.covered) {
                       ragDocuments = rag.hits;
                       ragDocumentsVersion = rag.corpusVersion;

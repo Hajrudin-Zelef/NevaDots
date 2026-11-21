@@ -16,7 +16,11 @@ export interface RagResult {
 }
 
 /** Résultat neutre : corpus non consulté ou question non couverte. */
-const EMPTY: RagResult = { covered: false, corpusVersion: 'unknown', hits: [] };
+export const EMPTY_RAG: RagResult = {
+  covered: false,
+  corpusVersion: 'unknown',
+  hits: [],
+};
 
 /** Cache court : évite de marteler le service sur une même question. */
 const CACHE_TTL_MS = 30_000;
@@ -81,15 +85,15 @@ export async function searchRag(
   const trimmed = query.trim();
   if (!baseUrl) {
     console.debug(`${TAG} non configuré (RAG_URL vide) — question ignorée`);
-    return EMPTY;
+    return EMPTY_RAG;
   }
   if (!trimmed) {
     console.debug(`${TAG} question vide — ignorée`);
-    return EMPTY;
+    return EMPTY_RAG;
   }
   if (signal?.aborted) {
     console.debug(`${TAG} tour déjà annulé avant la pré-recherche`);
-    return EMPTY;
+    return EMPTY_RAG;
   }
 
   const key = cacheKey(trimmed);
@@ -126,7 +130,7 @@ export async function searchRag(
       console.warn(
         `${TAG} HTTP ${response.status} sur /rag/search après ${elapsed} ms — "${short(trimmed)}"`,
       );
-      return EMPTY;
+      return EMPTY_RAG;
     }
     let data: {
       covered?: unknown;
@@ -139,7 +143,7 @@ export async function searchRag(
       console.warn(
         `${TAG} réponse JSON invalide après ${elapsed} ms: ${errorMessage(error)} — "${short(trimmed)}"`,
       );
-      return EMPTY;
+      return EMPTY_RAG;
     }
     const corpusVersion = String(data.corpusVersion ?? 'unknown');
     if (data.covered === false) {
@@ -154,7 +158,7 @@ export async function searchRag(
       console.warn(
         `${TAG} réponse inattendue en ${elapsed} ms (covered=${String(data.covered)}, hits=${Array.isArray(data.hits) ? 'array' : typeof data.hits}, version ${corpusVersion}) — "${short(trimmed)}"`,
       );
-      return EMPTY;
+      return EMPTY_RAG;
     }
     const hits = (data.hits as Array<Partial<RagHit>>)
       .filter((hit) => hit && typeof hit.snippet === 'string')
@@ -196,7 +200,7 @@ export async function searchRag(
       );
     }
     // Fail-open : timeout, réseau, JSON invalide — jamais d'erreur au Dot.
-    return EMPTY;
+    return EMPTY_RAG;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', forwardAbort);
