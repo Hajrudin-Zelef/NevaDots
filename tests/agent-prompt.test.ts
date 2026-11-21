@@ -296,6 +296,33 @@ describe('agent-prompt (corpus documents)', () => {
     expect(prompt).toContain('Kimi K3: Un modèle récent.');
   });
 
+  it('affiche la date de chaque extrait et la version du corpus', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      documentsVersion: '2026-11-21',
+      documents: [
+        {
+          title: 'GPT-6.1 Terra',
+          path: 'a/b.md',
+          snippet: 'As of 26 October 2026…',
+          dates: '2026-10-26',
+        },
+        {
+          title: 'GPT-6.2 Astra',
+          path: 'c/d.md',
+          snippet: 'Shipped on November 17.',
+          dates: '2026-11-17',
+        },
+      ],
+    });
+    expect(prompt).toContain('Corpus last updated 2026-11-21');
+    expect(prompt).toContain('[2026-10-26] GPT-6.1 Terra');
+    expect(prompt).toContain('[2026-11-17] GPT-6.2 Astra');
+    // Règle de résolution des contradictions : le plus récent gagne.
+    expect(prompt).toContain('the more recent one wins');
+    expect(prompt).toContain('say when it was published');
+  });
+
   it('omet la section quand aucun extrait n’est fourni', () => {
     expect(buildSystemPrompt(base)).not.toContain('REFERENCE DATA');
     expect(buildSystemPrompt({ ...base, documents: [] })).not.toContain(

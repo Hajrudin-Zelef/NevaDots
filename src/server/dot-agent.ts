@@ -1074,6 +1074,7 @@ export class DotAgent extends AbstractAgent {
         // Corpus : une seule recherche par tour, fail-open (jamais bloquant).
         // null = pas encore tenté ; [] = tenté sans couverture.
         let ragDocuments: RagHit[] | null = null;
+        let ragDocumentsVersion = '';
         this.inner = new BuiltInAgent({
           type: 'tanstack',
           factory: async (ctx) => {
@@ -1098,6 +1099,7 @@ export class DotAgent extends AbstractAgent {
             }
             if (ragDocuments === null) {
               ragDocuments = [];
+              ragDocumentsVersion = '';
               if (dot.documentsEnabled) {
                 if (!this.config.ragUrl) {
                   console.warn(
@@ -1112,6 +1114,7 @@ export class DotAgent extends AbstractAgent {
                     );
                     if (rag.covered) {
                       ragDocuments = rag.hits;
+                      ragDocumentsVersion = rag.corpusVersion;
                       console.info(
                         `[corpus] ${dot.name}: ${rag.hits.length} extrait(s) injecté(s) (version ${rag.corpusVersion})`,
                       );
@@ -1158,6 +1161,7 @@ export class DotAgent extends AbstractAgent {
               replyStyle: initialSettings.replyStyle,
               replyLanguage: initialSettings.replyLanguage,
               documents: ragDocuments ?? [],
+              documentsVersion: ragDocumentsVersion,
             });
             // Phase 9 : stratégie de compaction par Dot (défaut : native).
             const compact =

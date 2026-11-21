@@ -5,6 +5,8 @@ export interface RagHit {
   title: string;
   path: string;
   snippet: string;
+  /** Date de publication (YYYY-MM-DD) quand la fiche en porte une. */
+  dates?: string;
 }
 
 export interface RagResult {
@@ -161,6 +163,7 @@ export async function searchRag(
         title: String(hit.title ?? '').slice(0, 200),
         path: String(hit.path ?? '').slice(0, 400),
         snippet: String(hit.snippet ?? '').trim(),
+        dates: String(hit.dates ?? '').slice(0, 40),
       }))
       .filter((hit) => hit.snippet.length > 0);
     if (!hits.length) {

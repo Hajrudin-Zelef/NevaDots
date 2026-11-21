@@ -133,7 +133,7 @@ async function ask(question: string): Promise<string> {
     ragTimeoutMs: CONFIG.ragTimeoutMs,
   });
   const documents = rag.covered ? rag.hits : [];
-  const prompt = slimDocuments(documents);
+  const prompt = slimDocuments(documents, rag.corpusVersion);
   // Même repère temporel que le prompt réel : sans lui, le modèle invente une
   // date (constaté : « 20 août 2025 »).
   const now = new Date();

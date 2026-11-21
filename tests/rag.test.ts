@@ -50,6 +50,7 @@ describe('rag client (fail-open)', () => {
       title: 'Kimi K3',
       path: 'a/b.md',
       snippet: 'Un modèle.',
+      dates: '',
     });
   });
 
