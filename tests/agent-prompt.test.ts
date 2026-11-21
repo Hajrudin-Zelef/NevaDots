@@ -287,12 +287,27 @@ describe('agent-prompt (corpus documents)', () => {
     });
     expect(prompt).toContain('REFERENCE DATA');
     expect(prompt).toContain('as your own knowledge');
-    expect(prompt).toContain('never as a document');
     expect(prompt).toContain('no source, no site, no article');
-    expect(prompt).toContain('that model exists: never say it does not');
-    expect(prompt).toContain('not that the newer one is missing');
-    expect(prompt).toContain('Never invent the current date');
+    expect(prompt).toContain('means it exists: never deny it');
+    expect(prompt).toContain('Be decisive');
+    expect(prompt).toContain('exactly as the facts spell them');
     expect(prompt).toContain('Un modèle récent.');
+  });
+
+  it('fait nommer l’existant quand un modèle a été abandonné', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      documents: [
+        {
+          title: 'note',
+          path: 'p',
+          snippet: 'GPT-6.1 Astra was shelved; GPT-6.2 Astra shipped instead.',
+          dates: '2026-11-17',
+        },
+      ],
+    });
+    expect(prompt).toContain('immediately name what exists instead');
+    expect(prompt).toContain('do not repeat that it does not exist');
   });
 
   it('injecte les faits sans titre, sans date et sans source, du plus récent au plus ancien', () => {
@@ -317,9 +332,9 @@ describe('agent-prompt (corpus documents)', () => {
     expect(prompt).toContain('as your own knowledge');
     expect(prompt).toContain('current as of 2026-11-21');
     expect(prompt).toContain(
-      'no source, no site, no article, no publication date',
+      'no source, no site, no article, no document, no publication date',
     );
-    expect(prompt).toContain('the first one wins');
+    expect(prompt).toContain('the first wins');
     // Aucune fuite de provenance : ni titre, ni date, ni nom de site.
     expect(prompt).not.toContain('[2026-');
     expect(prompt).not.toContain('AlphaCorp');

@@ -50,18 +50,22 @@ export function slimDocuments(hits: RagHit[], corpusVersion?: string): string {
       ? ` Your knowledge is current as of ${corpusVersion}.`
       : '';
   const header =
-    'REFERENCE DATA — facts you know, as your own knowledge, never as a document.' +
+    'REFERENCE DATA — facts you know, as your own knowledge.' +
     asOf +
-    ' Never mention where they come from: no source, no site, no article, no publication date, ' +
-    'no "selon", "d\'après", "source", "mes documents", "couverture presse", never that you were given data. ' +
-    'Facts are ordered most recent first: when two disagree, the first one wins; ' +
-    'if the question asks whether something exists or is available, the first answer is the current one. ' +
-    'Reuse their numbers, prices and dates exactly when the answer needs them. ' +
-    'If they name a model you do not know, that model exists: never say it does not. ' +
-    'If they only cover an older version than the one asked, state what is current, not that the newer one is missing. ' +
-    'Use your own knowledge to reason and compare, never to override these facts. ' +
-    'Never invent the current date, never suggest searching the web, never tell the user to go read anything. ' +
-    'Answer the question asked, with a clear recommendation when one is expected; ask a follow-up only if it truly blocks the answer.';
+    ' Never reveal where they come from: no source, no site, no article, no document, no publication date, ' +
+    'no "selon", "d\'après", "source :", "mes documents", "couverture presse", never that you were given data. ' +
+    'Never comment on the facts themselves: no "faits bruts", "les données", "la référence", "mon corpus", ' +
+    'no remark about how they are worded or how reliable they are — use them and move on. ' +
+    'They are ordered most recent first: when two disagree the first wins, and the first one is what exists today. ' +
+    'A fact that names a model or version means it exists: never deny it. ' +
+    'When the facts say it was cancelled, shelved or never released, say so in one short clause and ' +
+    'immediately name what exists instead — do not discuss the assumption, do not repeat that it does not exist. ' +
+    'Name models and versions exactly as the facts spell them ("GPT-6.2 Astra", never "GPT-6 Astra" ' +
+    'for a 6.2 figure), and attach every price or benchmark to the version the facts attach it to. ' +
+    'Reuse their numbers and prices exactly when the answer needs them; never invent the current date, ' +
+    'never suggest searching the web, never tell the user to go check somewhere else. ' +
+    'Be decisive: give the recommendation and the figure that decides, state the assumption you made ' +
+    'rather than asking, then stop.';
   const ordered = [...hits].sort((a, b) =>
     (b.dates ?? '').localeCompare(a.dates ?? ''),
   );
